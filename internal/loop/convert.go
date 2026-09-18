@@ -1,7 +1,6 @@
 package loop
 
 import (
-	"github.com/openzot/openzot/internal/compaction"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/thread"
 )
@@ -25,7 +24,6 @@ const (
 	EventToolCallError  EventKind = "toolCallError"
 	EventRetry          EventKind = "retry"
 	EventRunaway        EventKind = "runaway"
-	EventCompact        EventKind = "compact"
 	EventNotice         EventKind = "notice"
 	EventUsage          EventKind = "usage"
 )
@@ -82,27 +80,6 @@ func fromThreadMessages(messages []thread.Message) []Message {
 
 		if meta, ok := message.Meta(); ok {
 			entry.Activity = activityFromMeta(meta)
-		}
-
-		converted = append(converted, entry)
-	}
-
-	return converted
-}
-
-func toCompactionMessages(messages []Message) []compaction.Message {
-	converted := make([]compaction.Message, 0, len(messages))
-
-	for _, message := range messages {
-		entry := compaction.Message{
-			Type: compaction.MessageType(message.Type),
-			Text: message.Text,
-		}
-
-		// compaction prices what a message costs, and a tool call's payload is
-		// most of what it costs
-		if message.Activity != nil {
-			entry.Payload = message.Activity.Payload()
 		}
 
 		converted = append(converted, entry)
@@ -184,7 +161,7 @@ func toChatMessages(messages []Message) []provider.ChatMessage {
 			// reasoning content on the way back in, and it is the model's
 			// scratchpad rather than conversation
 
-		case TypeInstructions, TypeCheckpoint:
+		case TypeInstructions:
 			converted = append(converted, provider.ChatMessage{
 				Role:    provider.RoleSystem,
 				Content: message.Text,

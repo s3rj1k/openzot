@@ -64,7 +64,7 @@ func TestAttachmentMessageDescribesEachImageSoItStandsAlone(t *testing.T) {
 		t.Fatalf("got %d images, want both", len(message.Images))
 	}
 
-	// the text is what remains when compaction drops the images or a blob goes
+	// the text is what remains when trimming drops the images or a blob goes
 	// missing, so both files and their shape have to be named in it
 	for _, want := range []string{"/tmp/one.png", "/tmp/two.png", "image/png", "800x600"} {
 		if !strings.Contains(message.Text, want) {

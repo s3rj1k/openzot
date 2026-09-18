@@ -4,8 +4,8 @@
 // or differ from OpenAI's vocabulary. A model-specific vocabulary would make
 // one provider look precise while adding several megabytes and remaining an
 // approximation everywhere else. The estimator therefore prices UTF-8 bytes
-// conservatively and lets provider-reported usage drive compaction after the
-// first request.
+// conservatively and errs toward over-counting, so a long run is trimmed a
+// little early rather than rejected.
 package tokenizer
 
 const (
@@ -28,7 +28,7 @@ func Count(_ string, text string) int {
 
 // Estimate prices text at one token per three UTF-8 bytes, then adds 25%.
 // Each division rounds up because under-counting can make a provider reject a
-// request, whereas over-counting merely compacts a little early.
+// request, whereas over-counting merely trims a little early.
 func Estimate(text string) int {
 	if text == "" {
 		return 0
@@ -42,7 +42,7 @@ func Estimate(text string) int {
 // The per-message costs of the chat wire format. Providers wrap every message
 // in role and control data that does not appear in its text. Ten tokens is a
 // deliberately conservative fixed allowance; provider-reported input usage
-// corrects the compaction trigger once a request succeeds.
+// is what the run is billed on once a request succeeds.
 const (
 	TokensPerMessage      = 4
 	TokensPerName         = 1

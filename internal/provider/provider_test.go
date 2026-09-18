@@ -187,7 +187,7 @@ func TestIsContextLimit(t *testing.T) {
 	limit := &Error{Status: 400, Message: "This model's maximum context length is 128000 tokens"}
 
 	if !IsContextLimit(limit) {
-		t.Error("a context-length rejection must be recognised so the run can compact and retry")
+		t.Error("a context-length rejection must be recognised so the run can trim harder and retry")
 	}
 
 	if IsContextLimit(&Error{Status: 400, Message: "invalid api key"}) {

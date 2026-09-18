@@ -378,7 +378,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 	chat := toChatMessages([]Message{
 		{Type: TypeInstructions, Text: "you are a coding agent"},
-		// this result's call fell outside the compaction window
+		// this result's call fell outside the trimmed window
 		response("gone", "read", "{}", "old contents"),
 		{Type: TypeUser, Text: "run the tests"},
 		request("call_1", "shell", `{"command":"go test"}`),

@@ -8,7 +8,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/openzot/openzot/agent"
 	"github.com/openzot/openzot/internal/catalogue"
 )
 
@@ -130,6 +129,24 @@ providers:
 		"attribution": `
 attribution:
   name: acme-bot
+	`,
+		"per-model tools override": `
+default_provider: corporate
+providers:
+  corporate:
+    base_url: https://gw.example.com/v1
+    models:
+      fast:
+        tools: false
+	`,
+		"per-model reasoning override": `
+default_provider: corporate
+providers:
+  corporate:
+    base_url: https://gw.example.com/v1
+    models:
+      fast:
+        reasoning: true
 	`,
 		"per-model driver": `
 default_provider: corporate
@@ -752,70 +769,24 @@ func TestPortableOverlayRejectsBadYAML(t *testing.T) {
 	}
 }
 
-// The default strategy is compact, so a long autonomous run summarises rather
-// than silently dropping its early context.
-func TestDefaultContextStrategyIsCompact(t *testing.T) {
-	if got := Defaults().Agent.ContextStrategy; got != agent.StrategyCompact {
-		t.Errorf("default context_strategy = %q, want %q", got, agent.StrategyCompact)
-	}
-}
+// The context-strategy and compact-tuning knobs are gone: the only strategy is
+// truncation, so there is nothing to select or tune. A config that still sets
+// them fails loudly rather than being silently ignored.
+func TestRemovedContextKnobsAreRejected(t *testing.T) {
+	for _, key := range []string{
+		"context_strategy: truncate",
+		"context_strategy: compact",
+		"compact_trigger_ratio: 0.8",
+		"compact_min_tokens: 1000",
+		"compact_min_messages: 10",
+	} {
+		t.Run(key, func(t *testing.T) {
+			path := writeConfig(t, "agent:\n  "+key+"\n")
 
-func TestContextStrategyIsValidated(t *testing.T) {
-	base := func(strategy string) Config {
-		return validConfig(func(c *Config) { c.Agent.ContextStrategy = strategy })
-	}
-
-	// the two real strategies and "unset" all pass
-	for _, ok := range []string{"", agent.StrategyCompact, agent.StrategyTruncate} {
-		if err := base(ok).Validate(); err != nil {
-			t.Errorf("context_strategy %q must validate: %v", ok, err)
-		}
-	}
-
-	if err := base("summarise").Validate(); err == nil {
-		t.Error("an unknown context_strategy must fail validation")
-	}
-}
-
-func TestCompactTuningIsValidated(t *testing.T) {
-	// a ratio outside (0, 1] is a mistake worth catching at load
-	for _, bad := range []float64{-0.1, 1.5} {
-		cfg := validConfig(func(c *Config) { c.Agent.CompactTriggerRatio = bad })
-		if err := cfg.Validate(); err == nil {
-			t.Errorf("compact_trigger_ratio %g must fail validation", bad)
-		}
-	}
-
-	// zero means "use the default" and must pass
-	if err := validConfig(func(c *Config) { c.Agent.CompactTriggerRatio = 0 }).Validate(); err != nil {
-		t.Errorf("an unset ratio must validate: %v", err)
-	}
-
-	// a valid ratio passes
-	if err := validConfig(func(c *Config) { c.Agent.CompactTriggerRatio = 0.8 }).Validate(); err != nil {
-		t.Errorf("a valid ratio must validate: %v", err)
-	}
-
-	if err := validConfig(func(c *Config) { c.Agent.CompactMinTokens = -1 }).Validate(); err == nil {
-		t.Error("a negative compact_min_tokens must fail validation")
-	}
-}
-
-// The strategy is a scalar field, so it picks up the ZOT_AGENT_* env override
-// like every other knob.
-func TestContextStrategyEnvOverride(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("ZAI_API_KEY", "sk-zai")
-	t.Setenv("ZOT_AGENT_CONTEXT_STRATEGY", "truncate")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if cfg.Agent.ContextStrategy != "truncate" {
-		t.Errorf("ZOT_AGENT_CONTEXT_STRATEGY not applied: %q", cfg.Agent.ContextStrategy)
+			if _, err := Load(path); err == nil {
+				t.Errorf("agent.%s must be rejected", key)
+			}
+		})
 	}
 }
 
@@ -900,7 +871,7 @@ providers:
 }
 
 func TestModelCapabilitiesDeferToTheCatalogueWhenUnset(t *testing.T) {
-	base := catalogue.Model{SupportsTools: true, SupportsReasoning: true, ContextWindow: 200_000}
+	base := catalogue.Model{SupportsVision: true, ContextWindow: 200_000}
 
 	got := ModelConfig{}.Capabilities(base)
 
@@ -909,8 +880,8 @@ func TestModelCapabilitiesDeferToTheCatalogueWhenUnset(t *testing.T) {
 	}
 }
 
-func TestModelCapabilitiesTurnAFeatureOnAndOff(t *testing.T) {
-	base := catalogue.Model{SupportsTools: true}
+func TestModelCapabilitiesTurnSightOnAndOff(t *testing.T) {
+	base := catalogue.Model{}
 
 	on := true
 	off := false
@@ -919,19 +890,12 @@ func TestModelCapabilitiesTurnAFeatureOnAndOff(t *testing.T) {
 		t.Error("vision: true must let a model zot has not catalogued be shown images")
 	}
 
-	seeing := catalogue.Model{SupportsTools: true, SupportsVision: true}
+	seeing := catalogue.Model{SupportsVision: true}
 
 	if got := (ModelConfig{Vision: &off}).Capabilities(seeing); got.SupportsVision {
 		t.Error("vision: false must be able to turn off what the catalogue believes")
 	}
 
-	if got := (ModelConfig{Tools: &off}).Capabilities(base); got.SupportsTools {
-		t.Error("tools: false must be honoured")
-	}
-
-	if got := (ModelConfig{Reasoning: &on}).Capabilities(base); !got.SupportsReasoning {
-		t.Error("reasoning: true must be honoured")
-	}
 }
 
 func TestModelCapabilitiesApplyTheContextOverrideToo(t *testing.T) {

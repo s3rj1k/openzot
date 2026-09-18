@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/openzot/openzot/internal/catalogue"
-	"github.com/openzot/openzot/internal/compaction"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/thread"
 	"github.com/openzot/openzot/internal/tokenizer"
@@ -71,9 +69,9 @@ type Options struct {
 	// point of a session log is that a run killed at iteration 500 is resumable,
 	// which it is not if nothing was written down until iteration 500 finished.
 	//
-	// The engine rewrites its own history when it compacts, so the slice handed
-	// over is the current conversation, not a delta: a consumer that has kept the
-	// previous one must expect the prefix to change.
+	// The slice handed over is the whole conversation as it then stands, not a
+	// delta. The engine only ever appends to it - what is sent on the wire is
+	// trimmed to the window, but the conversation itself is never rewritten.
 	OnConversation func([]Message)
 
 	// MaxIterations, MaxContinuations, MaxCycles, MaxEmpties bound the run. Zero
@@ -116,18 +114,6 @@ type Options struct {
 	// non-nil empty slice disables the notices.
 	LimitCheckpoints []int
 
-	// Compact selects the context-overflow strategy. True (the default) summarises
-	// the older history into a checkpoint with a model call as the window fills;
-	// false truncates - the thread builder drops the oldest messages to fit, and
-	// only an outright provider rejection triggers a no-model structural summary.
-	Compact bool
-
-	// CompactMinTokens, CompactMinMessages and CompactTriggerRatio tune when the
-	// compact strategy fires. Zero uses the corresponding default.
-	CompactMinTokens    int
-	CompactMinMessages  int
-	CompactTriggerRatio float64
-
 	// ContextWindow overrides the model's total context window, in tokens.
 	// Zero uses the catalogue. The operator's escape hatch for an endpoint
 	// whose real ceiling is smaller than the model's card and whose overflow
@@ -138,10 +124,9 @@ type Options struct {
 // MessageType identifies what a message is.
 //
 // A named type rather than a bare string: these values decide how a message is
-// rendered to the provider, whether the runaway backstop scans it, and whether
-// compaction may summarise it away. A typo in a string literal would silently
-// route a message down the wrong path - a system prompt summarised as ordinary
-// history, say - and nothing would report it.
+// rendered to the provider and whether the runaway backstop scans it. A typo in
+// a string literal would silently route a message down the wrong path - a system
+// prompt rendered as ordinary history, say - and nothing would report it.
 type MessageType string
 
 // The message types the loop understands.
@@ -161,14 +146,8 @@ const (
 	TypeActivity MessageType = "activity"
 
 	// TypeInstructions is system context - the instructions that shape the run.
-	// Never summarised, and always ordered ahead of everything else.
+	// Always ordered ahead of everything else.
 	TypeInstructions MessageType = "instructions"
-
-	// TypeCheckpoint is a compaction summary of earlier history. It is never
-	// summarised again - preserved verbatim and pinned ahead of the conversation,
-	// so a long run accumulates a chain of segment summaries rather than
-	// re-condensing its own summaries into a lossy summary-of-a-summary.
-	TypeCheckpoint MessageType = "checkpoint"
 
 	// TypeAttachment carries what a tool produced but a tool result cannot
 	// hold - today, images.
@@ -177,7 +156,7 @@ const (
 	// OpenAI-compatible endpoint rejects image parts on a tool result, so an
 	// image has to travel as its own message, in the one role that accepts it.
 	// A type of its own rather than TypeUser because nothing in an unattended
-	// run should claim a human said something, and because compaction needs to
+	// run should claim a human said something, and because trimming needs to
 	// find these cheaply - images are the first thing worth dropping from a
 	// long history, and the message's text is written to stand alone once they
 	// are gone.
@@ -235,11 +214,6 @@ type Engine struct {
 	maxSettles    int
 	retryBackoff  time.Duration
 	checkpoints   []int
-
-	compactStrategy     bool
-	compactMinTokens    int
-	compactMinMessages  int
-	compactTriggerRatio float64
 
 	model       string
 	inputBudget int
@@ -307,18 +281,14 @@ func New(options Options) (*Engine, error) {
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value
 		// means "no cap", which is why they are stored raw rather than picked.
-		maxCalls:            nonNegative(options.MaxCalls),
-		maxDuration:         options.MaxDuration,
-		maxContinuations:    pick(options.MaxContinuations, DefaultMaxContinuations),
-		maxRecoveries:       pick(options.MaxRecoveries, DefaultMaxRecoveries),
-		maxCycles:           pick(options.MaxCycles, DefaultMaxCycles),
-		maxEmpties:          pick(options.MaxEmpties, DefaultMaxEmpties),
-		maxSettles:          options.MaxSettles,
-		checkpoints:         normalizeCheckpoints(options.LimitCheckpoints),
-		compactStrategy:     options.Compact,
-		compactMinTokens:    pick(options.CompactMinTokens, DefaultCompactMinTokens),
-		compactMinMessages:  pick(options.CompactMinMessages, DefaultCompactMinMessages),
-		compactTriggerRatio: pickRatio(options.CompactTriggerRatio, DefaultCompactTriggerRatio),
+		maxCalls:         nonNegative(options.MaxCalls),
+		maxDuration:      options.MaxDuration,
+		maxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
+		maxRecoveries:    pick(options.MaxRecoveries, DefaultMaxRecoveries),
+		maxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
+		maxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
+		maxSettles:       options.MaxSettles,
+		checkpoints:      normalizeCheckpoints(options.LimitCheckpoints),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
 		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
@@ -436,16 +406,6 @@ func nonNegative(v int) int {
 	return v
 }
 
-// pickRatio returns value when it is a usable fraction (0, 1], and the fallback
-// otherwise - so an unset (zero) or out-of-range ratio lands on the default.
-func pickRatio(value, fallback float64) float64 {
-	if value > 0 && value <= 1 {
-		return value
-	}
-
-	return fallback
-}
-
 // noteApproachingLimits appends an approaching-limit notice for each configured
 // checkpoint a bounded limit has newly crossed. Only bounded limits are checked:
 // an unbounded call or time budget has nothing to approach, and a checkpoint
@@ -512,14 +472,9 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 	started := time.Now()
 
-	// The prompt-token count the provider reported for the previous turn, used by
-	// the compact strategy to decide whether the window is filling. Zero until the
-	// first turn reports, at which point the estimate stands in.
-	lastInputTokens := 0
-
 	// retries counts *consecutive* retriable provider failures, and is what the
 	// backoff keys off. Deliberately not budget.Continuations: that also counts
-	// truncation recoveries and context-limit compactions, so keying the
+	// truncation recoveries and context-limit retries, so keying the
 	// backoff off it would make a truncation earlier in the same stretch start
 	// an unrelated outage at an escalated wait. Both reset on a good turn.
 	retries := 0
@@ -566,33 +521,12 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 		// tool calls and time from the rounds already done.
 		messages = e.noteApproachingLimits(messages, &budget, time.Since(started))
 
-		// The compact strategy summarises older history into a checkpoint as the
-		// window fills, before the request is built - so the run keeps its early
-		// context as a summary rather than having the thread builder drop it. A
-		// no-op under the truncate strategy, or until the window is actually near.
-		var compacted bool
-
-		messages, compacted = e.maybeCompact(ctx, messages, lastInputTokens, emit)
-
-		// the history just shrank; forget the pre-compaction usage so the next
-		// check re-evaluates on the smaller thread. Without this a turn that
-		// fails right after compacting - an error reports no usage of its own -
-		// leaves the stale over-threshold reading in place, and every retry
-		// compacts the already-compacted thread again.
-		if compacted {
-			lastInputTokens = 0
-		}
-
 		request, err := e.buildRequest(messages, tools)
 		if err != nil {
 			return e.finish(messages, budget, StopError, "could not assemble the request", err)
 		}
 
 		turn, err := e.runTurn(ctx, request, emit)
-
-		if turn.InputTokens > 0 {
-			lastInputTokens = turn.InputTokens
-		}
 
 		// Accumulate the provider's reported usage - the actual billed tokens - and
 		// surface the running total so a viewer can show real cost rather than an
@@ -635,39 +569,12 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 				return e.finish(messages, budget, StopAborted, "run cancelled", firstNonNil(lastFailure, err))
 			}
 
-			// a context-limit rejection is recoverable: compact and retry
+			// a context-limit rejection is recoverable: narrow the window the
+			// thread is trimmed to and retry
 			if limit, ok := provider.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
-				// @note the provider's stated window beats the local estimate.
-				// A rejection is precisely the case where the catalogue was
-				// wrong - an uncatalogued model, or a provider serving a smaller
-				// variant - so believing the error is what makes the retry fit
-				// instead of guessing again.
-				if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.inputBudget {
-					e.inputBudget = limit.SuggestedLimit
-
-					emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
-						"provider reported a %d token window; retrying under %d",
-						limit.MaxTokens, limit.SuggestedLimit)})
-				}
-
-				compacted, ok := e.compact(messages)
-
-				if ok {
-					messages = compacted
-
-					// the history just shrank; forget the pre-compaction usage so
-					// the next proactive check re-evaluates on the smaller thread
-					// rather than re-compacting on a stale, larger reading
-					lastInputTokens = 0
-
-					continue
-				}
-
-				// even without a split to make, a lowered budget is worth one
-				// more attempt - the thread builder will simply trim harder
-				if limit.SuggestedLimit > 0 {
+				if e.narrowInputBudget(limit, emit) {
 					continue
 				}
 			}
@@ -858,8 +765,7 @@ type turnResult struct {
 	// InputTokens and OutputTokens are the prompt- and completion-token counts the
 	// provider reported for this turn (zero when it reported none). Provider counts,
 	// not the local estimate: they reflect what the provider actually processed,
-	// including any server-side prompt caching. The compact strategy prefers
-	// InputTokens over the estimate when deciding whether the window is filling.
+	// including any server-side prompt caching.
 	InputTokens  int
 	OutputTokens int
 }
@@ -1093,7 +999,7 @@ type attachment struct {
 // them.
 //
 // The text is written to stand alone. It is what the model reads if the images
-// are dropped by compaction, what remains in a log whose blobs were deleted,
+// are trimmed away, what remains in a log whose blobs were deleted,
 // and what a resumed run falls back to when a blob cannot be found - in every
 // one of those cases the conversation should still say that an image existed
 // and what it was.
@@ -1212,196 +1118,44 @@ func cycleDetail(heuristic string) string {
 	}
 }
 
-// compact condenses the conversation when it no longer fits.
-func (e *Engine) compact(messages []Message) ([]Message, bool) {
-	pinned, head, tail := splitForCheckpoint(messages)
-
-	if len(head) == 0 {
-		return nil, false
-	}
-
-	// @note the summary is produced without a model call: asking the provider to
-	// summarise is what got us here, and a request that was just rejected for
-	// being too large cannot be retried as-is. A structural summary is worse
-	// than an LLM one but always available.
-	summary := structuralSummary(toCompactionMessages(head))
-
-	return applyCheckpoint(pinned, tail, summary), true
-}
-
-// maybeCompact runs the compact strategy: as the context window fills, it
-// condenses the older history into a checkpoint with a model call, so a long run
-// carries a condensed memory of its early turns rather than having the thread
-// builder silently drop them to fit.
+// narrowInputBudget lowers the token budget the thread is trimmed to, after a
+// provider rejected a request as too long. It reports whether the budget went
+// down - if not there is nothing left to try, and the rejection is a real
+// failure.
 //
-// The summary is a TypeCheckpoint - pinned ahead of the conversation and never
-// summarised again - so repeated compactions accumulate a chain of segment
-// summaries rather than re-condensing earlier summaries into a lossy
-// summary-of-a-summary.
+// The provider's stated window beats the local estimate. A rejection is
+// precisely the case where the catalogue was wrong - an uncatalogued model, or a
+// provider serving a smaller variant - so believing the error is what makes the
+// retry fit instead of guessing again. A rejection that states no window, or one
+// no lower than the budget already in force, still has to shrink something or
+// the retry would send the identical request: the budget steps down by a quarter
+// instead, until it reaches the floor the instructions and tool schemas need.
 //
-// This deliberately differs from the engine zot was derived from, which keeps
-// only the single most recent checkpoint and drops earlier ones - losing all
-// detail before its window. Keeping the whole chain preserves that history; it
-// grows the stored conversation slowly, but the thread builder still trims the
-// wire request to the window (oldest first, so the oldest summaries age out),
-// so a run cannot overflow on accumulated checkpoints.
-//
-// It is a no-op under the truncate strategy, and until usage both crosses the
-// trigger ratio of the window and clears the min-tokens and min-messages floors -
-// a short thread is cheaper to carry whole than to summarise. inputTokens is the
-// provider's reported prompt count for the previous turn; the local estimate
-// stands in when it is zero (the first turn, or a provider that reports none).
-// maybeCompact reports whether it compacted alongside the conversation, because
-// the caller has to forget the usage reading that triggered it: an error carries
-// no usage of its own, so a stale over-threshold count would survive a failed
-// turn and compact the already-compacted thread again on every retry.
-func (e *Engine) maybeCompact(ctx context.Context, messages []Message, inputTokens int, emit func(Event)) ([]Message, bool) {
-	if !e.compactStrategy {
-		return messages, false
+// Only the budget changes. The conversation itself is untouched; the thread
+// builder drops the oldest messages to fit it on the next request.
+func (e *Engine) narrowInputBudget(limit provider.ContextLimit, emit func(Event)) bool {
+	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.inputBudget {
+		e.inputBudget = limit.SuggestedLimit
+
+		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
+			"provider reported a %d token window; retrying under %d",
+			limit.MaxTokens, limit.SuggestedLimit)})
+
+		return true
 	}
 
-	// Whichever of two signals is larger drives the trigger.
-	//
-	// The provider's reported prompt-token count is real usage - it includes
-	// the system prompt, tool schemas and wire overhead the estimate misses.
-	// But it measures the previous request AFTER the thread builder trimmed it
-	// to fit, so on its own it can sit below the trigger forever while the
-	// trimmer silently drops ever more history: the model re-reads what it
-	// lost, the conversation grows, more is trimmed - a re-reading loop that
-	// burns the run's budget on amnesia. The local estimate of the WHOLE
-	// conversation is the same measure the trimmer applies, so it is what
-	// fires compaction before trimming turns lossy.
-	used := inputTokens
+	narrowed := e.inputBudget * 3 / 4
 
-	if estimated := compaction.CountMessagesTokens(e.model, toCompactionMessages(messages)); estimated > used {
-		used = estimated
+	if narrowed < MinInputTokens {
+		return false
 	}
 
-	pinned, head, tail := splitForCheckpoint(messages)
+	e.inputBudget = narrowed
 
-	// Fire once usage crosses the trigger ratio of the window, and only above the
-	// floors: a short thread is cheaper to carry whole than to summarise. head is
-	// the messages that would be condensed - existing checkpoints and the system
-	// prompt are pinned and never counted here.
-	threshold := int(float64(e.inputBudget) * e.compactTriggerRatio)
+	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
+		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
 
-	if used < threshold || used < e.compactMinTokens || len(head) < e.compactMinMessages {
-		return messages, false
-	}
-
-	// Summarise with a model call. Fall back to the no-model structural summary if
-	// that call fails, so a summariser outage degrades the summary's quality
-	// rather than stalling the run.
-	summary, err := e.summarize(ctx, toCompactionMessages(head))
-	if err != nil {
-		summary = structuralSummary(toCompactionMessages(head))
-	}
-
-	emit(Event{Kind: EventCompact, Text: fmt.Sprintf(
-		"compacted %d earlier messages into a checkpoint (~%d input tokens)",
-		len(head), used)})
-
-	return applyCheckpoint(pinned, tail, summary), true
-}
-
-// splitForCheckpoint divides a conversation for compaction into three parts:
-//
-//   - pinned: the system prompt and every existing checkpoint, in order. These
-//     are preserved verbatim and never summarised - re-summarising a checkpoint
-//     is exactly the summary-of-a-summary this design avoids.
-//   - head: the older conversational messages, to be condensed into a new
-//     checkpoint.
-//   - tail: the most recent conversational messages, kept verbatim so the model
-//     still has its immediate context to act on.
-//
-// The recent-tail size follows the compaction package's ratio, so the split
-// point matches the reactive path and the ported engine.
-func splitForCheckpoint(messages []Message) (pinned, head, tail []Message) {
-	var body []Message
-
-	for _, message := range messages {
-		switch message.Type {
-		case TypeInstructions, TypeCheckpoint:
-			pinned = append(pinned, message)
-		default:
-			body = append(body, message)
-		}
-	}
-
-	keep := int(math.Ceil(float64(len(body)) * compaction.KeepRecentRatio))
-	if keep < 2 {
-		keep = 2
-	}
-
-	cut := len(body) - keep
-	if cut < 0 {
-		cut = 0
-	}
-
-	return pinned, body[:cut], body[cut:]
-}
-
-// applyCheckpoint rebuilds the conversation as [pinned..., new checkpoint,
-// tail...]: the system prompt and prior checkpoints first, then the freshly
-// produced checkpoint summarising the head, then the recent tail verbatim. The
-// order is chronological - prior checkpoints cover older segments, the new one
-// covers the segment just before the tail.
-func applyCheckpoint(pinned, tail []Message, summary string) []Message {
-	result := make([]Message, 0, len(pinned)+1+len(tail))
-	result = append(result, pinned...)
-	result = append(result, Message{Type: TypeCheckpoint, Text: summary})
-	result = append(result, tail...)
-
-	return result
-}
-
-// summarize asks the model to condense a slice of history into a compact
-// checkpoint. Affordable here because the compact strategy runs before the
-// window is hit - unlike the reactive path, which cannot call the model because
-// the request that was just rejected is itself the one that is too large.
-func (e *Engine) summarize(ctx context.Context, messages []compaction.Message) (string, error) {
-	request := provider.Request{
-		Messages: []provider.ChatMessage{
-			// BuildSummaryPrompt is a complete, self-contained instruction plus the
-			// rendered history, so it goes on the wire as a single user message.
-			{Role: provider.RoleUser, Content: compaction.BuildSummaryPrompt(messages)},
-		},
-	}
-
-	reply, _, _, err := e.options.Client.Complete(ctx, request)
-	if err != nil {
-		return "", err
-	}
-
-	summary := strings.TrimSpace(reply.Content)
-	if summary == "" {
-		return "", errors.New("loop: the model returned an empty compaction summary")
-	}
-
-	return summary, nil
-}
-
-// structuralSummary condenses history without a model call.
-func structuralSummary(messages []compaction.Message) string {
-	var builder strings.Builder
-
-	builder.WriteString("Earlier turns, condensed:\n")
-
-	for _, message := range messages {
-		text := strings.TrimSpace(message.Text)
-
-		if text == "" {
-			continue
-		}
-
-		if len(text) > 200 {
-			text = text[:200] + "…"
-		}
-
-		fmt.Fprintf(&builder, "- [%s] %s\n", message.Type, text)
-	}
-
-	return builder.String()
+	return true
 }
 
 // buildRequest assembles the provider request, trimming the conversation to fit.

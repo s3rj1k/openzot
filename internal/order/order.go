@@ -58,7 +58,7 @@ type Order struct {
 	Title string `yaml:"title,omitempty"`
 
 	// Objective is the durable goal of the run. It goes into the system prompt
-	// and survives compaction, so the agent cannot forget it on a long run.
+	// and survives trimming, so the agent cannot forget it on a long run.
 	Objective string `yaml:"objective"`
 
 	// Acceptance are the criteria that define "done". They travel with the

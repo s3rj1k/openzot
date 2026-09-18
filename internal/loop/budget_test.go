@@ -972,7 +972,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 // The consecutive-failure counter is the backoff's own, not the continuation
 // budget. That budget is also spent by truncation recoveries (and context-limit
-// compactions), so keying the backoff off it made an unrelated first blip start
+// retries), so keying the backoff off it made an unrelated first blip start
 // at an escalated wait - here, 8x base for a run whose only prior continuations
 // were truncated answers.
 func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {

@@ -670,11 +670,11 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 }
 
 // An uncatalogued model is assumed to have a large window, so an endpoint
-// whose real ceiling is smaller rejects the request before compaction ever
-// fires - and an endpoint that reports overflow opaquely gives the reactive
-// recovery nothing to detect. The operator's declared window must therefore
-// beat the catalogue, so budgeting (and with it compaction) fits the endpoint
-// that actually serves the run.
+// whose real ceiling is smaller rejects the request outright - and an
+// endpoint that reports overflow opaquely gives the reactive recovery nothing
+// to detect. The operator's declared window must therefore beat the catalogue,
+// so budgeting (and with it trimming) fits the endpoint that actually serves
+// the run.
 func TestContextWindowOverrideBeatsTheCatalogue(t *testing.T) {
 	client := stub(t, []string{stop()})
 

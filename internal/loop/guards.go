@@ -50,7 +50,7 @@ const (
 	//
 	// So the number has to be one a run can actually reach. A healthy run
 	// spends recoveries in tens - a truncated answer continued, the occasional
-	// 500, a context-limit compaction - across an iteration budget that
+	// 500, a context-limit retry - across an iteration budget that
 	// defaults to a thousand. Two hundred is a fifth of that budget spent on
 	// recovery instead of progress, which no working provider does. Set high
 	// enough not to punish a long, output-heavy run that legitimately
@@ -103,19 +103,6 @@ const (
 	// MinInputTokens is reserved so the instructions and the tool schemas always
 	// fit, however long the conversation grows.
 	MinInputTokens = 10_000
-
-	// DefaultCompactMinTokens is the estimated-input-token floor below which the
-	// compact strategy leaves the conversation whole - summarising a short thread
-	// costs more than carrying it.
-	DefaultCompactMinTokens = 50_000
-
-	// DefaultCompactMinMessages is the floor on how many messages must be eligible
-	// for summarising before the compact strategy runs.
-	DefaultCompactMinMessages = 20
-
-	// DefaultCompactTriggerRatio is the fraction of the context window at which the
-	// compact strategy fires.
-	DefaultCompactTriggerRatio = 0.9
 
 	// RunawayGuardMinChars is the output length below which the streaming
 	// repetition guard will not trip. Short repetitive output ends on its own.

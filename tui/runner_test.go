@@ -337,7 +337,6 @@ type abortRecorder struct {
 func (r *abortRecorder) RecordMessage(agent.Message) error             { return nil }
 func (r *abortRecorder) RecordEvent(string, string, string, int) error { return nil }
 func (r *abortRecorder) RecordFailure(*agent.Failure) error            { return nil }
-func (r *abortRecorder) RecordReset() error                            { return nil }
 func (r *abortRecorder) RecordResult(summary agent.Summary) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

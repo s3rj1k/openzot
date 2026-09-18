@@ -8,39 +8,20 @@
 package catalogue
 
 import (
-	"sort"
 	"strings"
 )
 
 // Model describes a model's capabilities.
 type Model struct {
-	// Provider is who serves it. Informational: a model is usually available
-	// from several providers, and this records where it originates.
-	Provider string
-
 	// ContextWindow is the total token budget for input plus output.
 	ContextWindow int
 
 	// MaxOutputTokens bounds a single response.
 	MaxOutputTokens int
 
-	// SupportsTools reports whether the model accepts tool definitions. A model
-	// without them cannot drive an agentic loop at all.
-	SupportsTools bool
-
-	// SupportsReasoning reports whether the model emits a reasoning channel.
-	//
-	// Two things key off it: the loop exempts reasoning messages from the
-	// runaway-text backstop, being the model's scratchpad rather than an answer;
-	// and on OpenAI the provider prefers the Responses API, because
-	// chat-completions has nowhere to carry reasoning state between tool rounds.
-	SupportsReasoning bool
-
 	// SupportsVision reports whether the model can be shown images.
 	//
-	// The safe assumption here is the opposite of SupportsTools, because the
-	// failure modes are not alike. A model wrongly assumed to take tools fails
-	// on its first turn, loudly and cheaply. A model wrongly assumed to see is
+	// The safe assumption is that it cannot. A model wrongly assumed to see is
 	// sent an attachment its endpoint rejects mid-run - or worse, silently
 	// drops, leaving the model to describe a picture it never received. So the
 	// zero value is false, the table names only the models known to see, and an
@@ -51,8 +32,8 @@ type Model struct {
 // DefaultContextWindow is assumed for models the catalogue has not heard of.
 //
 // Generous, because the failure modes are asymmetric in practice: assuming too
-// small compacts a long run over and over, summarising history the model could
-// have kept, while assuming too large is recovered reactively - a provider's
+// small trims a long run over and over, dropping history the model could have
+// kept, while assuming too large is recovered reactively - a provider's
 // context-length rejection is detected and lowers the budget to what the error
 // stated (see the loop's DetectContextLimit path), and the operator can pin
 // the real ceiling per model with `context:` in the config. Frontier models
@@ -68,10 +49,8 @@ const DefaultMaxOutputTokens = 65_536
 
 // Default is returned for unknown models.
 var Default = Model{
-	Provider:        "unknown",
 	ContextWindow:   DefaultContextWindow,
 	MaxOutputTokens: DefaultMaxOutputTokens,
-	SupportsTools:   true,
 }
 
 // models is the catalogue.
@@ -88,130 +67,130 @@ var Default = Model{
 var models = map[string]Model{
 	// ---------------------------------------------------------------- OpenAI
 
-	"gpt-5.6-sol":   {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.6-terra": {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.6-luna":  {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.5":       {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.4":       {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.4-pro":   {Provider: "openai", ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.4-mini":  {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.4-nano":  {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.2":       {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5.1":       {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5":         {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5-mini":    {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gpt-5-nano":    {Provider: "openai", ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"o4-mini":       {Provider: "openai", ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"o3-mini":       {Provider: "openai", ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"o3":            {Provider: "openai", ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
+	"gpt-5.6-sol":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.6-terra": {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.6-luna":  {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.5":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.4":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.4-pro":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.4-mini":  {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.4-nano":  {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.2":       {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5.1":       {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5":         {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5-mini":    {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"gpt-5-nano":    {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"o4-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
+	"o3-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
+	"o3":            {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
 
 	// ------------------------------------------------------------- Anthropic
 
-	"claude-5-opus":     {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-5-sonnet":   {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-5-haiku":    {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsVision: true},
-	"claude-4.8-opus":   {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.7-opus":   {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.6-opus":   {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.6-sonnet": {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.5-opus":   {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.5-sonnet": {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4.5-haiku":  {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsVision: true},
-	"claude-4.1-opus":   {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4-opus":     {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 8_192, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-4-sonnet":   {Provider: "anthropic", ContextWindow: 1_000_000, MaxOutputTokens: 8_192, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
+	"claude-5-opus":     {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-5-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-5-haiku":    {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude-4.8-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-4.7-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-4.6-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-4.6-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"claude-4.5-opus":   {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude-4.5-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude-4.5-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude-4.1-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
+	"claude-4-opus":     {ContextWindow: 200_000, MaxOutputTokens: 8_192, SupportsVision: true},
+	"claude-4-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 8_192, SupportsVision: true},
 
 	// @note broad fallbacks, so an unrecognised Claude release lands somewhere
 	// sensible rather than on the default
 
-	"claude-opus":   {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-sonnet": {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"claude-haiku":  {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsVision: true},
-	"claude":        {Provider: "anthropic", ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
+	"claude-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
+	"claude-sonnet": {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"claude":        {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
 
 	// ---------------------------------------------------------------- Google
 
-	"gemini-3.6-flash":      {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-3.5-flash":      {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-3.1-pro":        {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-3.1-flash-lite": {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 65_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-3-flash":        {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-3-pro":          {Provider: "google", ContextWindow: 1_048_576, MaxOutputTokens: 65_536, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-2.5-pro":        {Provider: "google", ContextWindow: 1_048_576, MaxOutputTokens: 8_192, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-2.5-flash":      {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 65_536, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemini-2.5-flash-lite": {Provider: "google", ContextWindow: 1_048_576, MaxOutputTokens: 65_535, SupportsTools: true, SupportsVision: true},
-	"gemini":                {Provider: "google", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"gemma-4-31b":           {Provider: "google", ContextWindow: 262_144, MaxOutputTokens: 65_536, SupportsTools: true, SupportsReasoning: true},
-	"gemma":                 {Provider: "google", ContextWindow: 262_144, MaxOutputTokens: 65_536, SupportsTools: true, SupportsReasoning: true},
+	"gemini-3.6-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemini-3.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemini-3.1-pro":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemini-3.1-flash-lite": {ContextWindow: 1_000_000, MaxOutputTokens: 65_000, SupportsVision: true},
+	"gemini-3-flash":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemini-3-pro":          {ContextWindow: 1_048_576, MaxOutputTokens: 65_536, SupportsVision: true},
+	"gemini-2.5-pro":        {ContextWindow: 1_048_576, MaxOutputTokens: 8_192, SupportsVision: true},
+	"gemini-2.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 65_536, SupportsVision: true},
+	"gemini-2.5-flash-lite": {ContextWindow: 1_048_576, MaxOutputTokens: 65_535, SupportsVision: true},
+	"gemini":                {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemma-4-31b":           {ContextWindow: 262_144, MaxOutputTokens: 65_536},
+	"gemma":                 {ContextWindow: 262_144, MaxOutputTokens: 65_536},
 
 	// -------------------------------------------------------------------- ZAI
 
-	"glm-5.3":       {Provider: "zai", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-5.2":       {Provider: "zai", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-5.1":       {Provider: "zai", ContextWindow: 202_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-5-turbo":   {Provider: "zai", ContextWindow: 202_800, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-5v-turbo":  {Provider: "zai", ContextWindow: 200_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"glm-5":         {Provider: "zai", ContextWindow: 202_800, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-4.7-flash": {Provider: "zai", ContextWindow: 200_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"glm-4.7":       {Provider: "zai", ContextWindow: 200_000, MaxOutputTokens: 40_000, SupportsTools: true, SupportsReasoning: true},
-	"glm":           {Provider: "zai", ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
+	"glm-5.3":       {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"glm-5.2":       {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"glm-5.1":       {ContextWindow: 202_000, MaxOutputTokens: 64_000},
+	"glm-5-turbo":   {ContextWindow: 202_800, MaxOutputTokens: 128_000},
+	"glm-5v-turbo":  {ContextWindow: 200_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"glm-5":         {ContextWindow: 202_800, MaxOutputTokens: 64_000},
+	"glm-4.7-flash": {ContextWindow: 200_000, MaxOutputTokens: 128_000},
+	"glm-4.7":       {ContextWindow: 200_000, MaxOutputTokens: 40_000},
+	"glm":           {ContextWindow: 200_000, MaxOutputTokens: 64_000},
 
 	// --------------------------------------------------------------- Moonshot
 
-	"kimi-k3":        {Provider: "moonshot", ContextWindow: 1_000_000, MaxOutputTokens: 131_072, SupportsTools: true, SupportsReasoning: true},
-	"kimi-k2.7-code": {Provider: "moonshot", ContextWindow: 256_000, MaxOutputTokens: 32_768, SupportsTools: true, SupportsReasoning: true},
-	"kimi-k2.6":      {Provider: "moonshot", ContextWindow: 262_000, MaxOutputTokens: 65_500, SupportsTools: true, SupportsReasoning: true},
-	"kimi-k2.5":      {Provider: "moonshot", ContextWindow: 262_144, MaxOutputTokens: 65_535, SupportsTools: true, SupportsReasoning: true},
-	"kimi":           {Provider: "moonshot", ContextWindow: 262_000, MaxOutputTokens: 65_500, SupportsTools: true, SupportsReasoning: true},
+	"kimi-k3":        {ContextWindow: 1_000_000, MaxOutputTokens: 131_072},
+	"kimi-k2.7-code": {ContextWindow: 256_000, MaxOutputTokens: 32_768},
+	"kimi-k2.6":      {ContextWindow: 262_000, MaxOutputTokens: 65_500},
+	"kimi-k2.5":      {ContextWindow: 262_144, MaxOutputTokens: 65_535},
+	"kimi":           {ContextWindow: 262_000, MaxOutputTokens: 65_500},
 
 	// ----------------------------------------------------------------- MiniMax
 
-	"minimax-m3":   {Provider: "minimax", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"minimax-m2.7": {Provider: "minimax", ContextWindow: 204_800, MaxOutputTokens: 131_000, SupportsTools: true, SupportsReasoning: true},
-	"minimax-m2.5": {Provider: "minimax", ContextWindow: 204_800, MaxOutputTokens: 51_200, SupportsTools: true, SupportsReasoning: true},
-	"minimax":      {Provider: "minimax", ContextWindow: 204_800, MaxOutputTokens: 51_200, SupportsTools: true, SupportsReasoning: true},
+	"minimax-m3":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"minimax-m2.7": {ContextWindow: 204_800, MaxOutputTokens: 131_000},
+	"minimax-m2.5": {ContextWindow: 204_800, MaxOutputTokens: 51_200},
+	"minimax":      {ContextWindow: 204_800, MaxOutputTokens: 51_200},
 
 	// -------------------------------------------------------------------- Qwen
 
-	"qwen-3.8-max":  {Provider: "qwen", ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true},
-	"qwen-3.7-max":  {Provider: "qwen", ContextWindow: 991_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
-	"qwen-3.6-max":  {Provider: "qwen", ContextWindow: 240_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
-	"qwen-3.6-plus": {Provider: "qwen", ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
-	"qwen":          {Provider: "qwen", ContextWindow: 240_000, MaxOutputTokens: 64_000, SupportsTools: true, SupportsReasoning: true},
+	"qwen-3.8-max":  {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"qwen-3.7-max":  {ContextWindow: 991_000, MaxOutputTokens: 64_000},
+	"qwen-3.6-max":  {ContextWindow: 240_000, MaxOutputTokens: 64_000},
+	"qwen-3.6-plus": {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"qwen":          {ContextWindow: 240_000, MaxOutputTokens: 64_000},
 
 	// ---------------------------------------------------------------- DeepSeek
 
-	"deepseek-v4-pro":   {Provider: "deepseek", ContextWindow: 1_048_600, MaxOutputTokens: 65_536, SupportsTools: true},
-	"deepseek-v4-flash": {Provider: "deepseek", ContextWindow: 1_000_000, MaxOutputTokens: 65_536, SupportsTools: true},
-	"deepseek-v3.2":     {Provider: "deepseek", ContextWindow: 164_000, MaxOutputTokens: 32_768, SupportsTools: true},
-	"deepseek-r":        {Provider: "deepseek", ContextWindow: 128_000, MaxOutputTokens: 32_768, SupportsTools: true, SupportsReasoning: true},
-	"deepseek":          {Provider: "deepseek", ContextWindow: 164_000, MaxOutputTokens: 32_768, SupportsTools: true},
+	"deepseek-v4-pro":   {ContextWindow: 1_048_600, MaxOutputTokens: 65_536},
+	"deepseek-v4-flash": {ContextWindow: 1_000_000, MaxOutputTokens: 65_536},
+	"deepseek-v3.2":     {ContextWindow: 164_000, MaxOutputTokens: 32_768},
+	"deepseek-r":        {ContextWindow: 128_000, MaxOutputTokens: 32_768},
+	"deepseek":          {ContextWindow: 164_000, MaxOutputTokens: 32_768},
 
 	// -------------------------------------------------------------------- Xiaomi
 
-	"mimo-v2.5-pro": {Provider: "xiaomi", ContextWindow: 1_050_000, MaxOutputTokens: 131_000, SupportsTools: true, SupportsReasoning: true},
-	"mimo-v2.5":     {Provider: "xiaomi", ContextWindow: 1_050_000, MaxOutputTokens: 131_000, SupportsTools: true, SupportsReasoning: true},
-	"mimo":          {Provider: "xiaomi", ContextWindow: 1_050_000, MaxOutputTokens: 131_000, SupportsTools: true, SupportsReasoning: true},
+	"mimo-v2.5-pro": {ContextWindow: 1_050_000, MaxOutputTokens: 131_000},
+	"mimo-v2.5":     {ContextWindow: 1_050_000, MaxOutputTokens: 131_000},
+	"mimo":          {ContextWindow: 1_050_000, MaxOutputTokens: 131_000},
 
 	// ---------------------------------------------------------------- Mistral
 
-	"mistral-large": {Provider: "mistral", ContextWindow: 256_000, MaxOutputTokens: 64_000, SupportsTools: true},
-	"mistral-small": {Provider: "mistral", ContextWindow: 32_000, MaxOutputTokens: 4_000, SupportsTools: true},
-	"mistral":       {Provider: "mistral", ContextWindow: 128_000, MaxOutputTokens: 16_384, SupportsTools: true},
-	"devstral-2":    {Provider: "mistral", ContextWindow: 256_000, MaxOutputTokens: 64_000, SupportsTools: true},
-	"devstral":      {Provider: "mistral", ContextWindow: 256_000, MaxOutputTokens: 64_000, SupportsTools: true},
-	"codestral":     {Provider: "mistral", ContextWindow: 256_000, MaxOutputTokens: 64_000, SupportsTools: true},
+	"mistral-large": {ContextWindow: 256_000, MaxOutputTokens: 64_000},
+	"mistral-small": {ContextWindow: 32_000, MaxOutputTokens: 4_000},
+	"mistral":       {ContextWindow: 128_000, MaxOutputTokens: 16_384},
+	"devstral-2":    {ContextWindow: 256_000, MaxOutputTokens: 64_000},
+	"devstral":      {ContextWindow: 256_000, MaxOutputTokens: 64_000},
+	"codestral":     {ContextWindow: 256_000, MaxOutputTokens: 64_000},
 
 	// --------------------------------------------------------------------- xAI
 
-	"grok-4.5": {Provider: "xai", ContextWindow: 500_000, MaxOutputTokens: 128_000, SupportsTools: true, SupportsReasoning: true, SupportsVision: true},
-	"grok":     {Provider: "xai", ContextWindow: 256_000, MaxOutputTokens: 32_768, SupportsTools: true, SupportsReasoning: true},
+	"grok-4.5": {ContextWindow: 500_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"grok":     {ContextWindow: 256_000, MaxOutputTokens: 32_768},
 
 	// ------------------------------------------------------------------- Meta
 
-	"llama-4": {Provider: "meta", ContextWindow: 1_000_000, MaxOutputTokens: 16_384, SupportsTools: true, SupportsVision: true},
-	"llama-3": {Provider: "meta", ContextWindow: 128_000, MaxOutputTokens: 8_192, SupportsTools: true},
-	"llama":   {Provider: "meta", ContextWindow: 128_000, MaxOutputTokens: 8_192, SupportsTools: true},
+	"llama-4": {ContextWindow: 1_000_000, MaxOutputTokens: 16_384, SupportsVision: true},
+	"llama-3": {ContextWindow: 128_000, MaxOutputTokens: 8_192},
+	"llama":   {ContextWindow: 128_000, MaxOutputTokens: 8_192},
 
 	// ------------------------------------------------------------- Perplexity
 	//
@@ -219,10 +198,10 @@ var models = map[string]Model{
 	// agentic loop. Listed so a caller finds out before the run rather than from
 	// a provider error.
 
-	"sonar-reasoning-pro": {Provider: "perplexity", ContextWindow: 127_000, MaxOutputTokens: 8_000, SupportsReasoning: true},
-	"sonar-reasoning":     {Provider: "perplexity", ContextWindow: 127_000, MaxOutputTokens: 8_000, SupportsReasoning: true},
-	"sonar-pro":           {Provider: "perplexity", ContextWindow: 200_000, MaxOutputTokens: 64_000},
-	"sonar":               {Provider: "perplexity", ContextWindow: 127_000, MaxOutputTokens: 8_000},
+	"sonar-reasoning-pro": {ContextWindow: 127_000, MaxOutputTokens: 8_000},
+	"sonar-reasoning":     {ContextWindow: 127_000, MaxOutputTokens: 8_000},
+	"sonar-pro":           {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"sonar":               {ContextWindow: 127_000, MaxOutputTokens: 8_000},
 }
 
 // normalize reduces a model string to the name a catalogue entry would use.
@@ -289,23 +268,9 @@ func Known(model string) bool {
 	return false
 }
 
-// Names lists every catalogued model, sorted. For `--help` output and
-// diagnostics.
-func Names() []string {
-	names := make([]string, 0, len(models))
-
-	for name := range models {
-		names = append(names, name)
-	}
-
-	sort.Strings(names)
-
-	return names
-}
-
 // InputBudget is how many tokens of conversation may be sent to a model.
 //
-// It is the number the thread builder trims to and compaction triggers against,
+// It is the number the thread builder trims to,
 // and it is not the same as the context window: the window has to hold the
 // answer as well as the prompt. Filling it entirely leaves the model no room to
 // reply, which does not present as a budgeting mistake - it presents as an empty

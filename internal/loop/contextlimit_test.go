@@ -13,9 +13,8 @@ import (
 )
 
 // The context-limit recovery path: a provider rejecting an oversized prompt is
-// not a failure, it is a signal to condense and try again. This is the one
-// recovery that has to work without a model call - asking the provider to
-// summarise is what just got rejected.
+// not a failure, it is a signal to trim harder and try again. The conversation
+// itself is never rewritten - only the budget the thread builder trims it to.
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
@@ -61,7 +60,7 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 	return client, &requests
 }
 
-// longConversation builds enough history to be worth compacting.
+// longConversation builds enough history to be worth trimming.
 func longConversation(turns int) []Message {
 	messages := make([]Message, 0, turns)
 
@@ -81,7 +80,7 @@ func longConversation(turns int) []Message {
 	return messages
 }
 
-func TestContextLimitTriggersCompaction(t *testing.T) {
+func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	client, requests := contextLimitOnce(t)
 
 	engine, err := New(Options{
@@ -92,8 +91,8 @@ func TestContextLimitTriggersCompaction(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	// force the budget low enough that the history genuinely needs condensing
-	engine.inputBudget = 2_000
+	// the catalogue's guess, far above the 8192 the provider states
+	engine.inputBudget = 40_000
 
 	result := engine.Run(context.Background(), nil)
 
@@ -102,82 +101,75 @@ func TestContextLimitTriggersCompaction(t *testing.T) {
 	}
 
 	if *requests < 2 {
-		t.Errorf("the request was not retried after compaction (%d requests)", *requests)
+		t.Errorf("the request was not retried after the rejection (%d requests)", *requests)
 	}
 
 	if result.Budget.Recoveries != 1 {
-		t.Errorf("continuations = %d, want the compaction to count as one", result.Budget.Recoveries)
+		t.Errorf("continuations = %d, want the rejection to count as one", result.Budget.Recoveries)
 	}
 
-	// the condensed history must be in the thread, and the originals gone
-	var summarised bool
-
-	for _, message := range result.Messages {
-		if message.Type == TypeCheckpoint && strings.Contains(message.Text, "condensed") {
-			summarised = true
-		}
-	}
-
-	if !summarised {
-		t.Error("no summary message was inserted")
+	// 85% of the stated 8192
+	if engine.inputBudget != 6963 {
+		t.Errorf("input budget = %d, want it narrowed to the stated window", engine.inputBudget)
 	}
 }
 
-func TestCompactDeclinesWhenThereIsNothingToCondense(t *testing.T) {
+// Trimming happens on the wire, not in the history: every message the run
+// started with is still in the conversation afterwards, and nothing has been
+// summarised into its place.
+func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	client, _ := contextLimitOnce(t)
-
-	engine, err := New(Options{Client: client})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	// a short conversation is below the floor where a summary is worth its cost
-	if _, ok := engine.compact([]Message{{Type: TypeUser, Text: "hi"}}); ok {
-		t.Error("compaction must decline on a conversation too short to be worth it")
-	}
-}
-
-func TestCompactCondensesAndKeepsTheTail(t *testing.T) {
-	client, _ := contextLimitOnce(t)
-
-	engine, err := New(Options{Client: client})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	engine.inputBudget = 2_000
 
 	original := longConversation(40)
 
-	compacted, ok := engine.compact(original)
-
-	if !ok {
-		t.Fatal("expected the conversation to be compacted")
+	engine, err := New(Options{Client: client, Messages: original})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
 
-	if len(compacted) >= len(original) {
-		t.Errorf("compacted to %d messages from %d; it should be shorter", len(compacted), len(original))
+	engine.inputBudget = 40_000
+
+	result := engine.Run(context.Background(), nil)
+
+	if len(result.Messages) < len(original) {
+		t.Fatalf("the conversation shrank from %d to %d messages", len(original), len(result.Messages))
 	}
 
-	// the newest turn survives verbatim - it is the one the model has to act on
-	newest := original[len(original)-1].Text
+	for index, message := range original {
+		got := result.Messages[index]
 
-	var kept bool
-
-	for _, message := range compacted {
-		if message.Text == newest {
-			kept = true
+		if got.Type != message.Type || got.Text != message.Text {
+			t.Fatalf("message %d was rewritten: %q -> %q", index, message.Text, got.Text)
 		}
-	}
-
-	if !kept {
-		t.Error("the most recent turn must survive compaction verbatim")
 	}
 }
 
-// The system prompt must never be summarised away, and must stay ahead of the summary
-// so the model reads its instructions before the condensed history.
-func TestCompactKeepsInstructionsFirst(t *testing.T) {
+// Once the budget is down to what the instructions and tool schemas need there
+// is nothing left to trim, and retrying would send the same request again.
+func TestNarrowingStopsAtTheFloor(t *testing.T) {
+	client, _ := contextLimitOnce(t)
+
+	engine, err := New(Options{Client: client, Messages: longConversation(4)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	engine.inputBudget = MinInputTokens
+
+	// no stated window, so the only move is stepping the budget down
+	limit := provider.ContextLimit{}
+
+	if engine.narrowInputBudget(limit, func(Event) {}) {
+		t.Errorf("the budget narrowed to %d, below the %d floor", engine.inputBudget, MinInputTokens)
+	}
+
+	if engine.inputBudget != MinInputTokens {
+		t.Errorf("input budget = %d, want it left at the floor", engine.inputBudget)
+	}
+}
+
+// A rejection without a stated window steps the budget down by a quarter.
+func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
 	engine, err := New(Options{Client: client})
@@ -185,34 +177,19 @@ func TestCompactKeepsInstructionsFirst(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 2_000
+	engine.inputBudget = 40_000
 
-	messages := append(
-		[]Message{{Type: TypeInstructions, Text: "you are an agent with a specific persona"}},
-		longConversation(40)...,
-	)
-
-	compacted, ok := engine.compact(messages)
-
-	if !ok {
-		t.Fatal("expected the conversation to be compacted")
+	if !engine.narrowInputBudget(provider.ContextLimit{}, func(Event) {}) {
+		t.Fatal("expected the budget to narrow")
 	}
 
-	if compacted[0].Type != TypeInstructions {
-		t.Fatalf("first message is %q, want the instructions to stay in front", compacted[0].Type)
-	}
-
-	if !strings.Contains(compacted[0].Text, "specific persona") {
-		t.Error("the instructions must survive verbatim, not be summarised")
-	}
-
-	if compacted[1].Type != TypeCheckpoint {
-		t.Errorf("second message is %q, want the summary directly after the instructions", compacted[1].Type)
+	if engine.inputBudget != 30_000 {
+		t.Errorf("input budget = %d, want 30000", engine.inputBudget)
 	}
 }
 
 // A context limit that persists is eventually a real failure rather than an
-// infinite compaction loop.
+// infinite retry loop.
 func TestPersistentContextLimitGivesUp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -243,12 +220,12 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 2_000
+	engine.inputBudget = 40_000
 
 	result := engine.Run(context.Background(), nil)
 
 	if result.Reason != StopError {
-		t.Errorf("reason = %q, want error once compaction stops helping", result.Reason)
+		t.Errorf("reason = %q, want error once narrowing stops helping", result.Reason)
 	}
 
 	if result.Err == nil {
@@ -421,7 +398,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 }
 
 // A rejection with no number still recovers, using the engine's own estimate.
-func TestContextLimitWithoutANumberStillCompacts(t *testing.T) {
+func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 	requests := 0
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -458,7 +435,7 @@ func TestContextLimitWithoutANumberStillCompacts(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 2_000
+	engine.inputBudget = 40_000
 
 	if result := engine.Run(context.Background(), nil); result.Reason != StopStop {
 		t.Errorf("reason = %q, want the run to recover", result.Reason)

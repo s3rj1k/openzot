@@ -366,7 +366,7 @@ func readError(response *http.Response) error {
 
 // contextLimitPatterns identify a prompt that exceeded the model's window.
 //
-// This is recoverable in a way most 4xx are not: the run can compact and try
+// This is recoverable in a way most 4xx are not: the run can trim harder and try
 // again rather than failing. Detecting it needs prose because providers report
 // it as a generic 400 with no distinguishing code.
 var contextLimitPatterns = []*regexp.Regexp{
@@ -453,7 +453,7 @@ func DetectContextLimit(err error) (ContextLimit, bool) {
 }
 
 // IsContextLimit reports whether the request was rejected for being too large,
-// which the loop answers by compacting rather than by giving up.
+// which the loop answers by trimming harder rather than by giving up.
 func IsContextLimit(err error) bool {
 	_, ok := DetectContextLimit(err)
 

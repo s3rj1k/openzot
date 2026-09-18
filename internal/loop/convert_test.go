@@ -1,7 +1,6 @@
 package loop
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/openzot/openzot/internal/provider"
@@ -94,7 +93,6 @@ func TestToChatMessagesDropsDanglingRequest(t *testing.T) {
 func TestToChatMessagesRoleMapping(t *testing.T) {
 	messages := []Message{
 		{Type: TypeInstructions, Text: "you are an agent"},
-		{Type: TypeCheckpoint, Text: "summary of earlier turns"},
 		{Type: TypeReasoning, Text: "thinking out loud"},
 		{Type: TypeBot, Text: "the answer"},
 		{Type: TypeUser, Text: "a question"},
@@ -111,7 +109,6 @@ func TestToChatMessagesRoleMapping(t *testing.T) {
 	}
 
 	want := []string{
-		provider.RoleSystem,
 		provider.RoleSystem,
 		provider.RoleAssistant,
 		provider.RoleUser,
@@ -181,21 +178,5 @@ func TestThreadRoundTripPreservesTheCall(t *testing.T) {
 
 	if got.Arguments != `{"q":"x"}` || got.Result != "none" {
 		t.Errorf("round trip lost the payload: %+v", got)
-	}
-}
-
-// What compaction needs is the price of a message, so the payload has to
-// survive the trip - a request half is otherwise free.
-func TestCompactionRoundTripCarriesThePayload(t *testing.T) {
-	original := []Message{activity(ActivityRequest, "c1", "write", `{"path":"a.go"}`, nil)}
-
-	converted := toCompactionMessages(original)
-
-	if len(converted) != 1 || converted[0].Payload == "" {
-		t.Fatalf("the payload did not reach compaction: %+v", converted)
-	}
-
-	if !strings.Contains(converted[0].Payload, "a.go") {
-		t.Errorf("payload = %q, want the arguments in it", converted[0].Payload)
 	}
 }

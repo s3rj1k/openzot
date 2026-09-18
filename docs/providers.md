@@ -135,9 +135,8 @@ any model name.
 
 ### Overriding what a model can do
 
-A model entry can also correct what zot believes about the model's
-capabilities. Each is a tri-state: unset defers to the catalogue, `true` and
-`false` decide.
+A model entry can also correct what zot believes about the model. `vision` is a
+tri-state: unset defers to the catalogue, `true` and `false` decide.
 
 ```yaml
 providers:
@@ -155,8 +154,6 @@ providers:
 | Key | Overrides |
 | --- | --- |
 | `vision` | whether the model can be shown images, which decides whether it is offered the `view` tool |
-| `tools` | whether it accepts tool definitions |
-| `reasoning` | whether it emits a reasoning channel |
 | `context` | its total context window, in tokens |
 | `content_array` | send every message's content as an array of parts, for a self-hosted llama.cpp whose chat template rejects a bare string |
 

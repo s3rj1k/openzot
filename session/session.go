@@ -18,7 +18,7 @@ import (
 type Writer = session.Writer
 
 // Session is a log read back from disk: the meta, messages, events, and result
-// of a run, plus any conversations a compaction discarded.
+// of a run.
 type Session = session.Session
 
 // Meta describes how a run started: the task, model, provider, and workdir.

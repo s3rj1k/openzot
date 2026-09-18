@@ -278,12 +278,6 @@ func (m *model) handleEvent(ev agent.AgentEvent) {
 		m.flushPending()
 		m.appendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(e.Error))
 
-	case agent.CompactionEvent:
-		// compaction rewrites the conversation and spends a model call; show it so a
-		// long run's context management is visible rather than silent
-		m.flushPending()
-		m.appendEntry(dividerStyle.Render("⤿ " + e.Detail))
-
 	case agent.UsageEvent:
 		// provider-reported cumulative token usage, shown in the meta bar
 		m.inputTokens = e.InputTokens

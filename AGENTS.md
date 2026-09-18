@@ -3,7 +3,7 @@
 zot is an autonomous coding agent in a single Go binary. The engine runs
 in-process and talks straight to any OpenAI-compatible model provider - no hosted
 service. `agent/` is the public harness; `internal/` holds the engine (loop,
-thread assembly, compaction, provider transports, tokenizer, session logs) and
+thread assembly, provider transports, tokenizer, session logs) and
 the `tui/` viewer.
 
 ## Working here

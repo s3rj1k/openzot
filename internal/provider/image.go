@@ -35,7 +35,7 @@ type Image struct {
 	Size int `json:"size,omitempty"`
 
 	// Tokens is what the image is estimated to cost, stamped once when it is
-	// attached so accounting, compaction and the log all quote one number.
+	// attached so accounting, trimming and the log all quote one number.
 	Tokens int `json:"tokens,omitempty"`
 
 	// Origin is where the image came from, for whoever reads the log later.

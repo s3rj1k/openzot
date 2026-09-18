@@ -19,7 +19,6 @@
 #   agent.max_recoveries  -> ZOT_AGENT_MAX_RECOVERIES
 #   agent.max_cycles      -> ZOT_AGENT_MAX_CYCLES
 #   agent.max_empties     -> ZOT_AGENT_MAX_EMPTIES
-#   agent.context_strategy -> ZOT_AGENT_CONTEXT_STRATEGY
 #   ui.plain              -> ZOT_UI_PLAIN
 #   ui.color              -> ZOT_UI_COLOR
 #   ui.scrollback         -> ZOT_UI_SCROLLBACK
@@ -100,26 +99,11 @@ agent:
   # has no single environment variable.)
   # limit_checkpoints: [50, 80, 90]
 
-  # What happens as the conversation approaches the model's context window:
-  #   compact  - summarise the older history into a checkpoint (one extra model
-  #              call, so the run keeps a condensed memory of its early turns)
-  #   truncate - drop the oldest messages to fit (no extra call, but early
-  #              context is lost rather than summarised)
-  # Default: compact.
-  # context_strategy: compact
-
-  # Tuning for the compact strategy (ignored under truncate). Each zero uses the
-  # default. Compaction fires once the provider's reported input usage crosses
-  # compact_trigger_ratio of the window AND clears both floors - summarising a
-  # short thread costs more than carrying it whole.
-  # compact_trigger_ratio: 0.9   # fraction of the window at which to compact
-  # compact_min_tokens: 50000    # don't compact below this input-token size
-  # compact_min_messages: 20     # ...or below this many summarisable messages
-  #
-  # Note: the 50000 default is larger than some models' whole context window, so
-  # on a small-window model compaction never fires and the run effectively falls
-  # back to truncation. Lower compact_min_tokens (e.g. to a fraction of the
-  # window) to compact on such a model.
+  # There is no context-management setting: as the conversation approaches the
+  # model's context window the oldest messages are dropped to fit it. Nothing is
+  # summarised. If the window is smaller than zot assumes, set `context` on the
+  # model (under providers) so trimming fits the endpoint before it rejects a
+  # request.
 
   # Optional override of the built-in system prompt. Leave blank to use the
   # default fully-autonomous instructions. Whatever you put here, zot's
@@ -190,7 +174,7 @@ providers:
     #     max_iterations: 50
     #     # real context window of the serving endpoint, in tokens - the escape
     #     # hatch for a model whose endpoint ceiling is smaller than its card
-    #     # (compaction then fires before the endpoint rejects the request)
+    #     # (trimming then fits the endpoint before it rejects the request)
     #     context: 32000
     #     # send every message's content as an array of parts, for llama.cpp
     #     # templates that reject a bare string

@@ -218,31 +218,3 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 		t.Errorf("an unknown heuristic should fall back to the generic notice, got %q", detail)
 	}
 }
-
-func TestStructuralSummaryCondensesWithoutAModel(t *testing.T) {
-	messages := toCompactionMessages([]Message{
-		{Type: TypeUser, Text: "please do the thing"},
-		{Type: TypeBot, Text: strings.Repeat("x", 500)},
-		{Type: TypeBot, Text: "   "},
-	})
-
-	summary := structuralSummary(messages)
-
-	if !strings.Contains(summary, "please do the thing") {
-		t.Errorf("the summary must retain the earlier turns: %q", summary)
-	}
-
-	// long turns are clipped so the summary cannot itself overflow the window
-	if strings.Contains(summary, strings.Repeat("x", 400)) {
-		t.Error("a long message must be clipped in the summary")
-	}
-
-	if !strings.Contains(summary, "…") {
-		t.Error("clipping must be visible")
-	}
-
-	// a blank message contributes nothing
-	if strings.Count(summary, "[bot]") != 1 {
-		t.Errorf("a blank message should be skipped: %q", summary)
-	}
-}

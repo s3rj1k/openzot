@@ -120,9 +120,6 @@ func runStream(ctx context.Context, client *agent.Client, meta Meta, opts agent.
 		case agent.NoticeEvent:
 			flush()
 			fmt.Printf("  %s %s\n", palette.paint("33", "⚠"), palette.paint("2", e.Text))
-		case agent.CompactionEvent:
-			flush()
-			fmt.Printf("  %s %s\n", palette.paint("33", "…"), e.Detail)
 		case agent.AgentExitEvent:
 			sawExit = true
 			outcome = Outcome{Reason: e.Reason, Message: e.Message}

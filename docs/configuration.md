@@ -232,17 +232,12 @@ zot sessions export 20260805-155859 20260805-171012 --out ./trajectories
 
 # every finished chain in the session directory
 zot sessions export --all --out ./trajectories
-
-# keep the conversations that compaction or a resume superseded, too
-zot sessions export --snapshots --out ./trajectories
 ```
 
 A session that continued earlier ones is exported as **one** trajectory - the
 last log carries the whole conversation - and its `chain` lists the sessions
-behind it. `messages` is the conversation as it stood at the end; after
-compaction that is a summary plus the recent turns, so `--snapshots` adds the
-earlier states (oldest first) for anyone who wants every turn that happened.
-Each message keeps zot's own `type` beside its `role`, and an assistant turn
+behind it. `messages` is the whole conversation - it is only ever appended to,
+so the end state holds every turn that happened. Each message keeps zot's own `type` beside its `role`, and an assistant turn
 carries the model's `reasoning` when the provider surfaced it. Images the model
 was shown are copied next to the export and referenced by relative path; on
 stdout the turn keeps only its text. The system prompt is not in the log and so

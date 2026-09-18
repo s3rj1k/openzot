@@ -26,7 +26,7 @@ import (
 // not travel in the tool result itself - the wire rejects that - so the engine
 // takes them off the result and attaches them to a message of its own. Text is
 // what the model reads as the result, and it has to stand alone: it is what
-// remains if the images are dropped from a compacted history, or if their
+// remains if the images are dropped from a trimmed history, or if their
 // blobs go missing before a resume.
 type ToolResult struct {
 	// Text is the tool result the model reads.
@@ -141,25 +141,6 @@ func (a *Activity) ResultText() string {
 	}
 
 	encoded, err := json.Marshal(value)
-	if err != nil {
-		return ""
-	}
-
-	return string(encoded)
-}
-
-// Payload renders everything about a call that is not in the message text.
-//
-// Used for token accounting, and deliberately the whole activity rather than
-// selected fields: what the provider is charged for is the rendered tool call,
-// and leaving a field out of the estimate is how a conversation overruns its
-// window while the estimate says there is room.
-func (a *Activity) Payload() string {
-	if a == nil {
-		return ""
-	}
-
-	encoded, err := json.Marshal(a)
 	if err != nil {
 		return ""
 	}

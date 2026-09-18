@@ -907,8 +907,8 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 }
 
 // The task is the durable objective, so it must land in the instructions (the
-// system prompt), which compaction never summarises and always orders first -
-// not as a user message, which a long run can compact away. An agent that
+// system prompt), which trimming never drops and always orders first -
+// not as a user message, which a long run can trim away. An agent that
 // forgets its own objective is the worst way for a run to fail.
 func TestTaskGoesIntoTheInstructions(t *testing.T) {
 	got := withTask("SYSTEM PROMPT", "  build a parser  ")

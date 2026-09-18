@@ -4,7 +4,7 @@
 // terminal UI.
 //
 // The agentic loop is zot's own (see the agent package): thread assembly,
-// compaction, loop detection and the tool-call cycle all run locally, against
+// context trimming, loop detection and the tool-call cycle all run locally, against
 // any OpenAI-compatible provider. zot needs no account and no hosted engine.
 //
 // The standalone binary is cmd/zot; an embedding program can import this package
@@ -101,10 +101,11 @@ Nothing you address to the user is delivered. There is no reader, no reply, and 
 - Only a terminal tool call ends the task: "success" with a summary when the objective is met, or "failure" with the reason when it genuinely cannot be. Uncertainty is not a reason to stop - it is a reason to choose, act, and say what you chose. Do not simply stop.`
 
 // taskHeading introduces the task inside the instructions. The task lives in the
-// system prompt rather than as a user message so it survives compaction: a user
-// message can be summarised away on a long run, and an autonomous agent that
-// forgets its own objective is the worst way for a run to fail. The instructions
-// are never summarised and always ordered first.
+// system prompt rather than as a user message so it survives trimming: the
+// oldest messages are dropped first to fit the window, so a user message can
+// fall out of a long run, and an autonomous agent that forgets its own objective
+// is the worst way for a run to fail. The instructions are never dropped and
+// always ordered first.
 const taskHeading = "\n\n## Your task\n\n"
 
 // taskKickoff is the user message that starts a run. The objective is in the
@@ -504,12 +505,7 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 		MaxEmpties:       cfg.Agent.MaxEmpties,
 		MaxDuration:      maxDuration,
 		LimitCheckpoints: cfg.Agent.LimitCheckpoints,
-		// Empty is the default (compact); the agent layer resolves the string.
-		ContextStrategy:     cfg.Agent.ContextStrategy,
-		CompactMinTokens:    cfg.Agent.CompactMinTokens,
-		CompactMinMessages:  cfg.Agent.CompactMinMessages,
-		CompactTriggerRatio: cfg.Agent.CompactTriggerRatio,
-		ContextWindow:       contextWindow,
+		ContextWindow:    contextWindow,
 	}
 
 	// MaxTokens is a pointer so that "unset" (provider decides) is distinct from

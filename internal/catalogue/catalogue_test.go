@@ -59,16 +59,8 @@ func TestGatewayQualifiedNameResolvesToTheCreatorEntry(t *testing.T) {
 		t.Fatalf("vercel/zai/glm-5.3 = %+v, glm-5.3 = %+v", qualified, direct)
 	}
 
-	if qualified.Provider != "zai" {
-		t.Errorf("provider = %q, want the creator rather than the gateway", qualified.Provider)
-	}
-
 	if qualified == Default {
 		t.Errorf("vercel/zai/glm-5.3 resolved to the Default entry - the name fell through")
-	}
-
-	if !qualified.SupportsTools || !qualified.SupportsReasoning {
-		t.Errorf("GLM 5.3 capabilities = %+v", qualified)
 	}
 }
 
@@ -91,22 +83,6 @@ func TestInputBudgetTracksTheEntry(t *testing.T) {
 	}
 }
 
-func TestReasoningModelsAreFlagged(t *testing.T) {
-	// the loop exempts reasoning from the runaway backstop, and the provider
-	// prefers the Responses API where reasoning state can survive a tool round
-	for _, model := range []string{"deepseek-r2", "gpt-5.4-mini", "glm-5.3", "kimi-k3", "claude-5-opus"} {
-		if !Lookup(model).SupportsReasoning {
-			t.Errorf("%s should be flagged as a reasoning model", model)
-		}
-	}
-
-	for _, model := range []string{"mistral-large-2", "devstral-2"} {
-		if Lookup(model).SupportsReasoning {
-			t.Errorf("%s does not emit a reasoning channel", model)
-		}
-	}
-}
-
 // Realtime is a WebSocket audio protocol, not something a coding harness can
 // drive, so it is deliberately absent.
 func TestNoRealtimeEntries(t *testing.T) {
@@ -114,18 +90,6 @@ func TestNoRealtimeEntries(t *testing.T) {
 		if strings.Contains(name, "realtime") {
 			t.Errorf("catalogue should not carry realtime model %q", name)
 		}
-	}
-}
-
-// A search-augmented model cannot drive an agentic loop, and the caller needs to
-// know before it tries.
-func TestModelsWithoutToolsAreFlagged(t *testing.T) {
-	if Lookup("sonar-reasoning-pro").SupportsTools {
-		t.Error("sonar does not accept tool definitions")
-	}
-
-	if !Lookup("gpt-5.4-mini").SupportsTools {
-		t.Error("gpt-5.4-mini accepts tools")
 	}
 }
 
@@ -166,10 +130,6 @@ func TestEntriesAreCoherent(t *testing.T) {
 		if entry.MaxOutputTokens >= entry.ContextWindow {
 			t.Errorf("%s: output %d does not fit in a %d window", name, entry.MaxOutputTokens, entry.ContextWindow)
 		}
-
-		if entry.Provider == "" {
-			t.Errorf("%s: no provider", name)
-		}
 	}
 
 	for name, entry := range models {
@@ -205,42 +165,6 @@ func TestOpenAICoverage(t *testing.T) {
 	}
 }
 
-// Every entry names the provider it originates from, and the sections are not
-// just cosmetic - a caller can group by it.
-// Every provider section has to stay populated. The catalogue is organised by
-// provider, and a section emptied by a bad edit would otherwise just look like
-// a provider nobody uses.
-func TestEveryProviderSectionIsPopulated(t *testing.T) {
-	providers := map[string]int{}
-
-	for _, entry := range models {
-		providers[entry.Provider]++
-	}
-
-	for _, want := range []string{
-		"openai", "anthropic", "google", "zai", "moonshot",
-		"minimax", "qwen", "deepseek", "mistral", "xai", "meta", "perplexity",
-	} {
-		if providers[want] == 0 {
-			t.Errorf("no models catalogued for provider %q", want)
-		}
-	}
-}
-
-func TestNamesIsSorted(t *testing.T) {
-	names := Names()
-
-	if len(names) != len(models) {
-		t.Fatalf("got %d names, want %d", len(names), len(models))
-	}
-
-	for index := 1; index < len(names); index++ {
-		if names[index-1] > names[index] {
-			t.Fatalf("names are not sorted at %d: %q > %q", index, names[index-1], names[index])
-		}
-	}
-}
-
 // The budget has to leave room for the answer, or a full thread produces an
 // empty turn and the loop burns its continuations retrying it.
 // Every catalogued model must leave room to answer. A thread built right up to
@@ -265,18 +189,13 @@ func TestEveryModelLeavesRoomForTheAnswer(t *testing.T) {
 }
 
 func TestVisionIsOffUnlessTheCatalogueSaysOtherwise(t *testing.T) {
-	// the asymmetry that protects an unattended run: a model nobody has heard
-	// of is assumed to take tools, because otherwise it cannot work at all, and
-	// assumed blind, because being wrong there means an attachment the endpoint
+	// what protects an unattended run: a model nobody has heard of is assumed
+	// blind, because being wrong the other way means an attachment the endpoint
 	// rejects mid-run
 	unknown := Lookup("stealth/ox-alpha")
 
 	if unknown.SupportsVision {
 		t.Error("an uncatalogued model must not be assumed to see")
-	}
-
-	if !unknown.SupportsTools {
-		t.Error("an uncatalogued model is still assumed to take tools")
 	}
 
 	if Default.SupportsVision {

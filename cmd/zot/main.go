@@ -857,7 +857,6 @@ func exportSessions(args []string, stdout, stderr io.Writer) error {
 
 	dir := set.String("session-dir", config.DefaultSessionDir(), "directory the sessions are read from")
 	out := set.String("out", "", "directory to write <id>.jsonl and images/ into (default: JSON Lines on stdout, without images)")
-	snapshots := set.Bool("snapshots", false, "include the earlier states of the conversation that compaction or a resume superseded")
 	all := set.Bool("all", false, "export every session that is not continued by another, instead of the ones named")
 
 	set.Usage = func() {
@@ -938,7 +937,7 @@ func exportSessions(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("sessions export: %w", err)
 		}
 
-		options := session.ExportOptions{Snapshots: *snapshots}
+		options := session.ExportOptions{}
 
 		if *out != "" {
 			options.ImageDir = filepath.Join(*out, "images")

@@ -504,41 +504,6 @@ func TestConcurrentWrites(t *testing.T) {
 	}
 }
 
-// The engine compacts its own history. A log that kept both the pre- and
-// post-compaction turns would resume into a conversation that never happened.
-func TestResetDiscardsEarlierMessages(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, _ := Create(dir, "compacted", Meta{Task: "t"})
-
-	_ = writer.Message(Message{Type: "user", Text: "the original brief"})
-	_ = writer.Message(Message{Type: "bot", Text: "a long turn since summarised"})
-	_ = writer.Event(Event{Kind: "compaction"})
-
-	if err := writer.Reset(); err != nil {
-		t.Fatalf("Reset: %v", err)
-	}
-
-	_ = writer.Message(Message{Type: "context", Text: "summary of what came before"})
-	_ = writer.Message(Message{Type: "user", Text: "the original brief"})
-	_ = writer.Close()
-
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if len(session.Messages) != 2 || session.Messages[0].Type != "context" {
-		t.Fatalf("messages after a reset = %+v", session.Messages)
-	}
-
-	// events are the narrative of the run rather than its state, so a reset
-	// leaves them alone - otherwise the log would forget it ever compacted
-	if len(session.Events) != 1 || session.Events[0].Kind != "compaction" {
-		t.Errorf("a reset must not discard events: %+v", session.Events)
-	}
-}
-
 // Two runs started in the same second collide on the time-derived id. One of
 // them would otherwise lose its log entirely, which is exactly the run someone
 // later wants to look at.

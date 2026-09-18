@@ -52,7 +52,7 @@ behaviour broke." Coverage is gated at 90% so that bar cannot quietly erode.
   reach slowly (a 1000-call run to prove "unbounded" is not worth the wall-clock;
   asserting the constructed budget is 0 is).
 
-## Corpus tests (`internal/thread`, `internal/compaction`)
+## Corpus tests (`internal/thread`)
 
 These pin the engine's answers against the implementation zot was ported from.
 Do not weaken a corpus expectation to make a change pass. A deliberate divergence

@@ -554,7 +554,6 @@ type recordingRecorder struct {
 	messages []Message
 	events   []string
 	summary  *Summary
-	resets   int
 }
 
 func (r *recordingRecorder) RecordMessage(message Message) error {
@@ -570,13 +569,6 @@ func (r *recordingRecorder) RecordEvent(kind, tool, _ string, _ int) error {
 }
 
 func (r *recordingRecorder) RecordFailure(*Failure) error { return nil }
-
-func (r *recordingRecorder) RecordReset() error {
-	r.messages = nil
-	r.resets++
-
-	return nil
-}
 
 func (r *recordingRecorder) RecordResult(summary Summary) error {
 	r.summary = &summary
@@ -736,7 +728,6 @@ func TestARecorderThatFailsDoesNotBreakTheRun(t *testing.T) {
 
 type failingRecorder struct{}
 
-func (failingRecorder) RecordReset() error                      { return errTest }
 func (failingRecorder) RecordMessage(Message) error             { return errTest }
 func (failingRecorder) RecordEvent(_, _, _ string, _ int) error { return errTest }
 func (failingRecorder) RecordFailure(*Failure) error            { return errTest }
@@ -770,13 +761,6 @@ func (r *lockedRecorder) RecordFailure(f *Failure) error {
 	defer r.mu.Unlock()
 
 	return r.inner.RecordFailure(f)
-}
-
-func (r *lockedRecorder) RecordReset() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return r.inner.RecordReset()
 }
 
 func (r *lockedRecorder) RecordResult(summary Summary) error {
@@ -1007,7 +991,6 @@ type textRecorder struct {
 }
 
 func (r *textRecorder) RecordMessage(Message) error  { return nil }
-func (r *textRecorder) RecordReset() error           { return nil }
 func (r *textRecorder) RecordResult(Summary) error   { return nil }
 func (r *textRecorder) RecordFailure(*Failure) error { return nil }
 

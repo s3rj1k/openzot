@@ -99,16 +99,6 @@ type NoticeEvent struct {
 
 func (NoticeEvent) agentEventType() string { return "notice" }
 
-// CompactionEvent is emitted when the compact strategy condensed earlier history
-// into a checkpoint to stay within the context window. Detail says how much was
-// condensed. Worth surfacing: it rewrites the conversation and spends a model
-// call, so a consumer reconstructing a run should see where it happened.
-type CompactionEvent struct {
-	Detail string
-}
-
-func (CompactionEvent) agentEventType() string { return "compaction" }
-
 // UsageEvent reports the run's cumulative token usage as the provider counts it -
 // the actual billed prompt and completion tokens (server-side prompt caching and
 // all), not a local estimate. Emitted after each model turn with the running
@@ -204,8 +194,6 @@ func translate(event loop.Event) (AgentEvent, bool) {
 		return RetryEvent{Error: event.Text}, true
 	case loop.EventNotice:
 		return NoticeEvent{Text: event.Text}, true
-	case loop.EventCompact:
-		return CompactionEvent{Detail: event.Text}, true
 	case loop.EventUsage:
 		return UsageEvent{InputTokens: event.InputTokens, OutputTokens: event.OutputTokens}, true
 	case loop.EventRunaway:

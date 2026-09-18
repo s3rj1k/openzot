@@ -91,45 +91,36 @@ type ModelConfig struct {
 	// Context overrides the model's total context window, in tokens. The
 	// escape hatch for a serving endpoint whose real ceiling is smaller than
 	// the model's card - an uncatalogued model is assumed large, so a small
-	// upstream rejects the request before compaction ever fires, and an
+	// upstream rejects the request outright, and an
 	// upstream that reports overflow opaquely gives the recovery path nothing
 	// to detect. Zero uses the catalogue.
 	Context int `yaml:"context"`
 
-	// Vision, Tools and Reasoning override what the catalogue believes this
-	// model can do. Unset defers to the catalogue, which is why they are
-	// pointers: "not stated" and "stated as false" are different answers, and
-	// only the second should be able to turn a capability off.
+	// Vision overrides whether the catalogue believes this model can be shown
+	// images. Unset defers to the catalogue, which is why it is a pointer: "not
+	// stated" and "stated as false" are different answers, and only the second
+	// should be able to turn the capability off.
 	//
 	// The catalogue cannot know about a private deployment, a gateway that
 	// strips capabilities on the way through, or a model released after this
-	// binary was built. Vision is the one that matters most in practice:
-	// an uncatalogued model is assumed blind, so a model that can in fact see
-	// needs saying so here before it is offered a tool for looking.
-	Vision    *bool `yaml:"vision"`
-	Tools     *bool `yaml:"tools"`
-	Reasoning *bool `yaml:"reasoning"`
+	// binary was built. An uncatalogued model is assumed blind, so a model that
+	// can in fact see needs saying so here before it is offered a tool for
+	// looking.
+	Vision *bool `yaml:"vision"`
 
 	// ContentArray sends every message's content as an array of parts, for
 	// endpoints whose chat template rejects the bare string.
 	ContentArray bool `yaml:"content_array"`
 }
 
-// Capabilities applies this model's overrides to what the catalogue believes.
+// Capabilities applies this model's overrides to what the catalogue believes:
+// whether it can see, and how large its window is.
 //
 // The resolution order is the same one Context follows: an explicit setting
 // wins, otherwise the catalogue, otherwise its conservative default.
 func (m ModelConfig) Capabilities(base catalogue.Model) catalogue.Model {
 	if m.Vision != nil {
 		base.SupportsVision = *m.Vision
-	}
-
-	if m.Tools != nil {
-		base.SupportsTools = *m.Tools
-	}
-
-	if m.Reasoning != nil {
-		base.SupportsReasoning = *m.Reasoning
 	}
 
 	if m.Context > 0 {
@@ -244,22 +235,6 @@ type Agent struct {
 	// pace itself. Unset uses the built-in default (50, 80, 90); an explicit
 	// empty list turns the notices off.
 	LimitCheckpoints []int `yaml:"limit_checkpoints"`
-	// ContextStrategy decides what happens when the conversation approaches the
-	// model's context window: "compact" summarises the older history into a
-	// checkpoint (an extra model call, higher fidelity), "truncate" simply drops
-	// the oldest messages to fit. Empty uses the default, "compact".
-	ContextStrategy string `yaml:"context_strategy"`
-	// CompactMinTokens is the floor of estimated input tokens below which the
-	// compact strategy does not bother summarising - a short conversation is
-	// cheaper to carry whole than to summarise. Zero uses the built-in default.
-	CompactMinTokens int `yaml:"compact_min_tokens"`
-	// CompactMinMessages is the floor on how many messages must be eligible for
-	// summarising before the compact strategy runs. Zero uses the default.
-	CompactMinMessages int `yaml:"compact_min_messages"`
-	// CompactTriggerRatio is the fraction of the context window at which the
-	// compact strategy fires (0.9 = compact once the estimate reaches 90% of the
-	// window). Zero uses the default. Must be within (0, 1].
-	CompactTriggerRatio float64 `yaml:"compact_trigger_ratio"`
 	// Instructions optionally overrides the built-in system prompt. Leave
 	// empty to use zot.DefaultInstructions. An override replaces the prompt
 	// but not zot's non-interactive contract, which is re-attached to whatever
@@ -297,8 +272,7 @@ func (a Agent) MaxDuration() (time.Duration, error) {
 func Defaults() Config {
 	return Config{
 		Agent: Agent{
-			MaxIterations:   1_000_000,
-			ContextStrategy: agent.StrategyCompact,
+			MaxIterations: 1_000_000,
 		},
 		UI: UI{Color: "auto"},
 	}
@@ -462,18 +436,6 @@ func (c Config) Validate() error {
 		if p < 1 || p > 99 {
 			return fmt.Errorf("agent.limit_checkpoints: %d is out of range (each must be 1-99)", p)
 		}
-	}
-	switch c.Agent.ContextStrategy {
-	case "", agent.StrategyCompact, agent.StrategyTruncate:
-	default:
-		return fmt.Errorf("agent.context_strategy: %q is not valid (use %q or %q)",
-			c.Agent.ContextStrategy, agent.StrategyCompact, agent.StrategyTruncate)
-	}
-	if r := c.Agent.CompactTriggerRatio; r != 0 && (r <= 0 || r > 1) {
-		return fmt.Errorf("agent.compact_trigger_ratio: %g is out of range (must be within (0, 1])", r)
-	}
-	if c.Agent.CompactMinTokens < 0 || c.Agent.CompactMinMessages < 0 {
-		return fmt.Errorf("agent.compact_min_tokens / compact_min_messages must not be negative")
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")

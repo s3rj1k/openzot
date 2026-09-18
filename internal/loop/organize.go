@@ -2,10 +2,9 @@ package loop
 
 // Message hygiene applied before a conversation goes on the wire.
 //
-// A run's history does not stay tidy on its own. Compaction cuts it in the
-// middle, a trimmed window can drop half of a tool-call pair, a provider can
-// return the same call twice, and a turn can come back empty. Every one of
-// those leaves a conversation that is individually plausible and collectively
+// A run's history does not stay tidy on its own. Trimming to the window can cut
+// it in the middle and drop half of a tool-call pair, a provider can return the
+// same call twice, and a turn can come back empty. Every one of those leaves a conversation that is individually plausible and collectively
 // invalid - and providers reject the whole request rather than the bad part, so
 // the failure arrives as an opaque 400 in the middle of a long unattended run.
 //

@@ -25,14 +25,14 @@ agent, is built on it with its own toolset and skills.
 ## Under the harness
 
 - **Thread assembly** fits the conversation to the model's context window,
-  newest-first, keeping tool calls paired with their results.
-- **Context strategy** decides what happens as that window fills. `compact` (the
-  default) summarises the older history into a checkpoint with a model call, so a
-  long run keeps a condensed memory of its early turns instead of losing them;
-  `truncate` simply drops the oldest messages to fit. A checkpoint is preserved
-  verbatim and never re-summarised, and an outright provider rejection falls back
-  to a no-model summary and retries. Configurable - see
-  [configs/zot.example.yaml](../configs/zot.example.yaml).
+  newest-first, keeping tool calls paired with their results. As the window
+  fills the oldest messages are dropped - nothing is summarised, so the model
+  never reads a paraphrase of its own history, and no extra model call is spent
+  on one. The recorded conversation is never rewritten; only what is sent on the
+  wire is trimmed. The task lives in the system prompt, which is never dropped,
+  so a long run cannot forget its objective. A provider that rejects a request
+  as too long is believed: the window it states (or, if it states none, a
+  smaller one) becomes the new budget and the request is retried.
 - **Loop detection** notices when the agent has stopped making progress - four
   overlapping heuristics, because the obvious one (repeated messages) silently
   misses reasoning models, which interleave a thought between every tool call.

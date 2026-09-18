@@ -49,16 +49,9 @@ type Trajectory struct {
 	Truncated bool `json:"truncated,omitempty"`
 
 	// Messages is the conversation as it stood at the end: what a resume would
-	// replay. After compaction that is a summary plus the recent turns, not
-	// every turn that happened.
+	// replay, and every turn that happened - the conversation is only ever
+	// appended to.
 	Messages []ChatMessage `json:"messages"`
-
-	// Snapshots are the earlier states of the conversation that compaction or
-	// a resume superseded, oldest first, each a complete conversation as it
-	// stood at that point. Only filled when asked for: it is where the turns
-	// that Messages no longer holds live, at the price of repeating the ones
-	// it does.
-	Snapshots [][]ChatMessage `json:"snapshots,omitempty"`
 
 	// Images lists the image files this trajectory refers to, relative to the
 	// trajectory file, in the order they were first shown.
@@ -74,9 +67,8 @@ type ChatMessage struct {
 	// Role is the chat-convention role: system, user, assistant or tool.
 	Role string `json:"role"`
 
-	// Type is zot's own message type, which says more than the role does: a
-	// "checkpoint" and an "instructions" turn are both system, but one is a
-	// compaction summary and the other the run's brief.
+	// Type is zot's own message type - instructions, user, bot, activity - which
+	// says more than the role does.
 	Type string `json:"type"`
 
 	// Content is a string, or a list of ContentPart when the turn carries
@@ -127,19 +119,14 @@ type ExportOptions struct {
 	// ImageDir's parent.
 	ImageDir   string
 	RelativeTo string
-
-	// Snapshots includes the superseded conversations - see
-	// Trajectory.Snapshots.
-	Snapshots bool
 }
 
 // Export renders a session as a trajectory.
 //
 // Chain holds the sessions this one continued, oldest first; it may be empty.
 // Their messages are not needed - a resumed session re-records the history it
-// continues, so the last log carries the whole conversation - but their
-// discarded states are, when snapshots are asked for, and their ids are the
-// provenance either way.
+// continues, so the last log carries the whole conversation - but their ids are
+// the provenance, and their events count toward the total.
 func Export(s *Session, chain []*Session, options ExportOptions) (*Trajectory, error) {
 	if s == nil {
 		return nil, fmt.Errorf("session: nothing to export")
@@ -172,28 +159,12 @@ func Export(s *Session, chain []*Session, options ExportOptions) (*Trajectory, e
 		for _, event := range previous.Events {
 			trajectory.Events[event.Kind]++
 		}
-
-		if options.Snapshots {
-			for _, discarded := range previous.Discarded {
-				trajectory.Snapshots = append(trajectory.Snapshots, exporter.convert(previous, discarded))
-			}
-
-			if len(previous.Messages) > 0 {
-				trajectory.Snapshots = append(trajectory.Snapshots, exporter.convert(previous, previous.Messages))
-			}
-		}
 	}
 
 	trajectory.Chain = append(trajectory.Chain, s.Meta.ID)
 
 	for _, event := range s.Events {
 		trajectory.Events[event.Kind]++
-	}
-
-	if options.Snapshots {
-		for _, discarded := range s.Discarded {
-			trajectory.Snapshots = append(trajectory.Snapshots, exporter.convert(s, discarded))
-		}
 	}
 
 	trajectory.Messages = exporter.convert(s, s.Messages)
@@ -207,7 +178,7 @@ func Export(s *Session, chain []*Session, options ExportOptions) (*Trajectory, e
 }
 
 // exporter carries the state one export accumulates across conversations: the
-// images already copied, so a screenshot shown in three snapshots is one file.
+// images already copied, so a screenshot shown in three turns is one file.
 type exporter struct {
 	options ExportOptions
 	images  []string
@@ -245,7 +216,7 @@ func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
 
 	for _, message := range messages {
 		switch message.Type {
-		case "instructions", "checkpoint":
+		case "instructions":
 			flush()
 			out = append(out, ChatMessage{Role: "system", Type: message.Type, Content: message.Text})
 

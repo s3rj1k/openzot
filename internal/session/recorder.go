@@ -89,15 +89,6 @@ func (r *Recorder) RecordFailure(failure *agent.Failure) error {
 	return nil
 }
 
-// RecordReset discards the messages recorded so far.
-func (r *Recorder) RecordReset() error {
-	if r == nil || r.writer == nil {
-		return nil
-	}
-
-	return r.writer.Reset()
-}
-
 // RecordResult appends the outcome and closes the log.
 func (r *Recorder) RecordResult(summary agent.Summary) error {
 	if r == nil || r.writer == nil {

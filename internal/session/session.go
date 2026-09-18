@@ -51,12 +51,6 @@ const (
 	// KindResult closes a log with the outcome. Absent means the run did not
 	// finish, which is itself worth knowing.
 	KindResult Kind = "result"
-
-	// KindReset discards the messages recorded before it. The engine compacts
-	// its own history, and a log that kept both the pre- and post-compaction
-	// turns would resume into a conversation that never happened. Events are
-	// kept: they are the narrative of the run, not its state.
-	KindReset Kind = "reset"
 )
 
 // Record is one line of a session log.
@@ -299,11 +293,6 @@ func (w *Writer) Message(message Message) error {
 	return w.write(Record{Kind: KindMessage, At: time.Now().UTC(), Message: &message})
 }
 
-// Reset discards the messages recorded so far.
-func (w *Writer) Reset() error {
-	return w.write(Record{Kind: KindReset, At: time.Now().UTC()})
-}
-
 // Event records something that happened.
 func (w *Writer) Event(event Event) error {
 	return w.write(Record{Kind: KindEvent, At: time.Now().UTC(), Event: &event})
@@ -416,12 +405,6 @@ type Session struct {
 	// or killed run leaves behind. The records before it are still usable.
 	Truncated bool
 
-	// Discarded holds the conversations a reset threw away, oldest first: each
-	// is what the history looked like before the engine compacted it. Not part
-	// of the run's state - a resume ignores them - but they are the turns that
-	// actually happened, which is what an export for analysis or training wants.
-	Discarded [][]Message
-
 	// Started and Ended are the timestamps of the first and last records, zero
 	// for a session parsed from nothing.
 	Started time.Time
@@ -533,13 +516,6 @@ func Read(r io.Reader) (*Session, error) {
 			if record.Event != nil {
 				session.Events = append(session.Events, *record.Event)
 			}
-
-		case KindReset:
-			if len(session.Messages) > 0 {
-				session.Discarded = append(session.Discarded, session.Messages)
-			}
-
-			session.Messages = nil
 
 		case KindResult:
 			if record.Result != nil {

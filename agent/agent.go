@@ -2,7 +2,7 @@
 // OpenAI-compatible model provider.
 //
 // It is the public surface of zot's engine. Everything happens locally: what to
-// keep in context, when to summarise, whether the model is stuck, and when the
+// keep in context, whether the model is stuck, and when the
 // work is actually done. The only thing that leaves the machine is the request
 // to the model provider the caller configured.
 //
@@ -134,10 +134,6 @@ const (
 
 	// TypeInstructions is system context.
 	TypeInstructions = loop.TypeInstructions
-
-	// TypeCheckpoint is a compaction summary, preserved verbatim and never
-	// re-summarised.
-	TypeCheckpoint = loop.TypeCheckpoint
 )
 
 // Recorder receives a run's messages and events as they happen.
@@ -153,11 +149,6 @@ type Recorder interface {
 	// mid-retry still leaves the failing exchange behind. Called once per
 	// failure; a later one supersedes the record of an earlier.
 	RecordFailure(*Failure) error
-
-	// RecordReset discards everything recorded so far, because the engine has
-	// rewritten its own history and the earlier record no longer describes the
-	// conversation the run is actually holding.
-	RecordReset() error
 }
 
 // SummaryRecorder is a Recorder that keeps only the run's final Summary, so a
@@ -173,7 +164,6 @@ type SummaryRecorder struct {
 func (r *SummaryRecorder) RecordMessage(Message) error             { return nil }
 func (r *SummaryRecorder) RecordEvent(_, _, _ string, _ int) error { return nil }
 func (r *SummaryRecorder) RecordFailure(*Failure) error            { return nil }
-func (r *SummaryRecorder) RecordReset() error                      { return nil }
 
 func (r *SummaryRecorder) RecordResult(summary Summary) error {
 	captured := summary
@@ -227,14 +217,6 @@ func (m multiRecorder) RecordResult(summary Summary) error {
 func (m multiRecorder) RecordFailure(f *Failure) error {
 	for _, r := range m {
 		_ = r.RecordFailure(f)
-	}
-
-	return nil
-}
-
-func (m multiRecorder) RecordReset() error {
-	for _, r := range m {
-		_ = r.RecordReset()
 	}
 
 	return nil
@@ -354,17 +336,6 @@ type ToolDefinition struct {
 // Tools is a set of tools keyed by name.
 type Tools map[string]ToolDefinition
 
-// The context-window strategies for ExecuteWithToolsOptions.ContextStrategy.
-// Empty is treated as StrategyCompact.
-const (
-	// StrategyCompact summarises older history into a checkpoint as the window
-	// fills. The default.
-	StrategyCompact = "compact"
-
-	// StrategyTruncate drops the oldest messages to fit the window.
-	StrategyTruncate = "truncate"
-)
-
 // ExecuteWithToolsOptions configures a run.
 type ExecuteWithToolsOptions struct {
 	// Instructions is the system prompt.
@@ -464,18 +435,6 @@ type ExecuteWithToolsOptions struct {
 	// deliberately.
 	MaxTokens *int
 
-	// ContextStrategy selects what happens as the conversation approaches the
-	// model's context window: StrategyCompact summarises older history into a
-	// checkpoint with a model call, StrategyTruncate drops the oldest messages to
-	// fit. Empty means StrategyCompact - the default - so the library and the CLI
-	// agree without the caller having to opt in. CompactMinTokens,
-	// CompactMinMessages and CompactTriggerRatio tune when compaction fires; zero
-	// uses the built-in default for each.
-	ContextStrategy     string
-	CompactMinTokens    int
-	CompactMinMessages  int
-	CompactTriggerRatio float64
-
 	// ContextWindow overrides the model's total context window, in tokens, for
 	// a serving endpoint whose real ceiling is smaller than the model's card.
 	// Zero uses the catalogue.
@@ -524,7 +483,7 @@ func ExecuteWithTools(
 			}
 		}
 
-		log := &conversationLog{recorder: recorder, recorded: seed}
+		log := &conversationLog{recorder: recorder, recorded: len(seed)}
 
 		skills := options.Skills
 		if skills == nil {
@@ -532,27 +491,23 @@ func ExecuteWithTools(
 		}
 
 		engine, err := loop.New(loop.Options{
-			Client:              client.inner,
-			Instructions:        options.Instructions,
-			Messages:            toLoopMessages(options),
-			Tools:               toLoopTools(options.Tools),
-			Skills:              func() []loop.Skill { return toLoopSkills(skills()) },
-			MaxIterations:       options.MaxIterations,
-			MaxCalls:            options.MaxCalls,
-			MaxContinuations:    options.MaxContinuations,
-			MaxRecoveries:       options.MaxRecoveries,
-			RetryBackoff:        options.RetryBackoff,
-			MaxCycles:           options.MaxCycles,
-			MaxEmpties:          options.MaxEmpties,
-			MaxDuration:         options.MaxDuration,
-			MaxSettles:          settleBudget(options),
-			MaxTokens:           options.MaxTokens,
-			LimitCheckpoints:    options.LimitCheckpoints,
-			Compact:             options.ContextStrategy != StrategyTruncate,
-			CompactMinTokens:    options.CompactMinTokens,
-			CompactMinMessages:  options.CompactMinMessages,
-			CompactTriggerRatio: options.CompactTriggerRatio,
-			ContextWindow:       options.ContextWindow,
+			Client:           client.inner,
+			Instructions:     options.Instructions,
+			Messages:         toLoopMessages(options),
+			Tools:            toLoopTools(options.Tools),
+			Skills:           func() []loop.Skill { return toLoopSkills(skills()) },
+			MaxIterations:    options.MaxIterations,
+			MaxCalls:         options.MaxCalls,
+			MaxContinuations: options.MaxContinuations,
+			MaxRecoveries:    options.MaxRecoveries,
+			RetryBackoff:     options.RetryBackoff,
+			MaxCycles:        options.MaxCycles,
+			MaxEmpties:       options.MaxEmpties,
+			MaxDuration:      options.MaxDuration,
+			MaxSettles:       settleBudget(options),
+			MaxTokens:        options.MaxTokens,
+			LimitCheckpoints: options.LimitCheckpoints,
+			ContextWindow:    options.ContextWindow,
 
 			OnConversation: func(messages []loop.Message) {
 				log.sync(fromLoopMessages(messages))
@@ -653,41 +608,29 @@ func ExecuteWithTools(
 	return events, errs
 }
 
-// conversationLog keeps a Recorder in step with a conversation the engine
-// rewrites underneath it.
+// conversationLog keeps a Recorder in step with the conversation the engine is
+// holding.
 //
 // The log is written as the run goes, so a run that dies at iteration 500 leaves
 // 500 iterations of work behind rather than just the brief it started from. The
-// complication that made it tempting to write only at the end is compaction: the
-// engine summarises its own history, so the conversation's prefix changes. That
-// is what the reset is for - when the history no longer extends what was
-// recorded, the record is discarded and rewritten, leaving one coherent
-// conversation rather than turns that no longer exist.
+// conversation only ever grows - what is sent to the model is trimmed to the
+// window, but the history itself is never rewritten - so each sync records
+// whatever was appended since the last.
 type conversationLog struct {
 	recorder Recorder
-	recorded []Message
+	recorded int
 }
 
 func (c *conversationLog) sync(current []Message) {
-	if c.recorder == nil {
+	if c.recorder == nil || len(current) <= c.recorded {
 		return
 	}
 
-	if !sharePrefix(c.recorded, current) {
-		_ = c.recorder.RecordReset()
-
-		c.recorded = nil
-	}
-
-	if len(current) == len(c.recorded) {
-		return
-	}
-
-	for _, message := range current[min(len(c.recorded), len(current)):] {
+	for _, message := range current[c.recorded:] {
 		_ = c.recorder.RecordMessage(message)
 	}
 
-	c.recorded = append([]Message(nil), current...)
+	c.recorded = len(current)
 }
 
 // settleBudget resolves the settle-nudge allowance. Always positive: settlement
@@ -776,22 +719,6 @@ func toLoopMessages(options ExecuteWithToolsOptions) []loop.Message {
 	}
 
 	return messages
-}
-
-// sharePrefix reports whether the run still begins with the messages it started
-// with. False means the engine rewrote its own history - the compaction case.
-func sharePrefix(seed, final []Message) bool {
-	if len(seed) > len(final) {
-		return false
-	}
-
-	for index, message := range seed {
-		if message.Type != final[index].Type || message.Text != final[index].Text {
-			return false
-		}
-	}
-
-	return true
 }
 
 func fromLoopMessages(messages []loop.Message) []Message {

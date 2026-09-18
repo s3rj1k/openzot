@@ -220,11 +220,10 @@ func TestExportCarriesImages(t *testing.T) {
 	}
 }
 
-// Compaction rewrites the log, and a resume starts a new one: neither loses the
-// turns that happened. The export's messages are the final state - what a resume
-// would replay - and, on request, the superseded states come along as snapshots,
-// oldest first, across the whole chain.
-func TestExportKeepsSupersededConversationsAsSnapshots(t *testing.T) {
+// A resume starts a new log that re-records the history it continues, so the
+// last log carries the whole conversation. The export is that one conversation,
+// with the chain's ids as provenance and its events counted across every log.
+func TestExportOfAResumedChainIsOneConversation(t *testing.T) {
 	dir := t.TempDir()
 
 	first, err := Create(dir, "20260822-120000", Meta{Task: "long job"})
@@ -242,9 +241,6 @@ func TestExportKeepsSupersededConversationsAsSnapshots(t *testing.T) {
 
 	must(first.Message(Message{Type: "user", Text: "go"}))
 	must(first.Message(Message{Type: "bot", Text: "first answer"}))
-	must(first.Reset())
-	must(first.Message(Message{Type: "checkpoint", Text: "summary of the start"}))
-	must(first.Message(Message{Type: "bot", Text: "after compaction"}))
 	must(first.Event(Event{Kind: "iteration", Iteration: 1}))
 	// no result: the run was cut short here
 	must(first.Close())
@@ -255,8 +251,8 @@ func TestExportKeepsSupersededConversationsAsSnapshots(t *testing.T) {
 	}
 
 	// a resume re-records the history it continues, then adds to it
-	must(second.Message(Message{Type: "checkpoint", Text: "summary of the start"}))
-	must(second.Message(Message{Type: "bot", Text: "after compaction"}))
+	must(second.Message(Message{Type: "user", Text: "go"}))
+	must(second.Message(Message{Type: "bot", Text: "first answer"}))
 	must(second.Message(Message{Type: "user", Text: "continue"}))
 	must(second.Message(Message{Type: "bot", Text: "finished"}))
 	must(second.Event(Event{Kind: "iteration", Iteration: 2}))
@@ -267,56 +263,30 @@ func TestExportKeepsSupersededConversationsAsSnapshots(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if len(earlier.Discarded) != 1 || len(earlier.Discarded[0]) != 2 {
-		t.Fatalf("discarded = %+v, want the two turns before the reset", earlier.Discarded)
-	}
-
 	last, err := Load(second.Path())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	plain, err := Export(last, []*Session{earlier}, ExportOptions{})
+	export, err := Export(last, []*Session{earlier}, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
 
-	if len(plain.Chain) != 2 || plain.Chain[0] != "20260822-120000" || plain.Chain[1] != "20260822-130000" {
-		t.Errorf("chain = %v", plain.Chain)
+	if len(export.Chain) != 2 || export.Chain[0] != "20260822-120000" || export.Chain[1] != "20260822-130000" {
+		t.Errorf("chain = %v", export.Chain)
 	}
 
-	if len(plain.Messages) != 4 || plain.Messages[0].Role != "system" || plain.Messages[0].Type != "checkpoint" {
-		t.Errorf("messages = %+v", plain.Messages)
+	if len(export.Messages) != 4 || export.Messages[3].Content != "finished" {
+		t.Errorf("messages = %+v", export.Messages)
 	}
 
-	if plain.Snapshots != nil {
-		t.Errorf("snapshots without asking = %+v", plain.Snapshots)
+	if export.Events["iteration"] != 2 {
+		t.Errorf("events across the chain = %v", export.Events)
 	}
 
-	if plain.Events["iteration"] != 2 {
-		t.Errorf("events across the chain = %v", plain.Events)
-	}
-
-	if !plain.Started.Equal(earlier.Started) {
-		t.Errorf("started = %v, want the chain's first record %v", plain.Started, earlier.Started)
-	}
-
-	full, err := Export(last, []*Session{earlier}, ExportOptions{Snapshots: true})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	// the discarded pre-compaction turns, then the first session's final state
-	if len(full.Snapshots) != 2 {
-		t.Fatalf("snapshots = %d, want 2", len(full.Snapshots))
-	}
-
-	if text := full.Snapshots[0][1].Content; text != "first answer" {
-		t.Errorf("first snapshot = %+v", full.Snapshots[0])
-	}
-
-	if text := full.Snapshots[1][1].Content; text != "after compaction" {
-		t.Errorf("second snapshot = %+v", full.Snapshots[1])
+	if !export.Started.Equal(earlier.Started) {
+		t.Errorf("started = %v, want the chain's first record %v", export.Started, earlier.Started)
 	}
 }
 

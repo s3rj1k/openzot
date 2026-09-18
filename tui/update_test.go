@@ -157,18 +157,6 @@ func TestTickAdvancesTheElapsedClock(t *testing.T) {
 	}
 }
 
-// A compaction rewrites the conversation and spends a model call, so it must be
-// visible in the log rather than happening silently.
-func TestHandleEventShowsCompaction(t *testing.T) {
-	m := sized(t, 100, 30)
-
-	m.handleEvent(agent.CompactionEvent{Detail: "compacted 30 earlier messages into a checkpoint"})
-
-	if log := strings.Join(m.entries, "\n"); !strings.Contains(log, "compacted 30 earlier messages") {
-		t.Errorf("a compaction must appear in the log:\n%s", log)
-	}
-}
-
 func TestHandleEventBuildsTheLog(t *testing.T) {
 	m := sized(t, 100, 30)
 

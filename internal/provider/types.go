@@ -2,7 +2,6 @@ package provider
 
 import (
 	"encoding/json"
-	"strings"
 )
 
 // The vocabulary every transport shares.
@@ -201,19 +200,4 @@ type Event struct {
 
 	// Err terminates the stream.
 	Err error
-}
-
-// textBuilder accumulates streamed fragments.
-type textBuilder struct {
-	parts []string
-}
-
-func (b *textBuilder) WriteString(s string) {
-	if s != "" {
-		b.parts = append(b.parts, s)
-	}
-}
-
-func (b *textBuilder) String() string {
-	return strings.Join(b.parts, "")
 }

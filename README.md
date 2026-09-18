@@ -66,7 +66,7 @@ see [providers](docs/providers.md).
 
 - **Orders, not prompts.** Files that queue, batch and stream. [→ work orders](docs/orders.md)
 - **Nothing in the way.** Your key, your provider, your machine. [→ philosophy](docs/philosophy.md)
-- **Built to run unattended.** Compaction, loop detection, resumable logs. [→ how it works](docs/how-it-works.md)
+- **Built to run unattended.** Context trimming, loop detection, resumable logs. [→ how it works](docs/how-it-works.md)
 - **Orchestration is content.** No sub-agent framework; skills decide. [→ sub-agents](docs/how-it-works.md#sub-agents-and-coordination)
 
 Watch it work: [the factories](#factories) run in public, each shipping from

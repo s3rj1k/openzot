@@ -94,7 +94,7 @@ func TestAGatewayIsSentThePrefixedModelVerbatim(t *testing.T) {
 
 // The prefixed name still has to resolve its real limits. A budget decision made
 // against the conservative default window - because the lookup could not see
-// past the prefix - would compact far too early on a large-context model.
+// past the prefix - would trim far too early on a large-context model.
 func TestAPrefixedModelResolvesTheRealContextWindow(t *testing.T) {
 	tests := []struct {
 		model      string
