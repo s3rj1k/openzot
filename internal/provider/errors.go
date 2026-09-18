@@ -452,15 +452,6 @@ func DetectContextLimit(err error) (ContextLimit, bool) {
 	return limit, true
 }
 
-// IsContextLimit reports whether the request was rejected for being too large,
-// which the loop answers by trimming harder rather than by giving up.
-func IsContextLimit(err error) bool {
-	_, ok := DetectContextLimit(err)
-
-	return ok
-}
-
-// IsAuth reports a credential problem, which never resolves by retrying.
 // IsProviderError reports whether err is a failure the provider returned, as
 // opposed to a local one (a cancellation, a context deadline). It is how an
 // abort tells the exchange worth preserving from the bare cancellation that
@@ -469,20 +460,6 @@ func IsProviderError(err error) bool {
 	var providerErr *Error
 
 	return errors.As(err, &providerErr)
-}
-
-func IsAuth(err error) bool {
-	var providerErr *Error
-
-	if !errors.As(err, &providerErr) {
-		return false
-	}
-
-	if providerErr.Status == 401 || providerErr.Status == 403 {
-		return true
-	}
-
-	return strings.Contains(strings.ToLower(providerErr.Message), "api key")
 }
 
 // streamFailure is an error the provider wrote into a stream it had already

@@ -183,18 +183,6 @@ func TestIsRetriableTreatsAStalledUpstreamAsTransient(t *testing.T) {
 	}
 }
 
-func TestIsContextLimit(t *testing.T) {
-	limit := &Error{Status: 400, Message: "This model's maximum context length is 128000 tokens"}
-
-	if !IsContextLimit(limit) {
-		t.Error("a context-length rejection must be recognised so the run can trim harder and retry")
-	}
-
-	if IsContextLimit(&Error{Status: 400, Message: "invalid api key"}) {
-		t.Error("an unrelated 400 must not be treated as a context limit")
-	}
-}
-
 func TestDecodeArgumentsToleratesEmpty(t *testing.T) {
 	// a model calling a no-argument tool commonly sends "" rather than "{}"
 	args, err := DecodeArguments(ToolCall{Function: FunctionCall{Name: "t", Arguments: "  "}})
@@ -371,22 +359,6 @@ func TestRateLimitIsNotRetriable(t *testing.T) {
 
 	if !IsRateLimited(err) {
 		t.Error("a 429 must be identifiable as a rate limit")
-	}
-}
-
-func TestAuthErrorsAreIdentified(t *testing.T) {
-	for _, err := range []error{
-		&Error{Status: 401, Message: "unauthorized"},
-		&Error{Status: 403, Message: "forbidden"},
-		&Error{Status: 400, Message: "Incorrect API key provided"},
-	} {
-		if !IsAuth(err) {
-			t.Errorf("should be an auth failure: %v", err)
-		}
-	}
-
-	if IsAuth(&Error{Status: 500, Message: "boom"}) {
-		t.Error("a 500 is not an auth failure")
 	}
 }
 

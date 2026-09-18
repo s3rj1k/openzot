@@ -250,24 +250,6 @@ func Lookup(model string) Model {
 	return models[best]
 }
 
-// Known reports whether the catalogue recognises a model. An unknown model still
-// runs; this is for diagnostics.
-func Known(model string) bool {
-	name := normalize(model)
-
-	if _, ok := models[name]; ok {
-		return true
-	}
-
-	for prefix := range models {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // InputBudget is how many tokens of conversation may be sent to a model.
 //
 // It is the number the thread builder trims to,

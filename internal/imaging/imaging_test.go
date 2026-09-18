@@ -63,10 +63,6 @@ func TestMediaTypeIdentifiesFormatsFromTheirBytes(t *testing.T) {
 			if got := MediaType(test.data); got != test.want {
 				t.Errorf("MediaType = %q, want %q", got, test.want)
 			}
-
-			if got := IsImage(test.data); got != (test.want != "") {
-				t.Errorf("IsImage = %v for %q", got, test.want)
-			}
 		})
 	}
 }

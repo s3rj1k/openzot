@@ -11,17 +11,6 @@ var errNoEstimator = errors.New("thread: no token estimator supplied and a messa
 // HasRepeatedResultRun requires before reporting a loop.
 const DefaultMinResultRepetitions = 3
 
-// Opt returns a pointer to v, for populating the optional fields of
-// CycleOptions, TextRunOptions and GuardOptions.
-//
-// These are pointers rather than plain ints because zero is a meaningful value
-// that clamps to the minimum, and a plain int cannot tell "unset" from
-// "explicitly zero" - a caller passing MinRepetitions: 0 means "as low as
-// possible", not "use the default of 2".
-func Opt[T any](v T) *T {
-	return &v
-}
-
 // CycleOptions tunes cycle detection. The zero value is the production default.
 type CycleOptions struct {
 	// MinRepetitions is how many consecutive repeats of a pattern constitute a

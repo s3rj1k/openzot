@@ -375,25 +375,6 @@ func TestEvidenceDoesNotMakeAnUnsettledRunCount(t *testing.T) {
 	}
 }
 
-// SortRecords orders newest-first, for listing. The ledger on disk is
-// append-only and unordered; listing the receipts for an order needs them in
-// the order the runs concluded, not the order the filesystem returns them.
-func TestSortRecordsNewestFirst(t *testing.T) {
-	now := time.Now()
-
-	records := []Record{
-		{Run: "old", At: now.Add(-2 * time.Hour)},
-		{Run: "new", At: now},
-		{Run: "mid", At: now.Add(-1 * time.Hour)},
-	}
-
-	sorted := SortRecords(records)
-
-	if sorted[0].Run != "new" || sorted[1].Run != "mid" || sorted[2].Run != "old" {
-		t.Errorf("SortRecords = %v, want new, mid, old", recordsOf(sorted))
-	}
-}
-
 func recordsOf(records []Record) []string {
 	names := make([]string, len(records))
 	for i, r := range records {

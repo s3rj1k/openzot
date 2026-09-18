@@ -73,30 +73,6 @@ func TestLoadErrors(t *testing.T) {
 	}
 }
 
-func TestFromTextWrapsProse(t *testing.T) {
-	order := FromText("  fix the flaky test  ")
-
-	if order.Objective != "fix the flaky test" {
-		t.Errorf("Objective = %q", order.Objective)
-	}
-
-	if len(order.Acceptance) != 0 || len(order.Constraints) != 0 {
-		t.Errorf("a wrapped mission invented criteria: %+v", order)
-	}
-}
-
-func TestFromTextAcceptsAFullOrder(t *testing.T) {
-	order := FromText("objective: build the parser\nacceptance:\n  - it parses\n")
-
-	if order.Objective != "build the parser" {
-		t.Errorf("Objective = %q", order.Objective)
-	}
-
-	if len(order.Acceptance) != 1 || order.Acceptance[0] != "it parses" {
-		t.Errorf("Acceptance = %q, want the document's own criteria", order.Acceptance)
-	}
-}
-
 // Encode must round-trip through Parse: it is how an order travels to another
 // process (a sandbox, a CI job), and an encoding Parse rejects would strand it.
 func TestEncodeRoundTrips(t *testing.T) {

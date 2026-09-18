@@ -61,9 +61,6 @@ func MediaType(data []byte) string {
 	}
 }
 
-// IsImage reports whether the bytes are a recognised image.
-func IsImage(data []byte) bool { return MediaType(data) != "" }
-
 // Dimensions reports an image's pixel size without decoding it fully, and
 // whether that was possible - a format Go cannot open reports nothing rather
 // than guessing.

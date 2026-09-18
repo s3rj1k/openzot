@@ -55,7 +55,6 @@ var (
 	// Activity log.
 	dividerStyle = lipgloss.NewStyle().Foreground(colFaint)
 	thoughtStyle = lipgloss.NewStyle().Foreground(colDim).Italic(true)
-	bulletStyle  = lipgloss.NewStyle().Foreground(colDim)
 	outputStyle  = lipgloss.NewStyle().Foreground(colFaint)
 	okStyle      = lipgloss.NewStyle().Foreground(colGreen)
 	errStyle     = lipgloss.NewStyle().Foreground(colRed)
@@ -63,7 +62,6 @@ var (
 	// Per-tool accents so the eye can scan the stream.
 	toolReadStyle  = lipgloss.NewStyle().Foreground(colCyan)
 	toolWriteStyle = lipgloss.NewStyle().Foreground(colGreen)
-	toolEditStyle  = lipgloss.NewStyle().Foreground(colYellow)
 	toolExecStyle  = lipgloss.NewStyle().Foreground(colBlue)
 	toolPlanStyle  = lipgloss.NewStyle().Bold(true).Foreground(colSecondary)
 	toolProgStyle  = lipgloss.NewStyle().Foreground(colSecondary)

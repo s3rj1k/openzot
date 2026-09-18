@@ -147,18 +147,6 @@ func Parse(data []byte) (Order, error) {
 	return order, nil
 }
 
-// FromText builds an order from free text. Text that already is a valid order
-// document is used as one - this is what lets a dispatcher carry either
-// a plain mission or a full order in the same field - and anything else becomes
-// the objective of a minimal order.
-func FromText(text string) Order {
-	if order, err := Parse([]byte(text)); err == nil {
-		return order
-	}
-
-	return Order{Objective: strings.TrimSpace(text)}
-}
-
 // Encode renders the order back to YAML, for handing to another process.
 func (o Order) Encode() string {
 	// Order is plain strings and slices, which Marshal cannot fail on.

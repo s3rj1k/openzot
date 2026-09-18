@@ -19,10 +19,6 @@ const (
 	// safe; this is a behavioural bound, not a stack one.
 	DefaultMaxIterations = 1000
 
-	// DefaultMaxCalls caps total tool calls across a run, independently of
-	// rounds: a single round can request many tools.
-	DefaultMaxCalls = 1000
-
 	// DefaultMaxContinuations caps CONSECUTIVE recovery attempts - output
 	// truncated, or a retriable provider error - with no good turn between
 	// them. Distinct from iterations, which count normal progress.

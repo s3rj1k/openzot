@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -242,15 +241,4 @@ func (l Ledger) Satisfied(o Order) (Record, bool) {
 	}
 
 	return newest, found
-}
-
-// SortRecords returns records ordered newest-first by At, for listing. The
-// ledger on disk is already append-only; this only orders what was read back.
-func SortRecords(records []Record) []Record {
-	out := make([]Record, 0, len(records))
-	for _, r := range records {
-		out = append(out, r)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
-	return out
 }

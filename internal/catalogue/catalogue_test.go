@@ -93,24 +93,12 @@ func TestNoRealtimeEntries(t *testing.T) {
 	}
 }
 
-func TestKnownReportsCoverage(t *testing.T) {
-	for _, model := range []string{"glm-5.3", "gpt-5.4-mini-2026-01-01", "claude-5-sonnet", "qwen-3.8-max"} {
-		if !Known(model) {
-			t.Errorf("%s should be recognised", model)
-		}
-	}
-
-	if Known("totally-made-up-model") {
-		t.Error("an unknown model must not report as known")
-	}
-}
-
 func TestLegacyGPTModelsAreNotOffered(t *testing.T) {
 	for _, model := range []string{
 		"gpt-4.1", "gpt-4.1-mini", "gpt-4.5", "gpt-4o", "gpt-4o-mini",
 		"gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
 	} {
-		if Known(model) {
+		if _, ok := models[model]; ok {
 			t.Errorf("legacy model %s should not be in the catalogue", model)
 		}
 	}
