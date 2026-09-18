@@ -18,12 +18,10 @@ import (
 // bytes on a wire is entirely a transport's business. That is the seam this
 // interface exists to create.
 //
-// Today there are two, both speaking OpenAI-shaped HTTP: chat-completions and
-// the Responses API. They are peers rather than one bolted onto the other,
-// because the next ones will not be OpenAI-shaped at all - Anthropic's Messages
-// API and Bedrock's Converse both differ in the request body, the streaming
-// envelope and the tool-call representation. A transport that implements this
-// interface needs no changes anywhere else to be usable.
+// Today there is one, chat-completions. It sits behind this interface so that a
+// wire format that is not OpenAI-shaped - a different request body, streaming
+// envelope or tool-call representation - needs no changes anywhere else to be
+// usable.
 type Transport interface {
 	// Name identifies the wire format, for diagnostics and the UI header.
 	Name() string
@@ -93,16 +91,9 @@ func lookupTransport(name string, httpClient *http.Client) (Transport, error) {
 	return factory(httpClient), nil
 }
 
-// The wire formats zot ships with.
-const (
-	// TransportChatCompletions is the OpenAI /chat/completions API, which every
-	// provider zot supports speaks.
-	TransportChatCompletions = "chat-completions"
-
-	// TransportResponses is the OpenAI /responses API. It carries reasoning
-	// state between turns, which chat-completions cannot.
-	TransportResponses = "responses"
-)
+// TransportChatCompletions is the OpenAI /chat/completions API, the wire format
+// every configured provider speaks.
+const TransportChatCompletions = "chat-completions"
 
 // errTruncatedStream is what a stream that merely stopped produces.
 //

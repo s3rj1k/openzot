@@ -368,7 +368,7 @@ func TestClientRejectsPlaintextEndpoint(t *testing.T) {
 }
 
 func TestClientRequiresCredential(t *testing.T) {
-	_, err := NewClient(ClientOptions{Provider: "openai", Model: "gpt-5.4"})
+	_, err := NewClient(ClientOptions{Provider: "gw", Model: "gpt-5.4", BaseURL: "https://gw.example.com/v1"})
 
 	if err == nil {
 		t.Fatal("a provider that needs a key must not resolve without one")
@@ -479,9 +479,10 @@ func TestTerminalToolsAreAlwaysOffered(t *testing.T) {
 
 func TestClientExposesItsResolvedConfiguration(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		Provider: "groq",
+		Provider: "gw",
 		Model:    "glm-5.2",
 		APIKey:   "k",
+		BaseURL:  "https://gw.example.com/v1",
 	})
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
@@ -491,34 +492,16 @@ func TestClientExposesItsResolvedConfiguration(t *testing.T) {
 		t.Errorf("Model = %q", got)
 	}
 
-	if got := client.Provider(); got != "groq" {
+	if got := client.Provider(); got != "gw" {
 		t.Errorf("Provider = %q", got)
 	}
 
-	if got := client.BaseURL(); got == "" {
-		t.Error("BaseURL must resolve to the provider's endpoint")
-	}
-}
-
-// The provider list is what an error message offers the user, so it has to name
-// the ones that actually work.
-func TestProvidersIsUsable(t *testing.T) {
-	providers := Providers()
-
-	if len(providers) < 5 {
-		t.Fatalf("only %d providers listed", len(providers))
+	if got := client.Driver(); got != DriverOpenAI {
+		t.Errorf("Driver = %q, want the default %q", got, DriverOpenAI)
 	}
 
-	seen := map[string]bool{}
-
-	for _, name := range providers {
-		seen[name] = true
-	}
-
-	for _, want := range []string{"openai", "anthropic", "groq", "ollama", "custom"} {
-		if !seen[want] {
-			t.Errorf("%q should be listed", want)
-		}
+	if got := client.BaseURL(); got != "https://gw.example.com/v1" {
+		t.Errorf("BaseURL = %q", got)
 	}
 }
 

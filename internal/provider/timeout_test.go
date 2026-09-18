@@ -18,7 +18,7 @@ import (
 func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 	withStallTimeout(t, 300*time.Millisecond)
 
-	client := serveTransport(t, false, func(w http.ResponseWriter, _ *http.Request) {
+	client := serveTransport(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		flusher, _ := w.(http.Flusher)
@@ -63,7 +63,7 @@ func TestAStalledStreamFails(t *testing.T) {
 
 	t.Cleanup(func() { close(hang) })
 
-	client := serveTransport(t, false, func(w http.ResponseWriter, r *http.Request) {
+	client := serveTransport(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"x"}}]}`+"\n\n")
@@ -105,7 +105,7 @@ func TestAnErrorResponseWithAStalledBodyDoesNotWedge(t *testing.T) {
 
 	hang := make(chan struct{})
 
-	client := serveTransport(t, false, func(w http.ResponseWriter, r *http.Request) {
+	client := serveTransport(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 
 		if flusher, ok := w.(http.Flusher); ok {

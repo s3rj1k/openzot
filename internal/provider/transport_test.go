@@ -35,13 +35,11 @@ func (f *fakeTransport) Stream(_ context.Context, config Config, _ Request) <-ch
 	return events
 }
 
-func TestBothWireFormatsAreRegistered(t *testing.T) {
+func TestChatCompletionsIsRegistered(t *testing.T) {
 	registered := Transports()
 
-	for _, want := range []string{TransportChatCompletions, TransportResponses} {
-		if !slices.Contains(registered, want) {
-			t.Errorf("transport %q is not registered; have %v", want, registered)
-		}
+	if !slices.Contains(registered, TransportChatCompletions) {
+		t.Errorf("transport %q is not registered; have %v", TransportChatCompletions, registered)
 	}
 }
 
@@ -86,7 +84,7 @@ func TestACustomTransportNeedsNothingElse(t *testing.T) {
 		transportsMu.Unlock()
 	})
 
-	resolved, err := Config{Provider: Custom, Model: "m", APIKey: "k", BaseURL: "https://x.example.com/v1"}.Resolve()
+	resolved, err := Config{Provider: "custom", Model: "m", APIKey: "k", BaseURL: "https://x.example.com/v1"}.Resolve()
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -126,41 +124,15 @@ func TestLookupUnknownTransport(t *testing.T) {
 	}
 }
 
-// The client picks its transport from the resolved config and reports which one
-// it got, which is what the UI header shows.
-func TestClientSelectsItsTransport(t *testing.T) {
-	tests := []struct {
-		name   string
-		config Config
-		want   string
-	}{
-		{
-			name:   "an OpenAI reasoning model uses responses",
-			config: Config{Provider: OpenAI, Model: "gpt-5.4-mini", APIKey: "k"},
-			want:   TransportResponses,
-		},
-		{
-			name:   "everything else uses chat-completions",
-			config: Config{Provider: Groq, Model: "glm-5.2", APIKey: "k"},
-			want:   TransportChatCompletions,
-		},
-		{
-			name:   "an explicit override is honoured",
-			config: Config{Provider: OpenAI, Model: "gpt-4o", APIKey: "k", UseResponses: true},
-			want:   TransportResponses,
-		},
+// The client picks its transport and reports which one it got, which is what
+// the UI header shows.
+func TestClientUsesChatCompletions(t *testing.T) {
+	client, err := New(Config{Provider: "gw", Model: "gpt-5.4-mini", APIKey: "k", BaseURL: "https://gw.example.com/v1"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			client, err := New(test.config)
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
-
-			if got := client.Transport(); got != test.want {
-				t.Errorf("Transport = %q, want %q", got, test.want)
-			}
-		})
+	if got := client.Transport(); got != TransportChatCompletions {
+		t.Errorf("Transport = %q, want %q", got, TransportChatCompletions)
 	}
 }

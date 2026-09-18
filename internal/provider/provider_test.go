@@ -18,48 +18,48 @@ func TestResolveDefaultsAndValidation(t *testing.T) {
 		wantURL string
 	}{
 		{
-			name:    "a known provider fills in its endpoint",
-			config:  Config{Provider: OpenAI, Model: "gpt-5.4", APIKey: "k"},
-			wantURL: "https://api.openai.com/v1",
-		},
-		{
-			name:    "no provider defaults to openai",
-			config:  Config{Model: "gpt-5.4", APIKey: "k"},
-			wantURL: "https://api.openai.com/v1",
-		},
-		{
-			name:    "ollama needs no key",
-			config:  Config{Provider: Ollama, Model: "llama-4"},
-			wantURL: "http://localhost:11434/v1",
-		},
-		{
-			name:    "a custom https endpoint is accepted",
-			config:  Config{Provider: Custom, Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1/"},
+			name:    "an https endpoint is accepted, and its trailing slash trimmed",
+			config:  Config{Provider: "custom", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1/"},
 			wantURL: "https://gw.example.com/v1",
 		},
 		{
-			name:    "a loopback endpoint may be plaintext",
-			config:  Config{Provider: Custom, Model: "m", BaseURL: "http://127.0.0.1:8080/v1"},
+			name:    "a loopback endpoint may be plaintext and go without a key",
+			config:  Config{Provider: "local", Model: "llama-4", BaseURL: "http://127.0.0.1:8080/v1"},
 			wantURL: "http://127.0.0.1:8080/v1",
 		},
 		{
+			name:    "localhost needs no key either",
+			config:  Config{Provider: "local", Model: "llama-4", BaseURL: "http://localhost:11434/v1"},
+			wantURL: "http://localhost:11434/v1",
+		},
+		{
 			name:    "a plaintext remote endpoint is refused",
-			config:  Config{Provider: Custom, Model: "m", APIKey: "k", BaseURL: "http://gw.example.com/v1"},
+			config:  Config{Provider: "custom", Model: "m", APIKey: "k", BaseURL: "http://gw.example.com/v1"},
 			wantErr: true,
 		},
 		{
-			name:    "an unknown provider without a base URL is refused",
-			config:  Config{Provider: "nope", Model: "m", APIKey: "k"},
+			name:    "there is no built-in endpoint: a provider without a base URL is refused",
+			config:  Config{Provider: "openai", Model: "gpt-5.4", APIKey: "k"},
 			wantErr: true,
 		},
 		{
-			name:    "a provider that needs a key is refused without one",
-			config:  Config{Provider: OpenAI, Model: "m"},
+			name:    "a remote endpoint is refused without a key",
+			config:  Config{Provider: "custom", Model: "m", BaseURL: "https://gw.example.com/v1"},
 			wantErr: true,
 		},
 		{
 			name:    "no model is refused",
-			config:  Config{Provider: OpenAI, APIKey: "k"},
+			config:  Config{Provider: "custom", APIKey: "k", BaseURL: "https://gw.example.com/v1"},
+			wantErr: true,
+		},
+		{
+			name:    "the openai driver is accepted",
+			config:  Config{Provider: "custom", Driver: "openai", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1"},
+			wantURL: "https://gw.example.com/v1",
+		},
+		{
+			name:    "any other driver is refused",
+			config:  Config{Provider: "custom", Driver: "anthropic", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1"},
 			wantErr: true,
 		},
 	}
@@ -84,6 +84,17 @@ func TestResolveDefaultsAndValidation(t *testing.T) {
 				t.Errorf("base URL = %q, want %q", resolved.BaseURL, test.wantURL)
 			}
 		})
+	}
+}
+
+func TestResolveDefaultsDriverToOpenAI(t *testing.T) {
+	resolved, err := (Config{Provider: "custom", Model: "gpt-5.4", APIKey: "k", BaseURL: "https://gw.example.com/v1"}).Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if resolved.Driver != DriverOpenAI {
+		t.Errorf("Driver = %q, want the default %q", resolved.Driver, DriverOpenAI)
 	}
 }
 
@@ -380,37 +391,19 @@ func TestAuthErrorsAreIdentified(t *testing.T) {
 }
 
 func TestClientExposesItsConfig(t *testing.T) {
-	client, err := New(Config{Provider: Groq, Model: "glm-5.2", APIKey: "k"})
+	client, err := New(Config{Provider: "gw", Model: "glm-5.2", APIKey: "k", BaseURL: "https://gw.example.com/v1"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
 	config := client.Config()
 
-	if config.Provider != Groq || config.Model != "glm-5.2" {
+	if config.Provider != "gw" || config.Model != "glm-5.2" {
 		t.Errorf("Config = %+v", config)
 	}
 
 	if config.BaseURL == "" {
 		t.Error("the resolved endpoint must be visible")
-	}
-}
-
-// The provider list is what an error message offers, so it must be complete and
-// include the escape hatch.
-func TestProvidersListsEveryProvider(t *testing.T) {
-	providers := Providers()
-
-	seen := map[string]bool{}
-
-	for _, name := range providers {
-		seen[name] = true
-	}
-
-	for _, want := range []string{OpenAI, Anthropic, Groq, Mistral, Ollama, Custom} {
-		if !seen[want] {
-			t.Errorf("%q should be listed", want)
-		}
 	}
 }
 
@@ -466,7 +459,7 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// no key: a loopback endpoint carries the credential waiver too, so
 			// both halves of the rule are exercised at once
-			_, err := Config{Provider: Custom, Model: "m", BaseURL: test.baseURL}.Resolve()
+			_, err := Config{Provider: "custom", Model: "m", BaseURL: test.baseURL}.Resolve()
 
 			if test.wantErr {
 				if err == nil {
@@ -488,7 +481,7 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 // rather than at the base_url they just added.
 func TestACustomEndpointExplainsWhyItNeedsItsOwnKey(t *testing.T) {
 	_, err := Config{
-		Provider: OpenAI,
+		Provider: "proxy",
 		Model:    "gpt-4o",
 		BaseURL:  "https://proxy.example.com/v1",
 	}.Resolve()
@@ -506,144 +499,33 @@ func TestACustomEndpointExplainsWhyItNeedsItsOwnKey(t *testing.T) {
 	}
 }
 
-// zot calls OpenRouter and the Vercel AI Gateway, both of which publish
-// rankings of the apps calling them and both of which read the same two
-// headers. Sending nothing meant zot was invisible on both.
-func TestAttributionIsSentToRankingGatewaysOnly(t *testing.T) {
-	tests := []struct {
-		name     string
-		provider string
-		want     bool
-	}{
-		{"openrouter ranks apps", OpenRouter, true},
-		{"vercel ranks apps", Vercel, true},
-		{
-			// a first-party API reads neither header, so sending one only tells
-			// the model provider which tool is calling
-			"a first-party provider is told nothing",
-			OpenAI,
-			false,
-		},
-		{"a local provider is told nothing", Ollama, false},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			resolved, err := Config{Provider: test.provider, Model: "m", APIKey: "k"}.Resolve()
-			if err != nil {
-				t.Fatalf("Resolve: %v", err)
-			}
-
-			referer, title := resolved.Headers[headerReferer], resolved.Headers[headerTitle]
-
-			if !test.want {
-				if referer != "" || title != "" {
-					t.Errorf("attribution sent to %s: %q / %q", test.provider, referer, title)
-				}
-
-				return
-			}
-
-			if referer != DefaultAttributionURL {
-				t.Errorf("%s = %q, want %q", headerReferer, referer, DefaultAttributionURL)
-			}
-
-			if title != DefaultAttributionName {
-				t.Errorf("%s = %q, want %q", headerTitle, title, DefaultAttributionName)
-			}
-		})
-	}
-}
-
-// The default is a courtesy, not a policy: a tool built on zot attributes
-// itself, and a user who wants to appear nowhere says so.
-func TestAttributionIsConfigurable(t *testing.T) {
-	custom, err := Config{
-		Provider:    OpenRouter,
-		Model:       "m",
-		APIKey:      "k",
-		Attribution: Attribution{Name: "acme-bot", URL: "https://acme.example"},
-	}.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-
-	if got := custom.Headers[headerTitle]; got != "acme-bot" {
-		t.Errorf("%s = %q, want the configured name", headerTitle, got)
-	}
-
-	if got := custom.Headers[headerReferer]; got != "https://acme.example" {
-		t.Errorf("%s = %q, want the configured URL", headerReferer, got)
-	}
-
-	off, err := Config{
-		Provider:    OpenRouter,
-		Model:       "m",
-		APIKey:      "k",
-		Attribution: Attribution{Disabled: true},
-	}.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-
-	if len(off.Headers) != 0 {
-		t.Errorf("headers = %v, want nothing sent when attribution is disabled", off.Headers)
-	}
-}
-
-// An explicit header is the caller having already said what they want, so a
-// default that overrode it would be a bug rather than a courtesy. Matched
-// case-insensitively because that is what an HTTP header is - otherwise a
-// hand-written "http-referer" would be joined by zot's own, not replaced by it.
-func TestAnExplicitHeaderBeatsAttribution(t *testing.T) {
-	resolved, err := Config{
-		Provider: OpenRouter,
-		Model:    "m",
-		APIKey:   "k",
-		Headers:  map[string]string{"http-referer": "https://mine.example"},
-	}.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-
-	if got := resolved.Headers["http-referer"]; got != "https://mine.example" {
-		t.Errorf("http-referer = %q, want the caller's value kept", got)
-	}
-
-	if _, duplicated := resolved.Headers[headerReferer]; duplicated {
-		t.Error("zot added its own referer alongside the caller's; one header, one value")
-	}
-
-	// the title was not set by the caller, so it still gets the default
-	if got := resolved.Headers[headerTitle]; got != DefaultAttributionName {
-		t.Errorf("%s = %q, want the default to still apply", headerTitle, got)
-	}
-}
-
 // Resolving must not write through to the caller's map: a Config is a value,
-// and a caller that resolved twice would otherwise accumulate zot's headers in
-// the map it passed in.
+// and a caller that resolved twice would otherwise share one map between them.
 func TestResolveDoesNotMutateTheCallersHeaders(t *testing.T) {
 	original := map[string]string{"X-Route": "eu"}
 
-	if _, err := (Config{
-		Provider: OpenRouter,
+	resolved, err := (Config{
+		Provider: "gw",
 		Model:    "m",
 		APIKey:   "k",
+		BaseURL:  "https://gw.example.com/v1",
 		Headers:  original,
-	}).Resolve(); err != nil {
+	}).Resolve()
+	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
+
+	resolved.Headers["X-Other"] = "1"
 
 	if len(original) != 1 {
 		t.Errorf("the caller's header map grew to %v", original)
 	}
 }
 
-// Resolving the headers is not the same as sending them. This drives a real
-// request at a local server and reads what arrived - which is also the only way
-// to see what Go's header canonicalisation does to "HTTP-Referer" on the wire.
-func TestAttributionReachesTheWire(t *testing.T) {
+// A configured header reaches the wire, and zot adds none of its own: it names
+// itself to nobody, since the endpoint is the operator's and what it is told
+// about the caller is the operator's to say.
+func TestOnlyConfiguredHeadersReachTheWire(t *testing.T) {
 	var got http.Header
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -655,13 +537,12 @@ func TestAttributionReachesTheWire(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	// Custom with an openrouter base URL would not attribute - the provider
-	// identifier is what selects it - so name the provider and point it here.
 	client, err := New(Config{
-		Provider: OpenRouter,
+		Provider: "gw",
 		Model:    "m",
 		APIKey:   "k",
 		BaseURL:  server.URL,
+		Headers:  map[string]string{"X-Route": "eu"},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -676,15 +557,14 @@ func TestAttributionReachesTheWire(t *testing.T) {
 		t.Fatal("the server saw no request")
 	}
 
-	// http.Header.Get is case-insensitive, which is what an HTTP header is and
-	// what both gateways match on - the canonical form Go writes ("Http-Referer")
-	// is the same header as the "HTTP-Referer" their docs spell.
-	if referer := got.Get(headerReferer); referer != DefaultAttributionURL {
-		t.Errorf("%s = %q, want %q", headerReferer, referer, DefaultAttributionURL)
+	if route := got.Get("X-Route"); route != "eu" {
+		t.Errorf("X-Route = %q, want the configured value", route)
 	}
 
-	if title := got.Get(headerTitle); title != DefaultAttributionName {
-		t.Errorf("%s = %q, want %q", headerTitle, title, DefaultAttributionName)
+	for _, unasked := range []string{"HTTP-Referer", "X-Title"} {
+		if value := got.Get(unasked); value != "" {
+			t.Errorf("%s = %q was sent unasked", unasked, value)
+		}
 	}
 }
 
@@ -723,7 +603,7 @@ func TestTheChatTransportMarksAMidStreamError(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := New(Config{Provider: Custom, Model: "m", APIKey: "k", BaseURL: server.URL})
+	client, err := New(Config{Provider: "custom", Model: "m", APIKey: "k", BaseURL: server.URL})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

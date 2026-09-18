@@ -1,8 +1,10 @@
 # zot configuration.
 #
-# Every field is optional - zot runs with built-in defaults when no config file
-# is present. Copy this file to ~/.config/zot/config.yaml (or pass it with
-# --config) and adjust as needed.
+# zot has no built-in providers and no default model: before a run can start,
+# declare a provider under `providers:` (at the bottom), name it with
+# default_provider, and set agent.model. Every other field is optional. Copy
+# this file to ~/.config/zot/config.yaml (or pass it with --config) and adjust
+# as needed.
 #
 # ENVIRONMENT VARIABLES (no file required - ideal for containers/CI):
 # Every scalar field below has a matching env var, ZOT_<PATH>, where PATH is the
@@ -22,31 +24,19 @@
 #   ui.color              -> ZOT_UI_COLOR
 #   ui.scrollback         -> ZOT_UI_SCROLLBACK
 #   default_provider       -> ZOT_DEFAULT_PROVIDER
-#   attribution.name      -> ZOT_ATTRIBUTION_NAME
-#   attribution.url       -> ZOT_ATTRIBUTION_URL
-#   attribution.disabled  -> ZOT_ATTRIBUTION_DISABLED
 #   update_check.disabled -> ZOT_UPDATE_CHECK_DISABLED
 #
-# Credentials: put the key DIRECTLY in this file, or reference an environment
-# variable with $VAR - either works. Each built-in provider also reads its
-# provider's conventional variable, so exporting that is usually enough:
-#   openai     -> OPENAI_API_KEY          anthropic  -> ANTHROPIC_API_KEY
-#   groq       -> GROQ_API_KEY            mistral    -> MISTRAL_API_KEY
-#   deepseek   -> DEEPSEEK_API_KEY        openrouter -> OPENROUTER_API_KEY
-#   together   -> TOGETHER_API_KEY        cerebras   -> CEREBRAS_API_KEY
-#   xai        -> XAI_API_KEY             moonshot   -> MOONSHOT_API_KEY
-#   zai        -> ZAI_API_KEY             qwen       -> DASHSCOPE_API_KEY
-#   vercel     -> AI_GATEWAY_API_KEY     ollama     -> none (local)
+# Credentials: put the key DIRECTLY in a provider's api_key, or reference an
+# environment variable with $VAR - either works. Nothing is read from a
+# conventional variable on your behalf: a key is scoped to the host it was issued
+# for, so each provider says which one it uses.
 
 agent:
-  # Model name that drives the agent, as the selected provider names it. zot
-  # works well across open models (glm-5.2, kimi-k3, deepseek-v4-flash) and top
-  # coding models from OpenAI and Anthropic (gpt-5.4-mini, claude-5-sonnet).
-  #
-  # Whatever you pick, make sure default_provider below actually serves it. A
-  # model and a provider that cannot talk to each other fail as a provider error
+  # Model name that drives the agent, as the selected provider names it. There
+  # is no default. Make sure default_provider below actually serves it: a model
+  # and a provider that cannot talk to each other fail as a provider error
   # rather than a configuration one, which is much harder to read.
-  model: "glm-5.2"
+  model: "my-model"
 
   # The one finite backstop on run length: the maximum number of plan/act/observe
   # cycles before the agent is forced to stop. Tool calls and time are unbounded
@@ -163,30 +153,6 @@ ui:
   # (Config file only - a list has no single environment variable.)
   # stats: [model, provider, iter, tools, elapsed, tokens]
 
-# Providers are the named inference connections a run can target. They may be
-# direct model services, local servers, or gateways. Pick one per run with
-# --provider; otherwise default_provider is used.
-#
-# A provider named after a built-in driver needs no further configuration: the
-# driver is inferred from the name and the credential comes from its conventional
-# environment variable. Its `models` block is optional too: omit it to use any
-# model (with catalogued models providing known capabilities), or define it as a
-# custom allowlist of aliases for this connection.
-# How zot names itself to a gateway that ranks the apps calling it - OpenRouter's
-# site rankings, the Vercel AI Gateway leaderboards. Both read the same two
-# headers (HTTP-Referer, X-Title) and both ignore them if absent.
-#
-# Nothing about you or the run travels with this: it is zot's own name and
-# project URL, identical for every zot in the world, and it is sent only to those
-# two gateways - never to a first-party API, which would learn which tool is
-# calling for no benefit to anyone. Set `name`/`url` to attribute a tool built on
-# zot instead, or `disabled: true` to send nothing. A header you set yourself
-# under `providers.<name>` wins over all of this.
-# attribution:
-#   name: zot
-#   url: https://github.com/openzot/openzot
-#   disabled: false
-
 # The release check. A release build asks GitHub for the latest zot release
 # while a run is going and, if this binary is behind, says so on stderr once the
 # run ends - with the one-line installer, which upgrades in place. It is the only
@@ -198,64 +164,38 @@ ui:
 # update_check:
 #   disabled: false
 
-default_provider: zai
+# Providers are the named inference connections a run can target: direct model
+# services, local servers, or gateways. None are built in - every one is declared
+# here. Pick one per run with --provider; otherwise default_provider is used.
+default_provider: mygateway
 
 providers:
-  # The default, paired with the default model above: glm-5.2 served by Z.AI.
-  # The common case is nothing here at all, and ZAI_API_KEY in the environment.
-  zai:
-    # api_key: '$ZAI_API_KEY'
+  # Any endpoint that speaks the OpenAI chat-completions API. base_url is
+  # required and must be https (unless loopback); the key is required too, since
+  # zot will not forward a credential issued for one host to another.
+  mygateway:
+    # The only driver is 'openai' - the OpenAI-compatible chat-completions API,
+    # which any endpoint may speak, not only OpenAI's. It is the default, so this
+    # line can be left out.
+    driver: openai
+    base_url: 'https://gateway.internal.example.com/v1'
+    api_key: '$GATEWAY_KEY'
 
-  # Any other provider works the same way.
-  openai:
-    # api_key: '$OPENAI_API_KEY'
+    # Optional custom model list. When present, --model must name one of these
+    # keys. Each entry can alias the provider's real model ID and override its
+    # run settings. Omit the block to accept any model name.
+    # models:
+    #   fast:
+    #     model: 'gpt-5.4-mini'
+    #     max_iterations: 50
+    #     # real context window of the serving endpoint, in tokens - the escape
+    #     # hatch for a model whose endpoint ceiling is smaller than its card
+    #     # (compaction then fires before the endpoint rejects the request)
+    #     context: 32000
+    #     # send every message's content as an array of parts, for llama.cpp
+    #     # templates that reject a bare string
+    #     content_array: true
 
-  anthropic:
-    # api_key: '$ANTHROPIC_API_KEY'
-
-  # On OpenAI, reasoning models use the Responses API automatically: it carries
-  # reasoning state between tool rounds, which chat-completions cannot.
-
-  # A local model needs no key.
-  ollama:
-    # base_url: 'http://localhost:11434/v1'
-
-  # Model gateways - one endpoint fronting many providers, addressed by a
-  # provider-qualified model name like 'openai/gpt-5.4' or 'anthropic/claude-5-sonnet'
-  # passed to --model. These two have a fixed endpoint, so the key is all they need.
-  openrouter:
-    # api_key: '$OPENROUTER_API_KEY'
-
-  vercel:
-    # api_key: '$AI_GATEWAY_API_KEY'
-
-  # The Cloudflare AI Gateway is also a gateway, but its URL carries your account
-  # and gateway ids, so there is no fixed endpoint - name the provider and give
-  # the compat URL. The key is the downstream provider's.
-  cloudflare:
-  #   base_url: 'https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/compat'
-  #   api_key: '$OPENAI_API_KEY'
-
-  # Anything else that speaks the OpenAI chat-completions API. A custom endpoint
-  # must be https (unless loopback) and needs its own key: zot will not forward a
-  # credential issued for one host to another.
-  # mygateway:
-  #   driver: custom
-  #   base_url: 'https://gateway.internal.example.com/v1'
-  #   api_key: '$GATEWAY_KEY'
-  #
-  #   # Optional custom model list. When present, --model must name one of these
-  #   # keys. Each entry can alias the provider's real model ID and override its
-  #   # run settings. Omit the block to use the built-in catalogue or a new model
-  #   # Zot has not catalogued yet.
-  #   models:
-  #     fast:
-  #       model: 'gpt-5.4-mini'
-  #       max_iterations: 50
-  #       # real context window of the serving endpoint, in tokens - the escape
-  #       # hatch for a model whose endpoint ceiling is smaller than its card
-  #       # (compaction then fires before the endpoint rejects the request)
-  #       context: 32000
-  #       # send every message's content as an array of parts, for llama.cpp
-  #       # templates that reject a bare string
-  #       content_array: true
+  # A local server needs no key.
+  # local:
+  #   base_url: 'http://localhost:11434/v1'

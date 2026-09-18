@@ -19,7 +19,7 @@ func serve(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Cleanup(server.Close)
 
 	client, err := New(Config{
-		Provider: Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "test-key",
 		BaseURL:  server.URL,
@@ -312,7 +312,7 @@ func TestStreamSendsContentAsArrayWhenAsked(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			client, err := New(Config{
-				Provider:     Custom,
+				Provider:     "custom",
 				Model:        "test-model",
 				APIKey:       "test-key",
 				BaseURL:      server.URL,

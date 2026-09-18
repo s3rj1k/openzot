@@ -320,17 +320,12 @@ func TestExportKeepsSupersededConversationsAsSnapshots(t *testing.T) {
 	}
 }
 
-// A turn's reasoning can arrive as a message of its own or as the reasoning
-// items riding on its first tool call; the export reads either, and prefers the
-// message when both are present.
-func TestExportReadsReasoningFromToolCallItems(t *testing.T) {
+// A structured tool result is rendered as JSON, and a session without a result
+// does not export as complete.
+func TestExportRendersAStructuredToolResult(t *testing.T) {
 	session := &Session{Meta: Meta{ID: "x"}, Messages: []Message{
 		{Type: "activity", Activity: &Activity{
 			Kind: "request", ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`,
-			ReasoningItems: []provider.ReasoningItem{{
-				ID:      "r1",
-				Summary: []any{map[string]any{"type": "summary_text", "text": "list the tree"}},
-			}},
 		}},
 		{Type: "activity", Activity: &Activity{Kind: "response", ID: "c1", Name: "shell", Result: map[string]any{"stdout": "a\n"}}},
 	}}
@@ -338,10 +333,6 @@ func TestExportReadsReasoningFromToolCallItems(t *testing.T) {
 	trajectory, err := Export(session, nil, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
-	}
-
-	if trajectory.Messages[0].Reasoning != "list the tree" {
-		t.Errorf("reasoning = %q", trajectory.Messages[0].Reasoning)
 	}
 
 	// a structured tool result is rendered as JSON, the way the model read it

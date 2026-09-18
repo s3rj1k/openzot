@@ -772,7 +772,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 		if len(turn.ToolCalls) > 0 {
 			var stop *Result
 
-			messages, stop = e.dispatch(ctx, messages, turn.ToolCalls, turn.ReasoningItems, turn.ReasoningDetails, &budget, emit)
+			messages, stop = e.dispatch(ctx, messages, turn.ToolCalls, turn.ReasoningDetails, &budget, emit)
 
 			if stop != nil {
 				return *stop
@@ -851,13 +851,8 @@ type turnResult struct {
 	ToolCalls    []provider.ToolCall
 	FinishReason string
 
-	// ReasoningItems is the opaque reasoning state the turn produced. It has to
-	// be replayed with the calls it produced: the transport that requests it
-	// tells the provider to store nothing, so this is the only copy there is.
-	ReasoningItems []provider.ReasoningItem
-
-	// ReasoningDetails is the chat-completions reasoning state, replayed the
-	// same way on the assistant message that carries the calls.
+	// ReasoningDetails is the gateway's reasoning state, replayed on the
+	// assistant message that carries the calls.
 	ReasoningDetails json.RawMessage
 
 	// InputTokens and OutputTokens are the prompt- and completion-token counts the
@@ -925,10 +920,6 @@ func (e *Engine) runTurn(ctx context.Context, request provider.Request, emit fun
 			result.ToolCalls = event.ToolCalls
 		}
 
-		if len(event.ReasoningItems) > 0 {
-			result.ReasoningItems = event.ReasoningItems
-		}
-
 		if len(event.ReasoningDetails) > 0 {
 			result.ReasoningDetails = event.ReasoningDetails
 		}
@@ -994,7 +985,6 @@ func (e *Engine) dispatch(
 	ctx context.Context,
 	messages []Message,
 	calls []provider.ToolCall,
-	reasoningItems []provider.ReasoningItem,
 	reasoningDetails json.RawMessage,
 	budget *Budget,
 	emit func(Event),
@@ -1023,7 +1013,6 @@ func (e *Engine) dispatch(
 		// the turn's reasoning state rides on its first call, so it is replayed
 		// once ahead of the calls rather than once per call
 		if first {
-			request.Activity.ReasoningItems = reasoningItems
 			request.Activity.ReasoningDetails = reasoningDetails
 
 			first = false

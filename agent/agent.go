@@ -11,9 +11,10 @@
 // See ExecuteWithTools.
 //
 //	client, _ := agent.NewClient(agent.ClientOptions{
-//	    Provider: "zai",
-//	    Model:    "glm-5.2",
-//	    APIKey:   os.Getenv("ZAI_API_KEY"),
+//	    Provider: "local",
+//	    BaseURL:  "https://models.example.com/v1",
+//	    Model:    "my-model",
+//	    APIKey:   os.Getenv("MODEL_API_KEY"),
 //	})
 //
 //	events, errs := agent.ExecuteWithTools(ctx, client, agent.ExecuteWithToolsOptions{
@@ -42,53 +43,42 @@ type Client struct {
 
 // ClientOptions configures a Client.
 type ClientOptions struct {
-	// Provider names the model provider: "openai", "anthropic", "groq", "mistral",
-	// "ollama" and so on. Defaults to "openai".
-	//
-	// Anything else that speaks the OpenAI chat-completions API works too - name
-	// it "custom" and give it a BaseURL.
+	// Provider is the caller's name for this connection. Informational: it
+	// labels errors and diagnostics.
 	Provider string
+
+	// Driver is the wire implementation. Empty uses "openai", the only one: the
+	// OpenAI-compatible chat-completions API.
+	Driver string
 
 	// Model is the provider's own model name.
 	Model string
 
-	// APIKey authenticates against the provider. Not required for local
-	// providers such as Ollama.
+	// APIKey authenticates against the endpoint. Not required when BaseURL is
+	// loopback.
 	APIKey string
 
-	// BaseURL overrides the provider's default endpoint, for gateways and
-	// self-hosted deployments. Must be https unless it is loopback.
+	// BaseURL is the endpoint root. Required, and must be https unless it is
+	// loopback.
 	BaseURL string
 
-	// Headers are merged into every request. An entry here wins over the
-	// attribution headers below.
+	// Headers are merged into every request.
 	Headers map[string]string
-
-	// Attribution names the calling app to a gateway that publishes rankings
-	// from it. The zero value sends zot's own name and project URL; set
-	// Disabled to send nothing, or Name/URL to attribute a tool built on zot.
-	Attribution Attribution
 
 	// ContentArray sends every message's content as an array of parts, for a
 	// self-hosted endpoint whose chat template rejects the bare string.
 	ContentArray bool
 }
 
-// Attribution is the app identity sent to gateways that rank the apps calling
-// them. Only OpenRouter and the Vercel AI Gateway read it, and it carries
-// nothing about the user or the run - see the provider package for the details.
-type Attribution = provider.Attribution
-
 // NewClient validates the options and returns a client.
 func NewClient(options ClientOptions) (*Client, error) {
 	inner, err := provider.New(provider.Config{
-		Provider: options.Provider,
-		Model:    options.Model,
-		APIKey:   options.APIKey,
-		BaseURL:  options.BaseURL,
-		Headers:  options.Headers,
-
-		Attribution:  options.Attribution,
+		Provider:     options.Provider,
+		Driver:       options.Driver,
+		Model:        options.Model,
+		APIKey:       options.APIKey,
+		BaseURL:      options.BaseURL,
+		Headers:      options.Headers,
 		ContentArray: options.ContentArray,
 	})
 	if err != nil {
@@ -103,9 +93,14 @@ func (c *Client) Model() string {
 	return c.inner.Config().Model
 }
 
-// Provider returns the resolved provider identifier.
+// Provider returns the connection's name.
 func (c *Client) Provider() string {
 	return c.inner.Config().Provider
+}
+
+// Driver returns the resolved driver.
+func (c *Client) Driver() string {
+	return c.inner.Config().Driver
 }
 
 // BaseURL returns the endpoint the client will call.
@@ -113,10 +108,8 @@ func (c *Client) BaseURL() string {
 	return c.inner.Config().BaseURL
 }
 
-// Providers lists the recognised provider identifiers.
-func Providers() []string {
-	return provider.Providers()
-}
+// DriverOpenAI is the only driver: the OpenAI-compatible chat-completions API.
+const DriverOpenAI = provider.DriverOpenAI
 
 // MessageType identifies what a message is. See the constants below.
 type MessageType = loop.MessageType
@@ -177,10 +170,10 @@ type SummaryRecorder struct {
 	Summary *Summary
 }
 
-func (r *SummaryRecorder) RecordMessage(Message) error                     { return nil }
-func (r *SummaryRecorder) RecordEvent(_, _, _ string, _ int) error         { return nil }
-func (r *SummaryRecorder) RecordFailure(*Failure) error                    { return nil }
-func (r *SummaryRecorder) RecordReset() error                              { return nil }
+func (r *SummaryRecorder) RecordMessage(Message) error             { return nil }
+func (r *SummaryRecorder) RecordEvent(_, _, _ string, _ int) error { return nil }
+func (r *SummaryRecorder) RecordFailure(*Failure) error            { return nil }
+func (r *SummaryRecorder) RecordReset() error                      { return nil }
 
 func (r *SummaryRecorder) RecordResult(summary Summary) error {
 	captured := summary

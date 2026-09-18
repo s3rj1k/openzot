@@ -18,10 +18,10 @@ Most coding tools optimize the conversation between a developer and an agent.
 zot optimizes the production run: it drives the whole job from one brief, without
 a follow-up prompt at every step and without a hosted engine.
 
-It talks straight to a model provider over the OpenAI-compatible API - OpenAI,
-Anthropic, Groq, Mistral, DeepSeek, OpenRouter, a local Ollama, or anything else
-that speaks the same API - so all you need is a provider key. No account beyond
-the provider's own, and nothing is sent anywhere except the provider you
+It talks straight to a model provider over the OpenAI-compatible API - a hosted
+service, a gateway, a local server, anything that speaks that API - so all you
+need is an endpoint you declare and a key for it. No account beyond the
+provider's own, and nothing is sent anywhere except the provider you
 configure. See [providers.md](providers.md).
 
 ## Work orders, not prompts

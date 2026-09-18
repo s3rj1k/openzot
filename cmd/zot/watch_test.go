@@ -104,7 +104,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
 `
@@ -206,7 +206,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
 `), 0o644); err != nil {
@@ -448,7 +448,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)

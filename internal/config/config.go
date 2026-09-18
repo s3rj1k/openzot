@@ -1,5 +1,8 @@
 // Package config loads zot's configuration, layering built-in defaults, an
 // optional YAML file, and environment variables (defaults < file < env).
+//
+// zot ships no providers: every connection a run can target is declared under
+// `providers:` in the config, with its own endpoint and credential.
 package config
 
 import (
@@ -31,15 +34,12 @@ type Config struct {
 	// mid-run, by the operator or by the agent itself, surface on the model's
 	// next turn.
 	SkillDirectories []string `yaml:"-"`
-	// DefaultProvider is the provider used when --provider is not given.
+	// DefaultProvider names the entry in Providers used when --provider is not
+	// given. There is no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`
-	// Providers are the named model-provider connections a run can target. zot
-	// ships with one for each provider it knows, and a config file can override
-	// their credentials or endpoint, or add custom model entries.
+	// Providers are the named model-provider connections a run can target. None
+	// are built in; each is declared here with a base_url and an api_key.
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	// Attribution is how zot names itself to a gateway that ranks the apps
-	// calling it. The zero value sends zot's own name and project URL.
-	Attribution Attribution `yaml:"attribution"`
 	// UpdateCheck controls the release check a run makes against GitHub. The
 	// zero value checks.
 	UpdateCheck UpdateCheck `yaml:"update_check"`
@@ -56,48 +56,29 @@ type UpdateCheck struct {
 	Disabled bool `yaml:"disabled"`
 }
 
-// Attribution is the app identity sent to gateways that publish rankings from
-// it - OpenRouter's site rankings, Vercel's AI Gateway leaderboards. Nothing
-// about the user or the run travels with it: it is the same two values for
-// every zot in the world, and it is sent only to those gateways.
-type Attribution struct {
-	// Name is the app name a gateway lists. Empty sends "zot".
-	Name string `yaml:"name"`
-	// URL is the project link a gateway lists. Empty sends zot's repository.
-	URL string `yaml:"url"`
-	// Disabled sends no attribution headers at all.
-	Disabled bool `yaml:"disabled"`
-}
-
 // ProviderConfig is a named model-provider connection zot can run against.
 // Every provider authenticates with a Bearer credential.
 type ProviderConfig struct {
-	// Driver names the provider implementation this connection uses: "openai",
-	// "anthropic", "groq", "ollama" and so on. Empty infers it from the
-	// provider's own name, so a provider called "groq" needs no further
-	// configuration.
-	//
-	// zot speaks the OpenAI-compatible chat-completions API to every provider, so
-	// a provider connection is a URL and a credential rather than a protocol of
-	// its own. The driver selects endpoint defaults and provider-specific quirks.
+	// Driver names the implementation this connection uses. Empty and "openai"
+	// are the same thing, and the only one there is: the OpenAI-compatible
+	// chat-completions API, which any endpoint may speak - it does not have to
+	// be OpenAI's.
 	Driver string `yaml:"driver"`
-	// BaseURL overrides the API endpoint. Empty uses the built-in default.
+	// BaseURL is the API endpoint root. Required, and https unless loopback.
 	BaseURL string `yaml:"base_url"`
 	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
-	// secret need be written to disk.
+	// secret need be written to disk. Required unless base_url is loopback.
 	APIKey string `yaml:"api_key"`
 	// Models is an optional custom model list for this provider. When omitted,
-	// callers can use the built-in catalogue. When present, its keys are the
-	// selectable names and each entry may alias or override that model.
+	// any model name is accepted and described by the built-in catalogue. When
+	// present, its keys are the selectable names and each entry may alias or
+	// override that model.
 	Models map[string]ModelConfig `yaml:"models"`
 }
 
 // ModelConfig is a custom model definition under a provider. Any field set here
 // overrides the run's defaults when the model is selected.
 type ModelConfig struct {
-	// Driver overrides the provider's driver for this model, so one provider
-	// connection can front several implementations.
-	Driver string `yaml:"driver"`
 	// Model is the underlying model id to send. Lets a custom name alias a real
 	// model; leave empty to use the selected name as-is.
 	Model string `yaml:"model"`
@@ -158,65 +139,35 @@ func (m ModelConfig) Capabilities(base catalogue.Model) catalogue.Model {
 	return base
 }
 
-// builtinProviders are the providers zot ships with. Each falls back to its
-// provider's conventional environment variable, so exporting that is the whole
-// setup. The endpoint is left empty where the provider package already knows it.
-var builtinProviders = map[string]struct {
-	baseURL   string
-	secretEnv string // the provider's conventional credential variable
-}{
-	// providers zot talks to directly, each reading its conventional key
-	"openai":     {secretEnv: "OPENAI_API_KEY"},
-	"anthropic":  {secretEnv: "ANTHROPIC_API_KEY"},
-	"groq":       {secretEnv: "GROQ_API_KEY"},
-	"mistral":    {secretEnv: "MISTRAL_API_KEY"},
-	"deepseek":   {secretEnv: "DEEPSEEK_API_KEY"},
-	"openrouter": {secretEnv: "OPENROUTER_API_KEY"},
-	"together":   {secretEnv: "TOGETHER_API_KEY"},
-	"cerebras":   {secretEnv: "CEREBRAS_API_KEY"},
-	"xai":        {secretEnv: "XAI_API_KEY"},
-	"moonshot":   {secretEnv: "MOONSHOT_API_KEY"},
-	"zai":        {secretEnv: "ZAI_API_KEY"},
-	"qwen":       {secretEnv: "DASHSCOPE_API_KEY"},
-	"ollama":     {},
-
-	// The Vercel AI Gateway: a fixed OpenAI-compatible endpoint, so it works
-	// with just the key. Cloudflare's is deliberately absent - its endpoint is
-	// account-specific, so a run configures it as a provider with a base_url
-	// rather than reaching for it by name with no setup.
-	"vercel": {secretEnv: "AI_GATEWAY_API_KEY"},
-}
-
-// ProviderDriver resolves which implementation a named provider uses.
-//
-// A provider named after a driver uses that driver, so the common case needs no
-// configuration at all. An aliased connection states its driver explicitly.
-func ProviderDriver(name string, provider ProviderConfig) string {
-	if provider.Driver != "" {
-		return provider.Driver
+// ProviderDriver resolves which implementation a provider uses. Empty is the
+// only driver there is, "openai".
+func ProviderDriver(provider ProviderConfig) string {
+	if provider.Driver == "" {
+		return DriverOpenAI
 	}
 
-	return name
+	return provider.Driver
 }
+
+// DriverOpenAI is the driver every provider uses: the OpenAI-compatible
+// chat-completions API.
+const DriverOpenAI = agent.DriverOpenAI
 
 // ProviderCredential returns the credential configured for a provider.
 func ProviderCredential(provider ProviderConfig) string {
 	return provider.APIKey
 }
 
-// ProviderModels returns the names exposed by a provider. An explicit custom
-// list replaces the built-in catalogue for that connection; otherwise the
-// provider's resolved driver selects its built-in models.
-func ProviderModels(name string, provider ProviderConfig) []string {
-	if len(provider.Models) > 0 {
-		names := make([]string, 0, len(provider.Models))
-		for name := range provider.Models {
-			names = append(names, name)
-		}
-		slices.Sort(names)
-		return names
+// ProviderModels returns the model names a provider was configured with, sorted.
+// Empty means no custom list: any model name is accepted.
+func ProviderModels(provider ProviderConfig) []string {
+	names := make([]string, 0, len(provider.Models))
+	for name := range provider.Models {
+		names = append(names, name)
 	}
-	return catalogue.NamesForProvider(ProviderDriver(name, provider))
+	slices.Sort(names)
+
+	return names
 }
 
 // UI holds presentation options for the read-only viewer.
@@ -339,22 +290,17 @@ func (a Agent) MaxDuration() (time.Duration, error) {
 
 // Defaults returns the built-in configuration used when nothing else is set.
 //
-// zot talks to model providers directly: export the provider's key and it runs,
-// with no account anywhere else.
-//
-// @note the default model and provider have to agree - glm-5.2 is served
-// natively by Z.AI, so that is the provider. A default pair that cannot
-// actually talk to each other is worse than no default, because the failure
-// arrives as a provider error rather than as a configuration one.
+// There is deliberately no default provider or model. Both name something the
+// operator runs against, and a pair that cannot actually talk to each other
+// fails as a provider error rather than a configuration one, which is much
+// harder to read. Validate says what is missing instead.
 func Defaults() Config {
 	return Config{
 		Agent: Agent{
-			Model:           "glm-5.2",
 			MaxIterations:   1_000_000,
 			ContextStrategy: agent.StrategyCompact,
 		},
-		UI:              UI{Color: "auto"},
-		DefaultProvider: "zai",
+		UI: UI{Color: "auto"},
 	}
 }
 
@@ -399,10 +345,6 @@ func Load(path string) (Config, error) {
 
 	resolveProviders(&cfg)
 
-	if cfg.DefaultProvider == "" {
-		cfg.DefaultProvider = "zai"
-	}
-
 	return cfg, nil
 }
 
@@ -431,52 +373,20 @@ func Portable() bool {
 	return len(portableConfig()) > 0
 }
 
-// resolveProviders ensures the built-in providers exist, fills their default
-// endpoint, and resolves every credential (config "$ENV" reference first, then
-// the built-in environment fallback) - the provider-level key and each model's
-// own key.
+// resolveProviders resolves every credential - the provider-level key and each
+// model's own key - from its "$ENV" reference, when it is one.
+//
+// The credential is only ever what the config says. There is no fallback to a
+// conventional environment variable: a key is scoped to the host it was issued
+// for, and guessing which one belongs to a URL somebody typed is how a
+// credential ends up in someone else's logs.
 func resolveProviders(cfg *Config) {
-	if cfg.Providers == nil {
-		cfg.Providers = map[string]ProviderConfig{}
-	}
-
-	for name := range builtinProviders {
-		if _, ok := cfg.Providers[name]; !ok {
-			cfg.Providers[name] = ProviderConfig{}
-		}
-	}
-
 	for name, p := range cfg.Providers {
-		builtin, isBuiltin := builtinProviders[name]
-
-		// whether the endpoint was typed rather than left at the built-in one,
-		// recorded before the default fills it in
-		overridden := p.BaseURL != ""
-
-		if !overridden && isBuiltin {
-			p.BaseURL = builtin.baseURL
-		}
-
-		// The credential, in whichever spelling it was written. Every one is
-		// resolved: `api_key` is the documented spelling, so a `$VAR` reference
-		// left unexpanded there would send the literal string "$MY_KEY" to the
-		// provider and come back as a 401 that reads like a bad key.
+		// Every spelling is resolved: a `$VAR` reference left unexpanded would
+		// send the literal string "$MY_KEY" to the provider and come back as a
+		// 401 that reads like a bad key.
 		p.APIKey = resolveSecret(p.APIKey)
 
-		// A built-in provider with nothing configured falls back to its
-		// provider's conventional variable, which is what makes `export
-		// OPENAI_API_KEY=…` enough on its own.
-		//
-		// Not once base_url has been overridden, though. The conventional key is
-		// scoped to the provider's own host, and forwarding it to a URL somebody
-		// typed into the config is how a provider credential ends up in someone
-		// else's logs - so overriding the endpoint costs the ambient fallback and
-		// the connection has to carry an api_key written for it.
-		if ProviderCredential(p) == "" && isBuiltin && builtin.secretEnv != "" && !overridden {
-			p.APIKey = strings.TrimSpace(os.Getenv(builtin.secretEnv))
-		}
-
-		// Per-model authorization.
 		for mName, mc := range p.Models {
 			if mc.APIKey != "" {
 				mc.APIKey = resolveSecret(mc.APIKey)
@@ -540,7 +450,7 @@ func ScrubProviderSecrets(cfg Config) {
 // Validate checks the fully-merged configuration.
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
-		return fmt.Errorf("agent.model must be set")
+		return fmt.Errorf("agent.model must be set (in the config, or with --model): zot has no default model")
 	}
 	if c.Agent.MaxIterations <= 0 {
 		return fmt.Errorf("agent.max_iterations must be a positive number")
@@ -579,29 +489,30 @@ func (c Config) Validate() error {
 				s, strings.Join(tui.KnownStats, ", "))
 		}
 	}
+	if strings.TrimSpace(c.DefaultProvider) == "" {
+		return fmt.Errorf(
+			"no provider selected: declare one under providers: in the config and name it with default_provider (or --provider) - zot has no built-in providers")
+	}
 	if _, ok := c.Providers[c.DefaultProvider]; !ok {
-		return fmt.Errorf("default provider %q is not configured", c.DefaultProvider)
+		return fmt.Errorf("provider %q is not configured (declare it under providers: with a base_url and api_key)", c.DefaultProvider)
 	}
 	if provider := c.Providers[c.DefaultProvider]; len(provider.Models) > 0 {
 		if _, ok := provider.Models[c.Agent.Model]; !ok {
 			return fmt.Errorf("model %q is not configured for provider %q (available: %s)",
-				c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(c.DefaultProvider, provider), ", "))
+				c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(provider), ", "))
 		}
 	}
 	for name, provider := range c.Providers {
-		// A provider either names a driver zot knows how to reach, or supplies
-		// its own endpoint. Neither means there is nowhere to send the request,
-		// and finding that out mid-run is worse than at load.
-		if provider.BaseURL != "" {
-			continue
+		if driver := ProviderDriver(provider); driver != DriverOpenAI {
+			return fmt.Errorf("providers.%s: driver %q is not known (the only driver is %q)",
+				name, driver, DriverOpenAI)
 		}
 
-		driver := ProviderDriver(name, provider)
-
-		if !slices.Contains(agent.Providers(), driver) {
-			return fmt.Errorf(
-				"providers.%s: driver %q is not known and no base_url is set (known: %s)",
-				name, driver, strings.Join(agent.Providers(), ", "))
+		// there is no built-in endpoint to fall back on, and finding out
+		// mid-run that there is nowhere to send the request is worse than at
+		// load
+		if provider.BaseURL == "" {
+			return fmt.Errorf("providers.%s: base_url is not set", name)
 		}
 	}
 	return nil

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/openzot/openzot/internal/provider"
@@ -294,12 +293,6 @@ func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
 					Function: FunctionCall{Name: activity.Name, Arguments: activity.Arguments},
 				})
 
-				// the reasoning state travels on the first call of a turn, so
-				// that is where it is read back from
-				if turn.Reasoning == "" && len(activity.ReasoningItems) > 0 {
-					turn.Reasoning = reasoningText(activity.ReasoningItems)
-				}
-
 			case "response":
 				flush()
 				out = append(out, ChatMessage{
@@ -428,27 +421,4 @@ func toolContent(activity *Activity) string {
 
 		return string(encoded)
 	}
-}
-
-// reasoningText flattens the reasoning items a turn carried into the text a
-// reader can use: the summaries, which are what the provider let through.
-// Encrypted state contributes nothing; the field is a convenience, not the
-// wire state.
-func reasoningText(items []provider.ReasoningItem) string {
-	var texts []string
-
-	for _, item := range items {
-		for _, entry := range item.Summary {
-			part, ok := entry.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
-				texts = append(texts, strings.TrimSpace(text))
-			}
-		}
-	}
-
-	return strings.Join(texts, "\n\n")
 }

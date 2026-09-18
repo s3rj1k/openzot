@@ -12,9 +12,7 @@ import (
 
 // The OpenAI chat-completions wire format.
 //
-// Every provider zot supports speaks it, which is why it is the default. Its one
-// structural weakness is that it has nowhere to carry a model's reasoning state
-// between turns - see transport_responses.go.
+// Every configured provider speaks it; it is the only wire format zot has.
 
 func init() {
 	RegisterTransport(TransportChatCompletions, func(httpClient *http.Client) Transport {

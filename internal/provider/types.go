@@ -43,31 +43,6 @@ type FunctionCall struct {
 	Arguments string `json:"arguments"`
 }
 
-// ReasoningItem is a model's own thinking, carried between turns as an opaque
-// item rather than as text.
-//
-// A reasoning model produces one alongside the tool calls it decided on, and
-// where nothing is stored server-side this is the only copy of it: replaying the
-// call without the item that produced it is rejected outright ("item … was
-// provided without its required 'reasoning' item"), and even where it is
-// accepted the model has to re-derive its thinking on every tool round. zot
-// never inspects the state - it comes out of one response and goes back into the
-// next untouched.
-// The tags are for zot's own persistence - the session log, and the loop's
-// thread round trip - not for the wire; the transport builds its own items.
-type ReasoningItem struct {
-	// ID identifies the item to the provider, and links it to the calls it
-	// produced.
-	ID string `json:"id,omitempty"`
-
-	// Summary is the précis the model emitted, replayed exactly as it arrived.
-	Summary []any `json:"summary,omitempty"`
-
-	// EncryptedContent is the state itself, returned inline only because the
-	// request asked for it.
-	EncryptedContent string `json:"encrypted_content,omitempty"`
-}
-
 // ChatMessage is one message in a request or response.
 type ChatMessage struct {
 	Role    string `json:"role"`
@@ -86,13 +61,8 @@ type ChatMessage struct {
 	// the answer.
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 
-	// ReasoningItems is the opaque reasoning state this turn produced, to be
-	// replayed with it. Never serialised here: the Responses transport that
-	// carries it builds its own items.
-	ReasoningItems []ReasoningItem `json:"-"`
-
-	// ReasoningDetails is the chat-completions counterpart: the gateway's
-	// structured reasoning blocks (OpenRouter's reasoning_details), replayed on
+	// ReasoningDetails is the gateway's structured reasoning blocks
+	// (OpenRouter's reasoning_details), replayed on
 	// the assistant message verbatim and in order. A reasoning model
 	// interleaves thinking with its tool calls, and a gateway that carries that
 	// thinking requires it back on the next request - dropping it degrades the
@@ -219,12 +189,8 @@ type Event struct {
 	// ToolCalls is the assembled set, emitted once when the turn ends.
 	ToolCalls []ToolCall
 
-	// ReasoningItems is the opaque reasoning state the turn produced, delivered
-	// on the same final event as the tool calls it belongs with.
-	ReasoningItems []ReasoningItem
-
-	// ReasoningDetails is the chat-completions reasoning state (see
-	// ChatMessage.ReasoningDetails), delivered on the final event.
+	// ReasoningDetails is the reasoning state (see ChatMessage.ReasoningDetails),
+	// delivered on the final event.
 	ReasoningDetails json.RawMessage
 
 	// FinishReason is set on the final event.

@@ -151,6 +151,7 @@ jobs:
             default_provider: openrouter
             providers:
               openrouter:
+                base_url: https://openrouter.ai/api/v1
                 api_key: $OPENROUTER_API_KEY
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

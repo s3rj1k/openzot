@@ -87,7 +87,7 @@ type Meta struct {
 
 	Model string `json:"model"`
 	// Provider is the selected named connection; Driver is the resolved
-	// implementation that handles its endpoint and protocol quirks.
+	// implementation that speaks to its endpoint.
 	Provider string `json:"provider"`
 	Driver   string `json:"driver"`
 
@@ -124,12 +124,11 @@ type Activity struct {
 	Result    any    `json:"result,omitempty"`
 	Failure   string `json:"failure,omitempty"`
 
-	// The turn's reasoning state, in whichever form the transport carries it.
-	// Without these a resumed run replays its calls stripped of the thinking
-	// that produced them - which a reasoning model's provider may reject
-	// outright, and at best degrades the model's continuity.
-	ReasoningItems   []provider.ReasoningItem `json:"reasoning_items,omitempty"`
-	ReasoningDetails json.RawMessage          `json:"reasoning_details,omitempty"`
+	// The turn's reasoning state. Without it a resumed run replays its calls
+	// stripped of the thinking that produced them - which a reasoning model's
+	// provider may reject outright, and at best degrades the model's
+	// continuity.
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // Event is something that happened during the run.

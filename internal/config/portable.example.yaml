@@ -23,19 +23,21 @@
 
 agent:
   # Bake the model/provider pair so the binary runs one specific configuration.
-  model: 'glm-5.2'
+  model: 'my-model'
 
 # Pin which provider a run targets when --provider is not given.
-default_provider: zai
+default_provider: mygateway
 
 providers:
   # Bake a credential to make the binary fully self-contained (no key needed at
   # the destination). Anything you write here is compiled in verbatim.
-  zai:
+  mygateway:
+    base_url: 'https://gateway.internal.example.com/v1'
     api_key: 'sk-...'
 
   # A $ENV_VAR reference is compiled in as the reference, NOT its current value:
   # the binary still reads the variable at runtime. Use this to bake the model
   # and provider while leaving the key to the environment.
-  # openai:
-  #   api_key: '$OPENAI_API_KEY'
+  # othergateway:
+  #   base_url: 'https://other.example.com/v1'
+  #   api_key: '$OTHER_API_KEY'

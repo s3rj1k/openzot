@@ -13,6 +13,7 @@ package zot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -306,7 +307,7 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 			Task:     task,
 			Model:    client.Model(),
 			Provider: cfg.DefaultProvider,
-			Driver:   client.Provider(),
+			Driver:   client.Driver(),
 			Workdir:  workdir,
 		}
 
@@ -408,16 +409,22 @@ func viewerMeta(cfg Config, task, workdir string, opts agent.ExecuteWithToolsOpt
 func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.ExecuteWithToolsOptions, error) {
 	var empty agent.ExecuteWithToolsOptions
 
+	if cfg.DefaultProvider == "" {
+		return nil, empty, errors.New(
+			"no provider selected: declare one under providers: in the config and name it with default_provider (or --provider)")
+	}
+
 	providerConfig, ok := cfg.Providers[cfg.DefaultProvider]
 	if !ok {
-		return nil, empty, fmt.Errorf("provider %q is not configured", cfg.DefaultProvider)
+		return nil, empty, fmt.Errorf(
+			"provider %q is not configured (declare it under providers: with a base_url and api_key)", cfg.DefaultProvider)
 	}
 
 	// Resolve the model against the provider's custom model definitions. A custom
 	// entry's settings take priority over the run defaults.
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
-	driver := config.ProviderDriver(cfg.DefaultProvider, providerConfig)
+	driver := config.ProviderDriver(providerConfig)
 	credential := config.ProviderCredential(providerConfig)
 
 	contextWindow := 0
@@ -440,9 +447,6 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 		if mc.MaxIterations > 0 {
 			maxIterations = mc.MaxIterations
 		}
-		if mc.Driver != "" {
-			driver = mc.Driver
-		}
 		if mc.APIKey != "" {
 			credential = mc.APIKey
 		}
@@ -455,12 +459,6 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 		capabilities = mc.Capabilities(capabilities)
 	}
 
-	if driver == "" {
-		return nil, empty, fmt.Errorf(
-			"provider %q does not name a driver (set driver: on the provider or the model - one of %s)",
-			cfg.DefaultProvider, strings.Join(agent.Providers(), ", "))
-	}
-
 	instructions := cfg.Agent.Instructions
 	if instructions == "" {
 		instructions = defaultInstructions
@@ -469,16 +467,11 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 	instructions = withNonInteractiveContract(instructions)
 
 	client, err := agent.NewClient(agent.ClientOptions{
-		Provider: driver,
+		Provider: cfg.DefaultProvider,
+		Driver:   driver,
 		Model:    model,
 		APIKey:   credential,
 		BaseURL:  providerConfig.BaseURL,
-
-		Attribution: agent.Attribution{
-			Name:     cfg.Attribution.Name,
-			URL:      cfg.Attribution.URL,
-			Disabled: cfg.Attribution.Disabled,
-		},
 
 		ContentArray: contentArray,
 	})

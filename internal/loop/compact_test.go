@@ -49,7 +49,7 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -225,7 +225,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 	defer server.Close()
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -281,7 +281,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 	defer server.Close()
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -328,7 +328,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 	defer server.Close()
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -387,7 +387,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	defer server.Close()
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -447,7 +447,7 @@ func TestContextLimitWithoutANumberStillCompacts(t *testing.T) {
 	defer server.Close()
 
 	client, _ := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,

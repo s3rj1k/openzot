@@ -35,19 +35,32 @@ Prefer to do it by hand? Grab a tarball from the
 
 ## Use
 
-zot defaults to the `zai` provider running `glm-5.2`. Export a key, write an
-order, hand it over:
+zot ships no providers and no default model: declare a provider and a model in
+the config first (`zot config` opens it from a template), then write an order
+and hand it over:
+
+```yaml
+# ~/.config/zot/config.yaml
+default_provider: mygateway
+agent:
+  model: my-model
+providers:
+  mygateway:
+    base_url: https://gateway.example.com/v1
+    api_key: '$GATEWAY_KEY'
+```
 
 ```bash
+export GATEWAY_KEY="..."
 zot new "add input validation to the signup handler and a test"
 zot
 ```
 
 `zot new` writes a small YAML order under `.zot/orders/`; edit its acceptance
 criteria, then a bare `zot` runs everything outstanding. `zot --watch` turns
-the folder into a drop box. Any OpenAI-compatible provider works -
-`--provider anthropic`, a local `--provider ollama`, a gateway, a custom
-endpoint - see [providers](docs/providers.md).
+the folder into a drop box. Any OpenAI-compatible endpoint works - a hosted
+service, a gateway, a local server - declare it and pick it with `--provider`;
+see [providers](docs/providers.md).
 
 ## Why Zot
 

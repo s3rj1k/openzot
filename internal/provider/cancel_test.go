@@ -17,49 +17,41 @@ import (
 // with a nil error. Repeated because the failure is probabilistic: one clean
 // pass proves nothing, 25 losing none is the actual contract.
 func TestACancelledTurnAlwaysSurfacesItsError(t *testing.T) {
-	for _, responses := range []bool{false, true} {
-		t.Run(fmt.Sprintf("responses=%v", responses), func(t *testing.T) {
-			frame := `{"choices":[{"delta":{"content":"x"}}]}`
+	frame := `{"choices":[{"delta":{"content":"x"}}]}`
 
-			if responses {
-				frame = `{"type":"response.output_text.delta","delta":"x"}`
+	client := serveTransport(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		flusher, _ := w.(http.Flusher)
+
+		// stream steadily until the client goes away, so the cancel
+		// always lands mid-turn
+		for {
+			fmt.Fprintf(w, "data: %s\n\n", frame)
+
+			if flusher != nil {
+				flusher.Flush()
 			}
 
-			client := serveTransport(t, responses, func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/event-stream")
-
-				flusher, _ := w.(http.Flusher)
-
-				// stream steadily until the client goes away, so the cancel
-				// always lands mid-turn
-				for {
-					fmt.Fprintf(w, "data: %s\n\n", frame)
-
-					if flusher != nil {
-						flusher.Flush()
-					}
-
-					select {
-					case <-time.After(time.Millisecond):
-					case <-r.Context().Done():
-						return
-					}
-				}
-			})
-
-			for i := 0; i < 25; i++ {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
-
-				message, _, _, err := client.Complete(ctx, Request{})
-
-				cancel()
-
-				if err == nil {
-					t.Fatalf("iteration %d: the cancellation vanished - Complete returned %d bytes of partial turn with a nil error",
-						i, len(message.Content))
-				}
+			select {
+			case <-time.After(time.Millisecond):
+			case <-r.Context().Done():
+				return
 			}
-		})
+		}
+	})
+
+	for i := 0; i < 25; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+
+		message, _, _, err := client.Complete(ctx, Request{})
+
+		cancel()
+
+		if err == nil {
+			t.Fatalf("iteration %d: the cancellation vanished - Complete returned %d bytes of partial turn with a nil error",
+				i, len(message.Content))
+		}
 	}
 }
 
@@ -69,66 +61,58 @@ func TestACancelledTurnAlwaysSurfacesItsError(t *testing.T) {
 // process, holding the response body - one leaked goroutine and one leaked
 // connection per abandoned turn.
 func TestAnAbandonedStreamReleasesItsGoroutine(t *testing.T) {
-	for _, responses := range []bool{false, true} {
-		t.Run(fmt.Sprintf("responses=%v", responses), func(t *testing.T) {
-			hang := make(chan struct{})
+	hang := make(chan struct{})
 
-			t.Cleanup(func() { close(hang) })
+	t.Cleanup(func() { close(hang) })
 
-			frame := `{"choices":[{"delta":{"content":"x"}}]}`
+	frame := `{"choices":[{"delta":{"content":"x"}}]}`
 
-			if responses {
-				frame = `{"type":"response.output_text.delta","delta":"x"}`
+	client := serveTransport(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		flusher, _ := w.(http.Flusher)
+
+		for i := 0; i < 64; i++ {
+			fmt.Fprintf(w, "data: %s\n\n", frame)
+
+			if flusher != nil {
+				flusher.Flush()
 			}
+		}
 
-			client := serveTransport(t, responses, func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/event-stream")
+		// hold the body open, as a real provider mid-turn would
+		select {
+		case <-hang:
+		case <-r.Context().Done():
+		}
+	})
 
-				flusher, _ := w.(http.Flusher)
+	before := runtime.NumGoroutine()
 
-				for i := 0; i < 64; i++ {
-					fmt.Fprintf(w, "data: %s\n\n", frame)
+	ctx, cancel := context.WithCancel(context.Background())
 
-					if flusher != nil {
-						flusher.Flush()
-					}
-				}
+	events := client.Stream(ctx, Request{})
 
-				// hold the body open, as a real provider mid-turn would
-				select {
-				case <-hang:
-				case <-r.Context().Done():
-				}
-			})
+	// take one event, then walk away without draining - exactly what the
+	// runaway guard does
+	<-events
 
-			before := runtime.NumGoroutine()
+	cancel()
 
-			ctx, cancel := context.WithCancel(context.Background())
+	settled := false
 
-			events := client.Stream(ctx, Request{})
+	for i := 0; i < 200; i++ {
+		if runtime.NumGoroutine() <= before {
+			settled = true
 
-			// take one event, then walk away without draining - exactly what the
-			// runaway guard does
-			<-events
+			break
+		}
 
-			cancel()
+		time.Sleep(10 * time.Millisecond)
+	}
 
-			settled := false
-
-			for i := 0; i < 200; i++ {
-				if runtime.NumGoroutine() <= before {
-					settled = true
-
-					break
-				}
-
-				time.Sleep(10 * time.Millisecond)
-			}
-
-			if !settled {
-				t.Errorf("the transport goroutine is still parked after cancellation (%d goroutines, was %d)",
-					runtime.NumGoroutine(), before)
-			}
-		})
+	if !settled {
+		t.Errorf("the transport goroutine is still parked after cancellation (%d goroutines, was %d)",
+			runtime.NumGoroutine(), before)
 	}
 }

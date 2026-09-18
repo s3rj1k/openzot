@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -28,7 +27,7 @@ func validConfig(tweak func(*Config)) Config {
 	c := Config{
 		Agent:           Agent{Model: "m", MaxIterations: 1},
 		DefaultProvider: "openai",
-		Providers:       map[string]ProviderConfig{"openai": {APIKey: "x"}},
+		Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "x"}},
 	}
 	if tweak != nil {
 		tweak(&c)
@@ -36,98 +35,79 @@ func validConfig(tweak func(*Config)) Config {
 	return c
 }
 
-func TestDefaults(t *testing.T) {
+// There is no default provider or model: both name something the operator runs
+// against, so the defaults carry neither and Validate says what is missing.
+func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	c := Defaults()
-	if c.Agent.Model == "" {
-		t.Error("expected a default model")
+	if c.Agent.Model != "" {
+		t.Errorf("default model = %q, want none", c.Agent.Model)
+	}
+	if c.DefaultProvider != "" {
+		t.Errorf("default provider = %q, want none", c.DefaultProvider)
+	}
+	if len(c.Providers) != 0 {
+		t.Errorf("default providers = %v, want none", c.Providers)
 	}
 	if c.Agent.MaxIterations <= 0 {
 		t.Error("expected a positive default max_iterations")
 	}
-	if c.DefaultProvider != "zai" {
-		t.Errorf("default provider = %q, want zai", c.DefaultProvider)
-	}
 }
 
-// The built-in providers are seeded for every provider zot knows, each reading
-// its provider's conventional credential variable.
-func TestLoadSeedsProviders(t *testing.T) {
+// Nothing is seeded, and no conventional credential variable is read: a config
+// that declares no providers has none, whatever the environment holds.
+func TestLoadSeedsNoProviders(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-	t.Setenv("GROQ_API_KEY", "sk-groq")
+	t.Setenv("ZAI_API_KEY", "sk-zai")
 
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.DefaultProvider != "zai" {
-		t.Errorf("default provider = %q, want zai", cfg.DefaultProvider)
+	if len(cfg.Providers) != 0 {
+		t.Errorf("providers = %v, want none", cfg.Providers)
 	}
 
-	for name, want := range map[string]string{
-		"openai":    "sk-openai",
-		"anthropic": "sk-anthropic",
-		"groq":      "sk-groq",
-	} {
-		provider, ok := cfg.Providers[name]
-
-		if !ok {
-			t.Fatalf("provider %q was not seeded", name)
-		}
-
-		if got := ProviderCredential(provider); got != want {
-			t.Errorf("%s credential = %q, want %q", name, got, want)
-		}
-
-		if got := ProviderDriver(name, provider); got != name {
-			t.Errorf("%s driver = %q, want %q", name, got, name)
-		}
+	if cfg.DefaultProvider != "" {
+		t.Errorf("default provider = %q, want none", cfg.DefaultProvider)
 	}
 
-	// a local provider needs no credential
-	if got := ProviderCredential(cfg.Providers["ollama"]); got != "" {
-		t.Errorf("ollama credential = %q, want none", got)
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatal("a config with no provider or model must not validate")
 	}
 }
 
-// The shipped connections are pinned as a complete set. This catches an
-// accidental addition and an accidental removal with the same assertion.
-func TestBuiltinProvidersMatchTheShippedConnections(t *testing.T) {
+// A provider named after a service that used to be built in is no different
+// from any other name: it gets no endpoint and no ambient key.
+func TestANameThatWasOnceBuiltInGetsNothing(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai")
 
-	cfg, err := Load("")
+	path := writeConfig(t, `
+agent:
+  model: gpt-5.4
+default_provider: openai
+providers:
+  openai:
+    driver: openai
+`)
+
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	seeded := make([]string, 0, len(cfg.Providers))
+	provider := cfg.Providers["openai"]
 
-	for name := range cfg.Providers {
-		seeded = append(seeded, name)
+	if provider.BaseURL != "" || ProviderCredential(provider) != "" {
+		t.Errorf("provider = %+v, want no endpoint and no key filled in", provider)
 	}
 
-	sort.Strings(seeded)
-
-	want := []string{
-		"anthropic", "cerebras", "deepseek", "groq", "mistral", "moonshot",
-		"ollama", "openai", "openrouter", "qwen", "together", "vercel", "xai",
-		"zai",
-	}
-
-	if !reflect.DeepEqual(seeded, want) {
-		t.Errorf("built-in providers:\n got %v\nwant %v", seeded, want)
-	}
-
-	// Every one of them must select a driver: an unresolved connection would fail
-	// at the first request rather than at configuration time.
-	for _, name := range seeded {
-		if ProviderDriver(name, cfg.Providers[name]) == "" {
-			t.Errorf("provider %q names no driver", name)
-		}
+	if err := cfg.Validate(); err == nil {
+		t.Error("a provider with no base_url must not validate")
 	}
 }
 
@@ -147,6 +127,19 @@ providers:
   corporate:
     provider: openai
 	`,
+		"attribution": `
+attribution:
+  name: acme-bot
+	`,
+		"per-model driver": `
+default_provider: corporate
+providers:
+  corporate:
+    base_url: https://gw.example.com/v1
+    models:
+      fast:
+        driver: openai
+	`,
 	}
 
 	for name, body := range tests {
@@ -163,11 +156,15 @@ providers:
 func TestLoadEnvOverrides(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("GROQ_API_KEY", "sk-test")
+	t.Setenv("GROQ_KEY", "sk-test")
 	path := writeConfig(t, `
 agent:
   model: from-file
 default_provider: openai
+providers:
+  groq:
+    base_url: https://groq.example.com/v1
+    api_key: $GROQ_KEY
 `)
 	t.Setenv("ZOT_AGENT_MODEL", "gpt-4o")
 	t.Setenv("ZOT_AGENT_MAX_ITERATIONS", "12")
@@ -187,7 +184,7 @@ default_provider: openai
 		t.Errorf("default provider = %q, want groq (env overrides file)", cfg.DefaultProvider)
 	}
 	if got := ProviderCredential(cfg.Providers["groq"]); got != "sk-test" {
-		t.Errorf("groq credential = %q, want it from GROQ_API_KEY", got)
+		t.Errorf("groq credential = %q, want it from GROQ_KEY", got)
 	}
 }
 
@@ -257,33 +254,53 @@ func TestValidate(t *testing.T) {
 	if err := validConfig(func(c *Config) { c.DefaultProvider = "nope" }).Validate(); err == nil {
 		t.Error("expected an error for an unknown default provider")
 	}
+	if err := validConfig(func(c *Config) { c.DefaultProvider = "" }).Validate(); err == nil {
+		t.Error("expected an error when no provider is selected")
+	}
 	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
+		c.Providers["openai"] = ProviderConfig{APIKey: "x"}
+	}).Validate(); err == nil {
+		t.Error("expected an error for a provider with no base_url")
+	}
+	if err := validConfig(func(c *Config) {
+		c.Providers["openai"] = ProviderConfig{Driver: "anthropic", BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+	}).Validate(); err == nil {
+		t.Error("expected an error for a driver other than openai")
+	}
+	if err := validConfig(func(c *Config) {
+		c.Providers["openai"] = ProviderConfig{Driver: "openai", BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+	}).Validate(); err != nil {
+		t.Errorf("the openai driver was rejected: %v", err)
+	}
+	if err := validConfig(func(c *Config) {
+		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
 	}).Validate(); err == nil {
 		t.Error("expected a custom provider model list to reject an unlisted model")
 	}
 	if err := validConfig(func(c *Config) {
 		c.Agent.Model = "allowed"
-		c.Providers["openai"] = ProviderConfig{Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
+		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
 	}).Validate(); err != nil {
 		t.Errorf("custom provider model was rejected: %v", err)
 	}
 }
 
-func TestProviderModelsUsesCustomListOrCatalogue(t *testing.T) {
-	custom := ProviderConfig{Driver: "openai", Models: map[string]ModelConfig{
+func TestProviderModelsIsTheCustomListOrNothing(t *testing.T) {
+	custom := ProviderConfig{Models: map[string]ModelConfig{
 		"small": {Model: "gpt-5.4-mini"},
 		"large": {Model: "gpt-5.4"},
 	}}
-	if got, want := ProviderModels("corporate", custom), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
+	if got, want := ProviderModels(custom), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("custom models = %v, want %v", got, want)
 	}
-	builtin := ProviderModels("corporate", ProviderConfig{Driver: "zai"})
-	if len(builtin) == 0 || !sort.StringsAreSorted(builtin) {
-		t.Fatalf("built-in ZAI models = %v", builtin)
+	if got := ProviderModels(ProviderConfig{}); len(got) != 0 {
+		t.Fatalf("no custom list should mean no restriction, got %v", got)
 	}
-	if index := sort.SearchStrings(builtin, "glm-5.3"); index == len(builtin) || builtin[index] != "glm-5.3" {
-		t.Fatalf("built-in ZAI models do not include glm-5.3: %v", builtin)
+}
+
+func TestProviderDriverDefaultsToOpenAI(t *testing.T) {
+	if got := ProviderDriver(ProviderConfig{}); got != DriverOpenAI {
+		t.Errorf("driver = %q, want %q", got, DriverOpenAI)
 	}
 }
 
@@ -439,40 +456,32 @@ func TestEnvOverrideBooleans(t *testing.T) {
 	}
 }
 
-// A provider either selects a driver zot can reach or brings its own endpoint.
-// Neither means there is nowhere to send the request, and that is worth catching
-// at load rather than mid-run.
+// A provider brings its own endpoint. There is none to fall back on, and
+// finding out mid-run that there is nowhere to send the request is worse than
+// at load.
 func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	cfg := Defaults()
+	cfg.Agent.Model = "m"
 	cfg.DefaultProvider = "mygateway"
 
-	// a name nobody knows, and no endpoint
 	cfg.Providers = map[string]ProviderConfig{"mygateway": {}}
 
 	if err := cfg.Validate(); err == nil {
-		t.Error("a provider with no known driver and no base_url must be rejected")
+		t.Error("a provider with no base_url must be rejected")
 	}
 
-	// an endpoint of its own is enough
-	cfg.Providers["mygateway"] = ProviderConfig{BaseURL: "https://gw.example.com/v1"}
-
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("a provider with its own endpoint is valid: %v", err)
-	}
-
-	// or a driver zot knows
-	cfg.Providers["mygateway"] = ProviderConfig{Driver: "openai"}
-
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("a provider naming a known driver is valid: %v", err)
-	}
-
-	// a provider named after a driver needs nothing at all
+	// a name that used to be built in gets no special treatment
 	cfg.DefaultProvider = "groq"
 	cfg.Providers = map[string]ProviderConfig{"groq": {}}
 
+	if err := cfg.Validate(); err == nil {
+		t.Error("a provider named after a former built-in still needs a base_url")
+	}
+
+	cfg.Providers["groq"] = ProviderConfig{BaseURL: "https://gw.example.com/v1"}
+
 	if err := cfg.Validate(); err != nil {
-		t.Errorf("a provider named after a driver is valid: %v", err)
+		t.Errorf("a provider with its own endpoint is valid: %v", err)
 	}
 }
 
@@ -535,25 +544,17 @@ func TestALiteralCredentialIsUntouched(t *testing.T) {
 	}
 }
 
-// Exporting the provider's conventional variable is enough on its own, and must
-// not override a key the config states explicitly.
-func TestTheConventionalVariableIsOnlyAFallback(t *testing.T) {
+// The credential is only what the config says. A conventional variable named
+// after the provider is never consulted, however well it matches.
+func TestNoConventionalVariableIsRead(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-from-env")
 
 	cfg := Config{Providers: map[string]ProviderConfig{"openai": {}}}
 
 	resolveProviders(&cfg)
 
-	if got := ProviderCredential(cfg.Providers["openai"]); got != "sk-from-env" {
-		t.Errorf("credential = %q, want the conventional variable", got)
-	}
-
-	cfg = Config{Providers: map[string]ProviderConfig{"openai": {APIKey: "sk-from-config"}}}
-
-	resolveProviders(&cfg)
-
-	if got := ProviderCredential(cfg.Providers["openai"]); got != "sk-from-config" {
-		t.Errorf("credential = %q, want the config to win", got)
+	if got := ProviderCredential(cfg.Providers["openai"]); got != "" {
+		t.Errorf("credential = %q, want none: nothing is read on the provider's behalf", got)
 	}
 }
 
@@ -564,7 +565,7 @@ func TestMaxTimeIsValidated(t *testing.T) {
 		return Config{
 			Agent:           Agent{Model: "m", MaxIterations: 10},
 			DefaultProvider: "openai",
-			Providers:       map[string]ProviderConfig{"openai": {APIKey: "k"}},
+			Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "k"}},
 		}
 	}
 
@@ -647,7 +648,7 @@ func TestLimitCheckpointsAreValidated(t *testing.T) {
 		return Config{
 			Agent:           Agent{Model: "m", MaxIterations: 10, LimitCheckpoints: cp},
 			DefaultProvider: "openai",
-			Providers:       map[string]ProviderConfig{"openai": {APIKey: "k"}},
+			Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "k"}},
 		}
 	}
 
@@ -876,37 +877,9 @@ func TestUIStatsAreValidated(t *testing.T) {
 	}
 }
 
-// A base_url override points a connection at a host the provider's own
-// credential was never issued for. Falling back to OPENAI_API_KEY there forwards
-// a real OpenAI key to whatever URL was typed into the file - which is how a
-// provider credential ends up in someone else's logs. Overriding the endpoint
-// has to cost the ambient fallback.
-func TestOverriddenBaseURLDoesNotInheritTheEnvironmentKey(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("GROQ_API_KEY", "sk-groq")
-	path := writeConfig(t, `
-providers:
-  openai:
-    base_url: https://proxy.example.com/v1
-`)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if got := cfg.Providers["openai"].APIKey; got != "" {
-		t.Errorf("openai key = %q, want it withheld from an endpoint it was not issued for", got)
-	}
-	// a provider left on its built-in endpoint still gets the convenience
-	if got := cfg.Providers["groq"].APIKey; got != "sk-groq" {
-		t.Errorf("groq key = %q, want the environment fallback", got)
-	}
-}
-
-// The rule is about inheritance, not about custom endpoints: a key written for
-// the overridden endpoint is exactly what it should use.
-func TestOverriddenBaseURLKeepsAnExplicitKey(t *testing.T) {
+// A key written for the endpoint is exactly what it uses, and the ambient
+// variable of the same provider name plays no part.
+func TestAConfiguredKeyIsTheOneUsed(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
@@ -994,64 +967,6 @@ func TestModelCapabilitiesParseFromYAML(t *testing.T) {
 
 	if parsed.Models["quiet"].Vision != nil {
 		t.Error("an unstated capability must stay unstated, so the catalogue decides")
-	}
-}
-
-// Attribution is what puts zot on OpenRouter's and Vercel's app rankings, so it
-// has to be reachable from a config file and from the environment - the latter
-// because the containers and CI jobs that do most of zot's calling never write
-// a config file. The bool matters as much as the strings: opting out is the
-// half someone will actually need.
-func TestAttributionIsConfigurableFromFileAndEnv(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-
-	path := writeConfig(t, `
-attribution:
-  name: acme-bot
-  url: https://acme.example
-  disabled: true
-`)
-
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if cfg.Attribution.Name != "acme-bot" {
-		t.Errorf("name = %q, want acme-bot from the file", cfg.Attribution.Name)
-	}
-
-	if cfg.Attribution.URL != "https://acme.example" {
-		t.Errorf("url = %q, want the file's value", cfg.Attribution.URL)
-	}
-
-	if !cfg.Attribution.Disabled {
-		t.Error("disabled was not read from the file")
-	}
-
-	// and the same three from the environment, with no file at all
-	t.Setenv("ZOT_ATTRIBUTION_NAME", "env-bot")
-	t.Setenv("ZOT_ATTRIBUTION_URL", "https://env.example")
-	t.Setenv("ZOT_ATTRIBUTION_DISABLED", "true")
-
-	fromEnv, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if fromEnv.Attribution.Name != "env-bot" || fromEnv.Attribution.URL != "https://env.example" {
-		t.Errorf("attribution = %+v, want the ZOT_ATTRIBUTION_* values", fromEnv.Attribution)
-	}
-
-	if !fromEnv.Attribution.Disabled {
-		t.Error("ZOT_ATTRIBUTION_DISABLED did not reach the config")
-	}
-
-	// the default is on, and named: an empty config attributes zot itself
-	def, err := Load("")
-	if err == nil && def.Attribution.Name != "" && !def.Attribution.Disabled {
-		t.Error("a bare config must leave attribution unset so the provider defaults apply")
 	}
 }
 

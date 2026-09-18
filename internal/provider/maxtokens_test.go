@@ -11,7 +11,7 @@ import (
 
 // max_tokens is only useful if it reaches the provider - the whole point is to
 // cap the response, which the model never sees unless it is in the request body.
-// These pin the wire, on both transports, and pin that "unset" sends nothing
+// These pin the wire, and pin that "unset" sends nothing
 // rather than a zero that some providers reject.
 
 // captureBody runs one turn and returns the raw request body the client sent.
@@ -63,7 +63,7 @@ func TestChatSendsMaxTokens(t *testing.T) {
 	limit := 4096
 
 	body := captureBody(t,
-		Config{Provider: OpenAI, Model: "gpt-4o", APIKey: "k"},
+		Config{Provider: "custom", Model: "gpt-4o", APIKey: "k"},
 		Request{Messages: []ChatMessage{{Role: RoleUser, Content: "hi"}}, MaxTokens: &limit})
 
 	var payload struct {
@@ -83,35 +83,12 @@ func TestChatSendsMaxTokens(t *testing.T) {
 // reads max_tokens:0 as "no output allowed" would return nothing.
 func TestChatOmitsMaxTokensWhenUnset(t *testing.T) {
 	body := captureBody(t,
-		Config{Provider: OpenAI, Model: "gpt-4o", APIKey: "k"},
+		Config{Provider: "custom", Model: "gpt-4o", APIKey: "k"},
 		Request{Messages: []ChatMessage{{Role: RoleUser, Content: "hi"}}})
 
 	if raw := map[string]json.RawMessage{}; json.Unmarshal(body, &raw) == nil {
 		if _, present := raw["max_tokens"]; present {
 			t.Errorf("max_tokens must be absent when unset, body: %s", body)
 		}
-	}
-}
-
-// The Responses transport carries the same cap as `max_output_tokens`, the name
-// that API uses.
-func TestResponsesSendsMaxOutputTokens(t *testing.T) {
-	limit := 2048
-
-	body := captureBody(t,
-		// a reasoning model on OpenAI selects the Responses transport
-		Config{Provider: OpenAI, Model: "gpt-5.4-mini", APIKey: "k"},
-		Request{Messages: []ChatMessage{{Role: RoleUser, Content: "hi"}}, MaxTokens: &limit})
-
-	var payload struct {
-		MaxOutputTokens *int `json:"max_output_tokens"`
-	}
-
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Fatalf("decode request: %v", err)
-	}
-
-	if payload.MaxOutputTokens == nil || *payload.MaxOutputTokens != 2048 {
-		t.Errorf("request max_output_tokens = %v, want 2048", payload.MaxOutputTokens)
 	}
 }

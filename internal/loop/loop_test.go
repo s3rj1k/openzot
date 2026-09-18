@@ -40,7 +40,7 @@ func stub(t *testing.T, turns ...[]string) *provider.Client {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -632,7 +632,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,

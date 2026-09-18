@@ -8,7 +8,8 @@
 //
 // Usage:
 //
-//	export OPENAI_API_KEY="your-api-key"
+//	# declare a provider (base_url, api_key), a default_provider and agent.model
+//	zot config
 //
 //	# write an order, then run it - orders and their records live under .zot/
 //	zot new "add a /health endpoint to the Go server and a test for it"
@@ -90,8 +91,8 @@ func run() error {
 	}
 
 	configPath := pflag.String("config", "", "path to zot config (default: "+config.DefaultConfigPath()+", optional)")
-	provider := pflag.String("provider", "", "model provider to run against: zai (default), openai, anthropic, groq, ollama, or a provider named in the config")
-	model := pflag.String("model", "", "override the model name (default: glm-5.2, which only the zai provider serves)")
+	provider := pflag.String("provider", "", "provider to run against, by the name it is given under providers: in the config (default: default_provider)")
+	model := pflag.String("model", "", "override the model name (default: agent.model from the config)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
 	maxIter := pflag.Int("max-iterations", 0, "override the safety cap on agent iterations")
 	diffFlag := pflag.Bool("diff", false, "show a syntax-highlighted diff panel under each edit/write")

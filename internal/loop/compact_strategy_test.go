@@ -34,7 +34,7 @@ func countingClient(t *testing.T, reply string) (*provider.Client, *int) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -58,7 +58,7 @@ func erroringClient(t *testing.T) *provider.Client {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -320,7 +320,7 @@ func TestCompactionDoesNotRepeatAfterAFailedTurn(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -385,7 +385,7 @@ func scriptedClient(t *testing.T, replies ...string) (*provider.Client, *[]strin
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,

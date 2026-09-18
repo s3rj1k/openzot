@@ -75,7 +75,7 @@ which kind you have.
 | `internal/loop/`       | the agentic loop: budgets, guards, settle mode, message hygiene                |
 | `internal/thread/`     | context-window assembly and the four loop-detection heuristics                 |
 | `internal/compaction/` | condensing older history into a summary when the window fills                  |
-| `internal/provider/`   | the `Transport` seam: chat-completions and the Responses API                   |
+| `internal/provider/`   | the `Transport` seam: today, chat-completions                                 |
 | `internal/catalogue/`  | what each model's context window and capabilities are                          |
 | `internal/tokenizer/`  | BPE token counting with embedded vocabularies                                  |
 | `internal/session/`    | JSONL run logs: write, read, list, resume                                      |

@@ -581,7 +581,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 	t.Cleanup(failing.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  failing.URL,
@@ -634,7 +634,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	t.Cleanup(failing.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  failing.URL,
@@ -765,7 +765,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -847,7 +847,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -923,7 +923,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -1010,7 +1010,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -1133,7 +1133,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -1180,7 +1180,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -1241,7 +1241,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
@@ -1322,7 +1322,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := provider.New(provider.Config{
-		Provider: provider.Custom,
+		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,

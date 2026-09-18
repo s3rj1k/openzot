@@ -135,13 +135,7 @@ func New(config Config) (*Client, error) {
 
 	httpClient := newHTTPClient()
 
-	name := TransportChatCompletions
-
-	if resolved.UseResponses {
-		name = TransportResponses
-	}
-
-	transport, err := lookupTransport(name, httpClient)
+	transport, err := lookupTransport(TransportChatCompletions, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +165,6 @@ func (c *Client) Complete(ctx context.Context, request Request) (ChatMessage, st
 		text      textBuilder
 		reasoning textBuilder
 		calls     []ToolCall
-		items     []ReasoningItem
 		finish    string
 		usage     *Usage
 	)
@@ -192,12 +185,6 @@ func (c *Client) Complete(ctx context.Context, request Request) (ChatMessage, st
 			calls = event.ToolCalls
 		}
 
-		// the opaque state travels with the message, because that is what the
-		// next request has to replay it alongside
-		if len(event.ReasoningItems) > 0 {
-			items = event.ReasoningItems
-		}
-
 		if event.Usage != nil {
 			usage = event.Usage
 		}
@@ -208,7 +195,6 @@ func (c *Client) Complete(ctx context.Context, request Request) (ChatMessage, st
 		Content:          text.String(),
 		ReasoningContent: reasoning.String(),
 		ToolCalls:        calls,
-		ReasoningItems:   items,
 	}
 
 	return message, finish, usage, nil

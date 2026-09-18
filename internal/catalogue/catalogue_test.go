@@ -1,7 +1,6 @@
 package catalogue
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
@@ -239,48 +238,6 @@ func TestNamesIsSorted(t *testing.T) {
 		if names[index-1] > names[index] {
 			t.Fatalf("names are not sorted at %d: %q > %q", index, names[index-1], names[index])
 		}
-	}
-}
-
-// Direct providers expose only their own catalogue section, while model
-// gateways expose the whole catalogue they can route.
-func TestNamesForProvider(t *testing.T) {
-	openai := NamesForProvider(" openai ")
-	if len(openai) == 0 {
-		t.Fatal("OpenAI has no built-in models")
-	}
-	for _, name := range openai {
-		if models[name].Provider != "openai" {
-			t.Fatalf("OpenAI list contains %q from %q", name, models[name].Provider)
-		}
-	}
-	if unknown := NamesForProvider("custom"); len(unknown) != 0 {
-		t.Fatalf("unknown provider models = %v", unknown)
-	}
-}
-
-// A gateway originates nothing, so grouping by Provider would leave it with an
-// empty list - and an empty list is not "no models known", it is a connection
-// whose every model config validation rejects and whose listing UI shows
-// nothing. Every gateway that routes by a creator-qualified name has to be
-// offered the whole catalogue.
-func TestGatewaysExposeTheWholeCatalogue(t *testing.T) {
-	for _, gateway := range []string{"openrouter", "vercel", "cloudflare"} {
-		t.Run(gateway, func(t *testing.T) {
-			names := NamesForProvider(gateway)
-
-			if len(names) != len(Names()) {
-				t.Fatalf("%s lists %d models, want the whole catalogue (%d)", gateway, len(names), len(Names()))
-			}
-
-			// models from creators the gateway is not, which is the point of a
-			// gateway and what grouping by Provider would drop
-			for _, want := range []string{"gpt-5.4", "claude-5-sonnet", "glm-5.3"} {
-				if !slices.Contains(names, want) {
-					t.Errorf("%s cannot route %q", gateway, want)
-				}
-			}
-		})
 	}
 }
 

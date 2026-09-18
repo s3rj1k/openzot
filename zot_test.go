@@ -185,7 +185,7 @@ ui:
 default_provider: myprovider
 providers:
   myprovider:
-    driver: custom
+    driver: openai
     base_url: %s
 %s`, test.model, server.URL, test.config))
 
@@ -219,6 +219,15 @@ providers:
 			}
 		})
 	}
+}
+
+// testDefaults is the built-in configuration with the one thing it deliberately
+// lacks: a model to run.
+func testDefaults() config.Config {
+	cfg := config.Defaults()
+	cfg.Agent.Model = "glm-5.2"
+
+	return cfg
 }
 
 // content_array on a model has to reach the wire, so every message the run
@@ -276,7 +285,7 @@ ui:
 default_provider: selfhosted
 providers:
   selfhosted:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: x
     models:
@@ -313,38 +322,52 @@ providers:
 	}
 }
 
-// A provider that names no provider cannot resolve, and says so rather than
+// A provider that names no endpoint cannot resolve, and says so rather than
 // sending a request to nowhere.
-func TestAProviderWithoutAProviderIsRejected(t *testing.T) {
-	cfg := config.Defaults()
+func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
+	cfg := testDefaults()
 	cfg.DefaultProvider = "myprovider"
 	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test"}}
 
 	_, _, err := resolve(cfg, DefaultInstructions)
 	if err == nil {
-		t.Fatal("a provider naming no provider must be rejected")
+		t.Fatal("a provider naming no endpoint must be rejected")
 	}
 
-	// the error has to be actionable: it names the field and the options
-	if !strings.Contains(err.Error(), "provider") {
+	// the error has to be actionable: it names the field to set
+	if !strings.Contains(err.Error(), "base_url") {
 		t.Errorf("error = %q, want it to name what is missing", err)
 	}
 }
 
-// A provider provider resolves to its own endpoint and credential, with the model
-// name passed through untouched.
-func TestResolveBuiltInProviders(t *testing.T) {
+// A declared provider resolves to its own endpoint and credential, with the
+// model name passed through untouched, and its own name is what the client
+// reports.
+func TestResolveDeclaredProviders(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
+	t.Setenv("ALPHA_KEY", "sk-alpha")
 
-	cfg, err := Load("")
+	cfg, err := Load(writeCfg(t, `
+agent:
+  model: some-model
+providers:
+  alpha:
+    base_url: https://alpha.example.com/v1
+    api_key: $ALPHA_KEY
+  beta:
+    driver: openai
+    base_url: https://beta.example.com/v1
+    api_key: sk-beta
+`))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	for _, name := range []string{"openai", "anthropic"} {
+	for name, wantURL := range map[string]string{
+		"alpha": "https://alpha.example.com/v1",
+		"beta":  "https://beta.example.com/v1",
+	} {
 		cfg.DefaultProvider = name
 
 		client, _, err := resolve(cfg, DefaultInstructions)
@@ -352,16 +375,36 @@ func TestResolveBuiltInProviders(t *testing.T) {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
 
-		if client == nil {
-			t.Fatalf("resolve(%s): expected a client", name)
-		}
-
-		if got := client.Model(); got != cfg.Agent.Model {
-			t.Errorf("%s model = %q, want %q unchanged", name, got, cfg.Agent.Model)
+		if got := client.Model(); got != "some-model" {
+			t.Errorf("%s model = %q, want it unchanged", name, got)
 		}
 
 		if got := client.Provider(); got != name {
 			t.Errorf("%s provider = %q, want %q", name, got, name)
+		}
+
+		if got := client.Driver(); got != agent.DriverOpenAI {
+			t.Errorf("%s driver = %q, want %q", name, got, agent.DriverOpenAI)
+		}
+
+		if got := client.BaseURL(); got != wantURL {
+			t.Errorf("%s endpoint = %q, want %q", name, got, wantURL)
+		}
+	}
+}
+
+// Nothing is built in: naming a provider that was never declared fails, whatever
+// the name and whatever the environment holds.
+func TestNoProviderIsBuiltIn(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-openai")
+
+	cfg := testDefaults()
+
+	for _, name := range []string{"openai", "anthropic", "zai", "ollama", "openrouter"} {
+		cfg.DefaultProvider = name
+
+		if _, _, err := resolve(cfg, DefaultInstructions); err == nil {
+			t.Errorf("%q resolved with nothing declared", name)
 		}
 	}
 }
@@ -379,6 +422,7 @@ default_provider: mygateway
 providers:
   mygateway:
     driver: openai
+    base_url: https://gw.example.com/v1
     models:
       fast:
         model: gpt-5
@@ -412,13 +456,14 @@ providers:
 // counting towards a number the run never reaches - "iter 12/100" on a run the
 // engine ends at 40 - misreports the run to the only person watching it.
 func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
-	cfg := config.Defaults()
+	cfg := testDefaults()
 	cfg.DefaultProvider = "openai"
 	cfg.Agent.Model = "capped"
 	cfg.Agent.MaxIterations = 100
 	cfg.Providers = map[string]config.ProviderConfig{
 		"openai": {
-			APIKey: "sk-test",
+			BaseURL: "https://gw.example.com/v1",
+			APIKey:  "sk-test",
 			Models: map[string]config.ModelConfig{
 				"capped": {Model: "gpt-5", MaxIterations: 40},
 			},
@@ -487,11 +532,11 @@ func TestRunEndToEnd(t *testing.T) {
 
 	defer server.Close()
 
-	cfg := config.Defaults()
+	cfg := testDefaults()
 	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "custom", BaseURL: server.URL, APIKey: "k"},
+		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k"},
 	}
 
 	original := os.Stdout
@@ -542,7 +587,7 @@ func TestRunEndToEnd(t *testing.T) {
 // A misconfigured provider fails before any request is made, with a message that
 // says what to fix.
 func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
-	cfg := config.Defaults()
+	cfg := testDefaults()
 	cfg.DefaultProvider = "nowhere"
 	cfg.Providers = map[string]config.ProviderConfig{}
 
@@ -592,11 +637,11 @@ func stubProvider(t *testing.T) config.Config {
 
 	t.Cleanup(server.Close)
 
-	cfg := config.Defaults()
+	cfg := testDefaults()
 	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "custom", BaseURL: server.URL, APIKey: "k"},
+		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k"},
 	}
 
 	return cfg
@@ -669,7 +714,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if logged.Meta.Task != "do the thing" || logged.Meta.Provider != "local" || logged.Meta.Driver != "custom" {
+	if logged.Meta.Task != "do the thing" || logged.Meta.Provider != "local" || logged.Meta.Driver != "openai" {
 		t.Errorf("meta = %+v", logged.Meta)
 	}
 
@@ -793,12 +838,11 @@ func TestRunWithoutASessionDirectoryWritesNothing(t *testing.T) {
 }
 
 // The example config is what `zot config` writes on first run, so it is the
-// first thing most people ever edit. It drifting from the code's own defaults
-// is not cosmetic: someone copies it, changes nothing, and gets different
-// behaviour from someone who has no config file at all.
-//
-// This is also the class of bug that actually happened - the example advertised
-// gpt-5.4-mini/openai long after the defaults moved to glm-5.2/zai.
+// first thing most people ever edit. Its knobs drifting from the code's own
+// defaults is not cosmetic: someone copies it, changes nothing, and gets
+// different behaviour from someone who has no config file at all. The provider
+// and model are the exception - there are no defaults for those, and the
+// example shows the shape of declaring them.
 func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 	var example config.Config
 
@@ -807,14 +851,6 @@ func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 	}
 
 	defaults := config.Defaults()
-
-	if example.Agent.Model != defaults.Agent.Model {
-		t.Errorf("example model = %q, defaults = %q", example.Agent.Model, defaults.Agent.Model)
-	}
-
-	if example.DefaultProvider != defaults.DefaultProvider {
-		t.Errorf("example provider = %q, defaults = %q", example.DefaultProvider, defaults.DefaultProvider)
-	}
 
 	if example.Agent.MaxIterations != defaults.Agent.MaxIterations {
 		t.Errorf("example max_iterations = %d, defaults = %d",
@@ -846,28 +882,27 @@ func TestTheExampleConfigLoadsAndValidates(t *testing.T) {
 	}
 }
 
-// The default model has to be one the default provider can actually serve. A
-// pair that cannot talk to each other fails as a provider error rather than a
-// configuration one, which is much harder to read.
-func TestTheDefaultModelAndProviderCanTalkToEachOther(t *testing.T) {
-	defaults := config.Defaults()
+// A run with nothing configured fails before any request, and says what to
+// declare - there is no default provider or model to fall back on.
+func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
+	cfg := config.Defaults()
 
-	cfg := defaults
-	cfg.Providers = map[string]config.ProviderConfig{
-		defaults.DefaultProvider: {APIKey: "test-key"},
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "agent.model") {
+		t.Errorf("Validate = %v, want it to name the missing model", err)
 	}
 
-	client, _, err := resolve(cfg, DefaultInstructions)
-	if err != nil {
-		t.Fatalf("the default pair does not resolve: %v", err)
+	cfg.Agent.Model = "m"
+
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "providers:") {
+		t.Errorf("Validate = %v, want it to say to declare a provider", err)
 	}
 
-	if client.Model() != defaults.Agent.Model {
-		t.Errorf("resolved model = %q, want %q", client.Model(), defaults.Agent.Model)
-	}
-
-	if client.BaseURL() == "" {
-		t.Errorf("the default provider %q resolved to no endpoint", defaults.DefaultProvider)
+	// and the library entry point, which does not validate, says the same
+	err = Run(context.Background(), cfg, "task")
+	if err == nil || !strings.Contains(err.Error(), "providers:") {
+		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
 }
 
@@ -996,7 +1031,7 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
 `))
@@ -1034,7 +1069,7 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
 `)
@@ -1085,9 +1120,9 @@ providers:
 // max_settles is the one the operator most wants: how hard zot pushes the model
 // to record an outcome before giving up.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
-	cfg := config.Defaults()
+	cfg := testDefaults()
 	cfg.DefaultProvider = "openai"
-	cfg.Providers = map[string]config.ProviderConfig{"openai": {APIKey: "sk-test"}}
+	cfg.Providers = map[string]config.ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "sk-test"}}
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
@@ -1151,7 +1186,7 @@ func TestQuitOnDoneDefaultsOff(t *testing.T) {
 func TestVisionDecidesWhetherTheViewToolIsOffered(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENROUTER_API_KEY", "sk-openrouter")
+	t.Setenv("OPENROUTER_KEY", "sk-openrouter")
 
 	resolveWith := func(t *testing.T, body string) agent.ExecuteWithToolsOptions {
 		t.Helper()
@@ -1174,6 +1209,10 @@ func TestVisionDecidesWhetherTheViewToolIsOffered(t *testing.T) {
 agent:
   model: stealth/ox-alpha
 default_provider: openrouter
+providers:
+  openrouter:
+    base_url: https://openrouter.example.com/v1
+    api_key: $OPENROUTER_KEY
 `)
 
 	if _, ok := uncatalogued.Tools["view"]; ok {
@@ -1185,6 +1224,10 @@ default_provider: openrouter
 agent:
   model: gpt-5.4
 default_provider: openrouter
+providers:
+  openrouter:
+    base_url: https://openrouter.example.com/v1
+    api_key: $OPENROUTER_KEY
 `)
 
 	if _, ok := catalogued.Tools["view"]; !ok {
@@ -1198,6 +1241,8 @@ agent:
 default_provider: openrouter
 providers:
   openrouter:
+    base_url: https://openrouter.example.com/v1
+    api_key: $OPENROUTER_KEY
     models:
       stealth/ox-alpha:
         vision: true
@@ -1214,6 +1259,8 @@ agent:
 default_provider: openrouter
 providers:
   openrouter:
+    base_url: https://openrouter.example.com/v1
+    api_key: $OPENROUTER_KEY
     models:
       gpt-5.4:
         vision: false

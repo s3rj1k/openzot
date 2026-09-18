@@ -35,7 +35,7 @@ as a base to [layer a toolchain on](#extending-the-image) when one does.
 | Path | Purpose |
 | --- | --- |
 | `/workspace` | Working directory. Mount your checkout here. |
-| `/home/zot/.config/zot/config.yaml` | Config file, pointed at by `ZOT_CONFIG`. Absent by default - zot runs on defaults plus env vars. |
+| `/home/zot/.config/zot/config.yaml` | Config file, pointed at by `ZOT_CONFIG`. Absent by default - mount one that declares a provider. |
 | `/usr/local/share/zot/zot.example.yaml` | The documented example config, for copying out. |
 | `/usr/local/bin/zot` | The binary. |
 
@@ -45,20 +45,33 @@ as a base to [layer a toolchain on](#extending-the-image) when one does.
 
 ## Running a task
 
-zot talks straight to a model provider, so a run needs nothing but that
-provider's key and a work order under `.zot/orders/` in the mounted workspace -
-the image's working directory is `/workspace`, so a bare `zot` there runs the
-project's book exactly as it does on the host. These examples use the default
-pair - the `zai` provider running `glm-5.2` - so they need no flags at all. For any other provider, pass the
-variable it reads along with `--provider` **and** `--model`, since the default
-model only means something on its own provider:
+zot talks straight to a model provider, so a run needs nothing but a declared
+provider, its key, and a work order under `.zot/orders/` in the mounted
+workspace - the image's working directory is `/workspace`, so a bare `zot` there
+runs the project's book exactly as it does on the host. zot has no built-in
+providers, so the provider and model come from a config file you mount, and
+the key from an environment variable that config references:
 
-```bash
-docker run --rm -it --env OPENAI_API_KEY --volume "$PWD":/workspace \
-  ghcr.io/openzot/openzot:latest --provider openai --model gpt-5.4-mini
+```yaml
+# zot.yaml
+default_provider: mygateway
+agent:
+  model: my-model
+providers:
+  mygateway:
+    base_url: https://gateway.example.com/v1
+    api_key: '$GATEWAY_KEY'
 ```
 
-See [providers.md](providers.md) for the full list.
+```bash
+docker run --rm -it --env GATEWAY_KEY \
+  --volume "$PWD":/workspace \
+  --volume "$PWD/zot.yaml":/home/zot/.config/zot/config.yaml:ro \
+  ghcr.io/openzot/openzot:latest
+```
+
+See [providers.md](providers.md) for the full picture. The examples below leave
+the config mount out for brevity; add it to each.
 
 ```bash
 # write the order - with zot new on the host, or with the image itself
@@ -72,7 +85,7 @@ docker run --rm \
 docker run --rm -it \
   --user "$(id -u):$(id -g)" \
   --env HOME=/tmp \
-  --env ZAI_API_KEY \
+  --env GATEWAY_KEY \
   --volume "$PWD":/workspace \
   ghcr.io/openzot/openzot:latest
 ```
@@ -94,9 +107,9 @@ initialises it from the image and the default user owns it:
 
 ```bash
 # draft the order into the empty volume, then run it
-docker run --rm --env ZAI_API_KEY --volume zot-workspace:/workspace \
+docker run --rm --env GATEWAY_KEY --volume zot-workspace:/workspace \
   ghcr.io/openzot/openzot:latest new --draft "scaffold a tiny snake game in python"
-docker run --rm -it --env ZAI_API_KEY --volume zot-workspace:/workspace \
+docker run --rm -it --env GATEWAY_KEY --volume zot-workspace:/workspace \
   ghcr.io/openzot/openzot:latest
 ```
 
@@ -113,7 +126,7 @@ or a config file you push anywhere:
 
 ```bash
 # pass through a variable already exported in your shell
-docker run --env ZAI_API_KEY …
+docker run --env GATEWAY_KEY …
 
 # or from a file the daemon reads at run time
 docker run --env-file ./zot.env …
@@ -145,7 +158,7 @@ Global context lives in the config directory, so mount it read-only:
 ```bash
 docker run --rm -it \
   --user "$(id -u):$(id -g)" --env HOME=/tmp \
-  --env ZAI_API_KEY \
+  --env GATEWAY_KEY \
   --volume "$PWD":/workspace \
   --volume "$HOME/.config/zot":/home/zot/.config/zot:ro \
   ghcr.io/openzot/openzot:latest
@@ -164,7 +177,7 @@ streams plain unstyled output instead, which is what you want from a pipeline:
 ```bash
 docker run --rm \
   --user "$(id -u):$(id -g)" --env HOME=/tmp \
-  --env ZAI_API_KEY \
+  --env GATEWAY_KEY \
   --volume "$PWD":/workspace \
   ghcr.io/openzot/openzot:latest --max-iterations 40 .zot/orders/rate-limiting.yaml | tee run.log
 ```
@@ -187,7 +200,7 @@ docker run --rm \
   --cap-drop ALL \
   --security-opt no-new-privileges \
   --pids-limit 512 --memory 2g --cpus 2 \
-  --env ZAI_API_KEY \
+  --env GATEWAY_KEY \
   --volume "$PWD":/workspace \
   ghcr.io/openzot/openzot:latest .zot/orders/rate-limiting.yaml
 ```

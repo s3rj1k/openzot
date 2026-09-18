@@ -21,10 +21,10 @@ func newTestServer(t *testing.T, handler http.HandlerFunc) string {
 
 // halfAnAnswer serves frames and then closes the body cleanly, with no terminal
 // frame - what a proxy does when it drops a chunked response mid-generation.
-func halfAnAnswer(t *testing.T, responses bool, lines ...string) *Client {
+func halfAnAnswer(t *testing.T, lines ...string) *Client {
 	t.Helper()
 
-	return serveTransport(t, responses, func(w http.ResponseWriter, _ *http.Request) {
+	return serveTransport(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		for _, line := range lines {
@@ -33,18 +33,17 @@ func halfAnAnswer(t *testing.T, responses bool, lines ...string) *Client {
 	})
 }
 
-// serveTransport points a client of the requested wire format at a handler.
-func serveTransport(t *testing.T, responses bool, handler http.HandlerFunc) *Client {
+// serveTransport points a client at a handler.
+func serveTransport(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 
 	server := newTestServer(t, handler)
 
 	client, err := New(Config{
-		Provider:     Custom,
-		Model:        "test-model",
-		APIKey:       "test-key",
-		BaseURL:      server,
-		UseResponses: responses,
+		Provider: "custom",
+		Model:    "test-model",
+		APIKey:   "test-key",
+		BaseURL:  server,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -82,7 +81,7 @@ func collect(client *Client) (string, string, error) {
 // it has to be an error - and a retriable one, because the next attempt usually
 // works.
 func TestChatRejectsAStreamThatEndedWithoutATerminalFrame(t *testing.T) {
-	client := halfAnAnswer(t, false,
+	client := halfAnAnswer(t,
 		`{"choices":[{"delta":{"content":"the answer is "}}]}`,
 		`{"choices":[{"delta":{"content":"forty t"}}]}`,
 	)
@@ -98,47 +97,10 @@ func TestChatRejectsAStreamThatEndedWithoutATerminalFrame(t *testing.T) {
 	}
 }
 
-// The same rule on the Responses transport: it defaulted to "stop" whenever no
-// status frame arrived, which turned the identical truncation into a silent
-// success.
-func TestResponsesRejectsAStreamThatEndedWithoutATerminalFrame(t *testing.T) {
-	client := halfAnAnswer(t, true,
-		`{"type":"response.output_text.delta","delta":"half an answ"}`,
-	)
-
-	_, finish, err := collect(client)
-
-	if err == nil {
-		t.Fatalf("a truncated stream must not read as a finished turn (finish = %q)", finish)
-	}
-
-	if !IsRetriable(err) {
-		t.Errorf("a truncated stream should be retriable: %v", err)
-	}
-}
-
-// A terminal status frame is enough on its own: the Responses API ends its
-// stream with response.completed and need not send [DONE].
-func TestResponsesAcceptsAStatusFrameAsTerminal(t *testing.T) {
-	client := halfAnAnswer(t, true,
-		`{"type":"response.output_text.delta","delta":"done"}`,
-		`{"type":"response.completed","response":{"status":"completed"}}`,
-	)
-
-	text, finish, err := collect(client)
-	if err != nil {
-		t.Fatalf("stream: %v", err)
-	}
-
-	if text != "done" || finish != FinishStop {
-		t.Errorf("text = %q, finish = %q, want a clean stop", text, finish)
-	}
-}
-
-// And on the chat transport a finish_reason is terminal even where the provider
+// A finish_reason is terminal even where the provider
 // never sends [DONE].
 func TestChatAcceptsAFinishReasonAsTerminal(t *testing.T) {
-	client := halfAnAnswer(t, false,
+	client := halfAnAnswer(t,
 		`{"choices":[{"delta":{"content":"done"}}]}`,
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
 	)
@@ -160,7 +122,7 @@ func TestChatAcceptsAFinishReasonAsTerminal(t *testing.T) {
 // is. This is the shape a stealth upstream returns when it drops a tool-bearing
 // request.
 func TestChatRejectsAnEmptyTurnMaskedAsAStop(t *testing.T) {
-	client := halfAnAnswer(t, false,
+	client := halfAnAnswer(t,
 		`{"choices":[{"delta":{},"finish_reason":"stop","native_finish_reason":"network_error"}]}`,
 	)
 
@@ -179,7 +141,7 @@ func TestChatRejectsAnEmptyTurnMaskedAsAStop(t *testing.T) {
 // is kept even when the gateway reports an odd native finish reason - discarding
 // it would turn a good answer into a spurious retry.
 func TestChatKeepsAnAnsweredTurnDespiteANativeFailureReason(t *testing.T) {
-	client := halfAnAnswer(t, false,
+	client := halfAnAnswer(t,
 		`{"choices":[{"delta":{"content":"the answer"}}]}`,
 		`{"choices":[{"delta":{},"finish_reason":"stop","native_finish_reason":"network_error"}]}`,
 	)
@@ -197,7 +159,7 @@ func TestChatKeepsAnAnsweredTurnDespiteANativeFailureReason(t *testing.T) {
 // A genuinely empty stop - no native failure reason - is left alone: it is the
 // loop's empty-turn handling that owns it, not a provider error.
 func TestChatAllowsAPlainEmptyStop(t *testing.T) {
-	client := halfAnAnswer(t, false,
+	client := halfAnAnswer(t,
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
 	)
 

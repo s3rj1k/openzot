@@ -60,7 +60,7 @@ func TestReasoningDetailsAreCapturedAndReplayed(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := New(Config{Provider: Custom, Model: "m", APIKey: "k", BaseURL: server.URL})
+	client, err := New(Config{Provider: "custom", Model: "m", APIKey: "k", BaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}

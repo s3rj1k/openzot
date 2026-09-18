@@ -101,8 +101,7 @@ main() {
   esac
 
   log ""
-  log "next: export a provider key and hand zot an order -"
-  log "  export ZAI_API_KEY=\"...\""
+  log "next: declare a provider and model (zot config), then hand zot an order -"
   log "  zot new \"add input validation to the signup handler and a test\""
   log "  zot"
 }

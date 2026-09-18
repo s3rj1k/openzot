@@ -51,7 +51,6 @@ func (r *Recorder) RecordMessage(message agent.Message) error {
 			Arguments:        activity.Arguments,
 			Result:           activity.Result,
 			Failure:          activity.Failure,
-			ReasoningItems:   activity.ReasoningItems,
 			ReasoningDetails: activity.ReasoningDetails,
 		}
 	}
@@ -159,7 +158,6 @@ func (s *Session) AgentMessages() []agent.Message {
 				Arguments:        activity.Arguments,
 				Result:           activity.Result,
 				Failure:          activity.Failure,
-				ReasoningItems:   activity.ReasoningItems,
 				ReasoningDetails: activity.ReasoningDetails,
 			}
 		}

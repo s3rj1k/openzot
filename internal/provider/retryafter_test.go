@@ -9,11 +9,11 @@ import (
 )
 
 // rateLimited serves a 429 carrying the given Retry-After header (omitted when
-// empty) on the requested wire format, and returns the error the stream raised.
-func rateLimited(t *testing.T, responses bool, header string) error {
+// empty) and returns the error the stream raised.
+func rateLimited(t *testing.T, header string) error {
 	t.Helper()
 
-	client := serveTransport(t, responses, func(w http.ResponseWriter, _ *http.Request) {
+	client := serveTransport(t, func(w http.ResponseWriter, _ *http.Request) {
 		if header != "" {
 			w.Header().Set("Retry-After", header)
 		}
@@ -41,24 +41,22 @@ func rateLimited(t *testing.T, responses bool, header string) error {
 // A 429 is deliberately not retriable, on the promise that the caller backs off
 // by what the provider advised. That promise is empty unless the header actually
 // reaches the caller, so the delay has to survive from the response onto the
-// error - on both transports, since the rate limit hits whichever one is in use.
+// error.
 func TestRetryAfterReachesTheCaller(t *testing.T) {
-	for _, responses := range []bool{false, true} {
-		err := rateLimited(t, responses, "30")
+	err := rateLimited(t, "30")
 
-		if !IsRateLimited(err) {
-			t.Fatalf("responses=%v: a 429 must be identifiable as a rate limit: %v", responses, err)
-		}
+	if !IsRateLimited(err) {
+		t.Fatalf("a 429 must be identifiable as a rate limit: %v", err)
+	}
 
-		delay, advised := RetryAfter(err)
+	delay, advised := RetryAfter(err)
 
-		if !advised {
-			t.Fatalf("responses=%v: the provider advised a delay and it was lost", responses)
-		}
+	if !advised {
+		t.Fatal("the provider advised a delay and it was lost")
+	}
 
-		if delay != 30*time.Second {
-			t.Errorf("responses=%v: delay = %s, want 30s", responses, delay)
-		}
+	if delay != 30*time.Second {
+		t.Errorf("delay = %s, want 30s", delay)
 	}
 }
 
@@ -67,7 +65,7 @@ func TestRetryAfterReachesTheCaller(t *testing.T) {
 func TestRetryAfterAcceptsAnHTTPDate(t *testing.T) {
 	when := time.Now().Add(45 * time.Second).UTC().Format(http.TimeFormat)
 
-	delay, advised := RetryAfter(rateLimited(t, false, when))
+	delay, advised := RetryAfter(rateLimited(t, when))
 
 	if !advised {
 		t.Fatal("an HTTP-date Retry-After must be understood")
@@ -82,7 +80,7 @@ func TestRetryAfterAcceptsAnHTTPDate(t *testing.T) {
 func TestRetryAfterInThePastIsZero(t *testing.T) {
 	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
 
-	delay, advised := RetryAfter(rateLimited(t, false, past))
+	delay, advised := RetryAfter(rateLimited(t, past))
 
 	if !advised || delay != 0 {
 		t.Errorf("delay = %s/%v, want 0/true", delay, advised)
@@ -96,7 +94,7 @@ func TestRetryAfterInThePastIsZero(t *testing.T) {
 func TestAHugeRetryAfterSaturatesRatherThanOverflowing(t *testing.T) {
 	// 1e10 seconds is ~317 years: enough to overflow int64 nanoseconds, small
 	// enough for Atoi to parse it as advice
-	delay, advised := RetryAfter(rateLimited(t, false, "9999999999"))
+	delay, advised := RetryAfter(rateLimited(t, "9999999999"))
 
 	if !advised {
 		t.Fatal("a parseable delta-seconds header is advice, however absurd")
@@ -115,7 +113,7 @@ func TestAHugeRetryAfterSaturatesRatherThanOverflowing(t *testing.T) {
 // caller falls back to its own backoff rather than sleeping for zero.
 func TestRetryAfterIsAbsentWhenUnadvised(t *testing.T) {
 	for _, header := range []string{"", "soon"} {
-		if _, advised := RetryAfter(rateLimited(t, false, header)); advised {
+		if _, advised := RetryAfter(rateLimited(t, header)); advised {
 			t.Errorf("header %q must not read as advice", header)
 		}
 	}

@@ -1,96 +1,115 @@
 # Providers: connecting zot to inference
 
-A provider is a named inference connection: a driver, endpoint, and credential.
-It may reach a model service directly, a local server, or a gateway. Pick one per
-run with `--provider`, or set `default_provider` in config.
+A provider is a named inference connection: an endpoint and a credential. It may
+reach a model service directly, a local server, or a gateway. **zot ships none.**
+Every provider is declared in your config file, and a run needs one selected - by
+`default_provider`, or per run with `--provider`.
 
 For the agent itself - the run loop, tools - see [how-it-works.md](how-it-works.md); for safety, [safety.md](safety.md).
 
-## The built-in providers
+## Declaring a provider
 
-| Provider     | Endpoint                          | Credential from      |
-| ------------ | --------------------------------- | -------------------- |
-| `openai`     | `https://api.openai.com/v1`       | `OPENAI_API_KEY`     |
-| `anthropic`  | `https://api.anthropic.com/v1`    | `ANTHROPIC_API_KEY`  |
-| `groq`       | `https://api.groq.com/openai/v1`  | `GROQ_API_KEY`       |
-| `mistral`    | `https://api.mistral.ai/v1`       | `MISTRAL_API_KEY`    |
-| `deepseek`   | `https://api.deepseek.com/v1`     | `DEEPSEEK_API_KEY`   |
-| `openrouter` | `https://openrouter.ai/api/v1`    | `OPENROUTER_API_KEY` |
-| `together`   | `https://api.together.xyz/v1`     | `TOGETHER_API_KEY`   |
-| `cerebras`   | `https://api.cerebras.ai/v1`      | `CEREBRAS_API_KEY`   |
-| `xai`        | `https://api.x.ai/v1`             | `XAI_API_KEY`        |
-| `moonshot`   | `https://api.moonshot.cn/v1`      | `MOONSHOT_API_KEY`   |
-| `zai`        | `https://api.z.ai/api/paas/v4`    | `ZAI_API_KEY`        |
-| `qwen`       | DashScope compatible mode         | `DASHSCOPE_API_KEY`  |
-| `vercel`     | `https://ai-gateway.vercel.sh/v1` | `AI_GATEWAY_API_KEY` |
-| `ollama`     | `http://localhost:11434/v1`       | none                 |
-
-## Credentials
-
-Each built-in provider reads its conventional credential variable, so switching
-provider is a pair of flags:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-…"
-zot --provider anthropic --model claude-5-sonnet "…"
-```
-
-Give the model as well as the provider. The default model is `glm-5.2` and it
-only means something on `zai`; a provider and a model that cannot talk to each
-other fail as a provider error rather than a configuration one, which is much
-harder to read.
-
-A local model needs no key at all:
-
-```bash
-zot --provider ollama --model llama-4 "…"
-```
-
-To make a different pair the default, set both in config:
+Anything that speaks the OpenAI chat-completions API works. Name a provider, give
+it a base URL and a key, then say which provider and model a run uses:
 
 ```yaml
 # ~/.config/zot/config.yaml
-default_provider: openai
+default_provider: mygateway
+
 agent:
-  model: gpt-5.4-mini
+  model: my-model
+
+providers:
+  mygateway:
+    base_url: https://gateway.internal.example.com/v1
+    api_key: '$GATEWAY_KEY'
 ```
 
-Any key can equally live in the config file (`~/.config/zot/config.yaml`, or the
-path given to `--config`), including as a `$ENV_VAR` reference so no secret is
-written to disk:
+`zot config` opens the file in `$EDITOR`, seeding it from a template that already
+has this shape.
+
+There is **no default provider and no default model**. A config that declares
+neither fails before any request is made, saying what to add - a provider and a
+model that cannot talk to each other otherwise fail as a provider error rather
+than a configuration one, which is much harder to read.
+
+| Key        | Meaning                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `base_url` | The endpoint root. Required. `https`, unless it is loopback.                             |
+| `api_key`  | The credential. Required, unless `base_url` is loopback. Literal, or a `$ENV_VAR` reference. |
+| `driver`   | The wire implementation. Optional: the only one is `openai`, and it is the default.      |
+| `models`   | An optional custom model list - see [below](#custom-model-lists).                        |
+
+The map key (`mygateway`) is only the name you select with `--provider` and
+`default_provider`; it selects nothing else. A provider called `openai` gets no
+endpoint and no key on account of its name.
+
+## The one driver
+
+`driver: openai` means the OpenAI-compatible chat-completions API - `POST
+{base_url}/chat/completions`, streamed. It is not restricted to OpenAI: it is
+the wire format that OpenAI, Groq, Mistral, DeepSeek, OpenRouter, Together, a
+local Ollama or llama.cpp, and most gateways speak. Any other `driver` value is
+rejected when the config loads.
+
+## Credentials
+
+The key is whatever the provider says it is - nothing is read from a conventional
+variable such as `OPENAI_API_KEY` on your behalf. A credential is scoped to the
+host it was issued for, and guessing which one belongs to a URL somebody typed
+is how a key ends up in someone else's logs. To keep the secret out of the file,
+reference a variable you export:
 
 ```yaml
 providers:
-  openai:
-    api_key: '$OPENAI_API_KEY'
+  mygateway:
+    base_url: https://gateway.internal.example.com/v1
+    api_key: '$GATEWAY_KEY'
 ```
 
-The provider name normally selects its driver, so `openai:` means
-`driver: openai`. Set the driver explicitly when the connection has a local
-alias:
+```bash
+export GATEWAY_KEY="…"
+zot
+```
+
+An unset variable resolves to nothing, so a missing key is reported as a missing
+key rather than sent to the endpoint as the literal text `$GATEWAY_KEY`.
+
+A key can also be set per model, where one gateway fronts several upstreams that
+each want their own - see below.
+
+## Several providers
+
+Declare as many as you like and pick one per run:
 
 ```yaml
-default_provider: corporate
+default_provider: work
+
 providers:
-  corporate:
-    driver: openai
-    base_url: https://models.example.com/v1
-    api_key: '$CORPORATE_MODEL_KEY'
+  work:
+    base_url: https://gateway.internal.example.com/v1
+    api_key: '$GATEWAY_KEY'
+  local:
+    base_url: http://localhost:11434/v1     # loopback: plaintext, and no key needed
 ```
 
-The driver selects Zot's endpoint defaults and provider-specific behavior; the
-map key remains the name used by `--provider` and `default_provider`.
+```bash
+zot --provider local --model llama-4 "…"
+```
 
-## Built-in and custom model lists
+The endpoint must be `https` unless it is loopback (`localhost`, `127.0.0.0/8`,
+`::1`); only a loopback endpoint may go without a key.
 
-The `models` block on a provider is optional. Without it, Zot accepts the model
+## Custom model lists
+
+The `models` block on a provider is optional. Without it, zot accepts the model
 named by `agent.model` or `--model`; catalogued models contribute their known
 context and capabilities, while a newly released unknown model still runs with
 conservative defaults.
 
-Define `models` when a connection should expose a deliberate custom list. Its
-map keys become the allowed names for that provider, and each entry can alias
-the real model ID or override model-specific settings:
+Define `models` when a connection should expose a deliberate list. Its map keys
+become the allowed names for that provider, and each entry can alias the real
+model ID or override model-specific settings:
 
 ```yaml
 default_provider: corporate
@@ -99,7 +118,6 @@ agent:
 
 providers:
   corporate:
-    driver: openai
     base_url: https://models.example.com/v1
     api_key: $CORPORATE_MODEL_KEY
     models:
@@ -108,11 +126,12 @@ providers:
         max_iterations: 50
       deep:
         model: gpt-5.4
+        api_key: $DEEP_MODEL_KEY      # this model's own credential
 ```
 
-When a custom list exists, selecting any other model is a configuration error.
-This makes the list useful as an intentional connection boundary. Omit it when
-you want Zot's permissive built-in/unknown-model behavior.
+When a list exists, selecting any other model is a configuration error. This
+makes the list useful as an intentional connection boundary. Omit it to accept
+any model name.
 
 ### Overriding what a model can do
 
@@ -122,7 +141,9 @@ capabilities. Each is a tri-state: unset defers to the catalogue, `true` and
 
 ```yaml
 providers:
-  openrouter:
+  corporate:
+    base_url: https://models.example.com/v1
+    api_key: $CORPORATE_MODEL_KEY
     models:
       stealth/ox-alpha:
         vision: true       # zot has never heard of it, but it can be shown images
@@ -137,6 +158,7 @@ providers:
 | `tools` | whether it accepts tool definitions |
 | `reasoning` | whether it emits a reasoning channel |
 | `context` | its total context window, in tokens |
+| `content_array` | send every message's content as an array of parts, for a self-hosted llama.cpp whose chat template rejects a bare string |
 
 **`vision` is the one worth knowing about.** The catalogue's default for an
 unrecognised model is *blind*, deliberately: a model wrongly assumed to take
@@ -148,61 +170,26 @@ images exist, until you say otherwise here.
 
 ## Gateways and prefixed models
 
-`openrouter` and `vercel` are model gateways: one endpoint fronting many
-providers, addressed by a provider-qualified model name like `openai/gpt-5.4` or
-`anthropic/claude-5-sonnet`. zot resolves the model's real context window behind
-the prefix, and - because a model is the same model whichever gateway serves it -
-you can give a **bare** name and zot supplies each gateway's own prefix from its
-catalogue:
-
-```bash
-export OPENROUTER_API_KEY="sk-..."
-zot --provider openrouter --model glm-5.2 "…"   # sent as z-ai/glm-5.2
-
-export AI_GATEWAY_API_KEY="..."                # Vercel AI Gateway
-zot --provider vercel --model glm-5.2 "…"       # sent as zai/glm-5.2
-```
-
-A name you qualify yourself (`--model z-ai/glm-5.2`) is always sent as-is, and a
-model zot has not catalogued passes through bare for the gateway to resolve.
-
-**Cloudflare AI Gateway** is supported too, but its endpoint carries your account
-and gateway ids, so there is no fixed URL to ship - configure the `cloudflare`
-provider with your gateway's compat URL:
+A model gateway - one endpoint fronting many providers - addresses models by a
+provider-qualified name like `openai/gpt-5.4` or `anthropic/claude-5-sonnet`.
+zot sends the model name exactly as you give it: it never adds or rewrites a
+prefix, so give the gateway the name it routes by. zot still resolves the real
+context window behind the prefix.
 
 ```yaml
-default_provider: cloudflare
-providers:
-  cloudflare:
-    base_url: https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/compat
-    api_key: '$OPENAI_API_KEY' # the downstream provider's key
-```
-
-## Any other provider
-
-Anything that speaks the OpenAI chat-completions API works. Name a provider, give
-it a base URL and a key:
-
-```yaml
-default_provider: mygateway
+default_provider: router
+agent:
+  model: z-ai/glm-5.2
 
 providers:
-  mygateway:
-    driver: custom
-    base_url: https://gateway.internal.example.com/v1
-    api_key: '$GATEWAY_KEY'
+  router:
+    base_url: https://openrouter.ai/api/v1
+    api_key: '$ROUTER_KEY'
 ```
 
-The endpoint must be `https` unless it is loopback, and a custom endpoint needs
-its own key - a credential is scoped to the host it was issued for, and zot will
-not forward one to a URL you just typed.
+Cloudflare AI Gateway is configured the same way; its endpoint carries your
+account and gateway ids, so its `base_url` is your gateway's compat URL:
+`https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/compat`.
 
-## The Responses API
-
-On OpenAI, reasoning models use the
-[Responses API](https://platform.openai.com/docs/api-reference/responses)
-automatically. It carries reasoning state between tool rounds as an opaque item
-the model resumes from; chat-completions has nowhere to put it, so a reasoning
-model driven that way re-derives its thinking on every round.
-
-Only OpenAI implements it today, so everywhere else stays on chat-completions.
+zot sends no app-attribution headers to any endpoint - it names itself to
+nobody.

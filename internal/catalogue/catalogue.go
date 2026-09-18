@@ -303,39 +303,6 @@ func Names() []string {
 	return names
 }
 
-// gateways route models they do not originate, so they are offered the whole
-// catalogue rather than a section of it. Grouping them by Provider would hand a
-// gateway connection an empty model list, which config validation reads as "no
-// model is configured for this provider".
-//
-// This mirrors `gatewaysQualifyModels` in internal/provider, which cannot be
-// shared from there: that package imports this one to complete a bare model
-// name, so the dependency only runs one way.
-var gateways = map[string]bool{
-	"openrouter": true,
-	"vercel":     true,
-	"cloudflare": true,
-}
-
-// NamesForProvider lists the catalogued models available from a provider,
-// sorted. Gateways expose the whole catalogue because they route models from
-// several creators; direct providers expose only models they originate.
-func NamesForProvider(provider string) []string {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	if gateways[provider] {
-		return Names()
-	}
-
-	names := make([]string, 0)
-	for name, model := range models {
-		if model.Provider == provider {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	return names
-}
-
 // InputBudget is how many tokens of conversation may be sent to a model.
 //
 // It is the number the thread builder trims to and compaction triggers against,

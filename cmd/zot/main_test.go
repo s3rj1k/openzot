@@ -335,7 +335,7 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -420,7 +420,7 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -859,7 +859,7 @@ default_provider: local
 
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)
@@ -954,7 +954,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -1029,7 +1029,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, url)), 0o644); err != nil {
@@ -1144,7 +1144,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -1362,7 +1362,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL), 0o644); err != nil {
@@ -1486,7 +1486,7 @@ default_provider: local
 
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)
@@ -1617,7 +1617,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -1692,7 +1692,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -1797,7 +1797,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -2047,7 +2047,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -2314,7 +2314,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -2426,7 +2426,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {
@@ -2535,7 +2535,7 @@ ui:
 default_provider: local
 providers:
   local:
-    driver: custom
+    driver: openai
     base_url: %s
     api_key: test-key
 `, server.URL)), 0o644); err != nil {

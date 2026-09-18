@@ -16,10 +16,11 @@ zot config path   # print the config file location
 ```
 
 Scalar fields have a matching `ZOT_<PATH>` env var (e.g. `agent.model` →
-`ZOT_AGENT_MODEL`, `default_provider` → `ZOT_DEFAULT_PROVIDER`). Provider
-credentials come from their own conventional variables (`OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`, …) and so need no `ZOT_` prefix; they can equally be set in
-config, referencing a variable you export. Every field is documented in
+`ZOT_AGENT_MODEL`, `default_provider` → `ZOT_DEFAULT_PROVIDER`). Providers
+are not built in: each is declared under `providers:` with a `base_url` and an
+`api_key`, and a run needs `default_provider` and `agent.model` set. A key is
+written in the config or references a variable you export (`api_key:
+'$GATEWAY_KEY'`); no conventional variable is read on a provider's behalf. Every field is documented in
 [configs/zot.example.yaml](../configs/zot.example.yaml).
 
 ## Flags

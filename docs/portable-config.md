@@ -45,10 +45,11 @@ file that ends up inside the binary instead of on disk. A minimal one:
 
 ```yaml
 agent:
-  model: 'glm-5.2'
-default_provider: zai
+  model: 'my-model'
+default_provider: mygateway
 providers:
-  zai:
+  mygateway:
+    base_url: 'https://gateway.example.com/v1'
     api_key: 'sk-...'      # baked in verbatim
 ```
 
@@ -100,10 +101,12 @@ How you write the credential decides whether the binary is self-contained:
 
 ```yaml
 providers:
-  zai:
+  mygateway:
+    base_url: 'https://gateway.example.com/v1'
     api_key: 'sk-...'              # the literal key is compiled in - fully self-contained
-  openai:
-    api_key: '$OPENAI_API_KEY'     # the *reference* is compiled in - still read at runtime
+  other:
+    base_url: 'https://other.example.com/v1'
+    api_key: '$OTHER_API_KEY'      # the *reference* is compiled in - still read at runtime
 ```
 
 A literal key makes the binary run anywhere with no environment at all. A
@@ -139,7 +142,7 @@ inherit your API keys (see [safety.md](safety.md)). A **baked** key is
 handled the same way - and it was never in the environment to begin with, so a
 portable binary with a compiled-in key gives the agent's shell *nothing* to read
 from the environment for that credential. That is a genuine, if narrow, security
-improvement over `export OPENAI_API_KEY=...`.
+improvement over `export GATEWAY_KEY=...`.
 
 The offsetting risk is the artifact: the key is now inside a file that is easy
 to copy. The two considerations are independent - a baked key is harder for the
