@@ -41,6 +41,7 @@ import (
 	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/config"
+	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/tui"
@@ -706,7 +707,7 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 	if options.SessionPath != "" {
 		meta := session.Meta{
 			Task:     task,
-			Model:    client.Model(),
+			Model:    client.Config().Model,
 			Provider: cfg.DefaultProvider,
 			Workdir:  workdir,
 		}
@@ -790,7 +791,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts agent.ExecuteWithT
 
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agent.ExecuteWithToolsOptions, error) {
+func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, agent.ExecuteWithToolsOptions, error) {
 	var empty agent.ExecuteWithToolsOptions
 
 	if cfg.DefaultProvider == "" {
@@ -842,7 +843,7 @@ func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agen
 
 	instructions = withNonInteractiveContract(instructions)
 
-	client, err := agent.NewClient(agent.ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: cfg.DefaultProvider,
 		Model:    model,
 		APIKey:   credential,

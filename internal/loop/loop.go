@@ -11,7 +11,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/thread"
 )
 
@@ -29,7 +28,7 @@ type ToolDefinition struct {
 // Options configures a run.
 type Options struct {
 	// Client is the provider connection.
-	Client *llm.Client
+	Client *Client
 
 	// Instructions is the system prompt.
 	Instructions string
@@ -505,7 +504,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			// remember the failure so an abort during the ensuing backoff still
 			// carries it - only a provider error, so a bare cancellation does
 			// not overwrite the exchange worth keeping
-			if llm.IsProviderError(err) {
+			if IsProviderError(err) {
 				lastFailure = err
 			}
 
@@ -522,7 +521,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 			// a context-limit rejection is recoverable: narrow the window the
 			// thread is trimmed to and retry
-			if limit, ok := llm.DetectContextLimit(err); ok && e.canContinue(budget) {
+			if limit, ok := DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
 				if e.narrowInputBudget(limit, emit) {
@@ -534,9 +533,9 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			// than ours - which is why 429 is not IsRetriable. Waiting out the
 			// advised delay is the other half of that contract; without it a
 			// single throttle response ends an overnight run outright.
-			limited := llm.IsRateLimited(err)
+			limited := IsRateLimited(err)
 
-			if (limited || llm.IsRetriable(err)) && e.canContinue(budget) {
+			if (limited || IsRetriable(err)) && e.canContinue(budget) {
 				budget.spendContinuation()
 				retries++
 
@@ -553,7 +552,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 					// the advised delay is honoured, but the backoff stays a
 					// floor under it - "Retry-After: 0" must not turn into the
 					// instant-retry loop the backoff exists to prevent
-					advised, ok := llm.RetryAfter(err)
+					advised, ok := RetryAfter(err)
 					delay = rateLimitWait(advised, ok, delay)
 				}
 
@@ -814,7 +813,7 @@ func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, stri
 
 // terminalDetail pulls the explanation out of a terminal call's arguments.
 func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
-	arguments, err := llm.DecodeArguments(call)
+	arguments, err := decodeArguments(call)
 	if err != nil {
 		return fallback
 	}
@@ -855,7 +854,7 @@ func (e *Engine) dispatch(
 		definition, known := e.options.Tools[name]
 
 		// decode before announcing, so the event carries usable arguments
-		arguments, decodeErr := llm.DecodeArguments(call)
+		arguments, decodeErr := decodeArguments(call)
 
 		emit(Event{Kind: EventToolCallStart, Tool: name, Args: arguments, Text: call.Input})
 
@@ -988,7 +987,7 @@ func cycleDetail(heuristic string) string {
 //
 // Only the budget changes. The conversation itself is untouched; the thread
 // builder drops the oldest messages to fit it on the next request.
-func (e *Engine) narrowInputBudget(limit llm.ContextLimit, emit func(Event)) bool {
+func (e *Engine) narrowInputBudget(limit ContextLimit, emit func(Event)) bool {
 	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.inputBudget {
 		e.inputBudget = limit.SuggestedLimit
 

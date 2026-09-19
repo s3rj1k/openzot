@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 
 // Client is a configured connection to a model.
 type Client struct {
-	config Config
+	config ClientConfig
 	model  fantasy.LanguageModel
 }
 
-// New validates the configuration and connects to the endpoint it names.
-func New(config Config) (*Client, error) {
+// NewClient validates the configuration and connects to the endpoint it names.
+func NewClient(config ClientConfig) (*Client, error) {
 	resolved, err := config.Resolve()
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func New(config Config) (*Client, error) {
 }
 
 // Config returns the resolved configuration.
-func (c *Client) Config() Config {
+func (c *Client) Config() ClientConfig {
 	return c.config
 }
 

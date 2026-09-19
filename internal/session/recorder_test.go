@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // The model's reasoning is part of the record: the scratchpad is often the only
@@ -200,7 +201,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 		Reason:  "error",
 		Message: "the provider failed",
 		Error:   "provider: Model 'stealth/ox-alpha' not found (404)",
-		Failure: &agent.Failure{Status: 404, ResponseBody: `{"error":{"message":"not found"}}`, RequestBytes: 118234},
+		Failure: &loop.Failure{Status: 404, ResponseBody: `{"error":{"message":"not found"}}`, RequestBytes: 118234},
 		Code:    1,
 	}); err != nil {
 		t.Fatalf("RecordResult: %v", err)

@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 // content becomes an array of parts, and an empty one []. And no credential
 // the SDK picked up from the environment survives: the key is the operator's,
 // or there is none.
-func wire(config Config) option.Middleware {
+func wire(config ClientConfig) option.Middleware {
 	return func(request *http.Request, next option.MiddlewareNext) (*http.Response, error) {
 		if config.APIKey == "" {
 			request.Header.Del("Authorization")

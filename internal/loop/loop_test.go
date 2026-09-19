@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-
-	"github.com/openzot/openzot/internal/llm"
 )
 
 // testWindow is the context window every test engine is given. A window is
@@ -21,7 +19,7 @@ const testWindow = 1_000_000
 
 // stub serves scripted turns over the OpenAI-compatible wire format, so the loop
 // can be driven without a model.
-func stub(t *testing.T, turns ...[]string) *llm.Client {
+func stub(t *testing.T, turns ...[]string) *Client {
 	t.Helper()
 
 	turn := 0
@@ -45,14 +43,14 @@ func stub(t *testing.T, turns ...[]string) *llm.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := llm.New(llm.Config{
+	client, err := NewClient(ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("llm.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	return client
@@ -623,14 +621,14 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := llm.New(llm.Config{
+	client, err := NewClient(ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("llm.New: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	engine, err := New(Options{ContextWindow: testWindow,

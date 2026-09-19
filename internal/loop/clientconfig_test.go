@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"errors"
@@ -9,25 +9,25 @@ import (
 func TestResolveDefaultsAndValidation(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  Config
+		config  ClientConfig
 		wantURL string
 		wantErr bool
 	}{
 		{
 			name:    "a named https endpoint with a key",
-			config:  Config{Provider: "gw", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1/"},
+			config:  ClientConfig{Provider: "gw", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1/"},
 			wantURL: "https://gw.example.com/v1",
 		},
 		{
 			name:    "a loopback endpoint needs no key",
-			config:  Config{Model: "m", BaseURL: "http://127.0.0.1:8080/v1"},
+			config:  ClientConfig{Model: "m", BaseURL: "http://127.0.0.1:8080/v1"},
 			wantURL: "http://127.0.0.1:8080/v1",
 		},
-		{name: "no model", config: Config{APIKey: "k", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
-		{name: "no base url", config: Config{Model: "m", APIKey: "k"}, wantErr: true},
-		{name: "a malformed base url", config: Config{Model: "m", APIKey: "k", BaseURL: "not a url"}, wantErr: true},
-		{name: "plaintext to a remote host", config: Config{Model: "m", APIKey: "k", BaseURL: "http://gw.example.com/v1"}, wantErr: true},
-		{name: "a remote host without a key", config: Config{Model: "m", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
+		{name: "no model", config: ClientConfig{APIKey: "k", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
+		{name: "no base url", config: ClientConfig{Model: "m", APIKey: "k"}, wantErr: true},
+		{name: "a malformed base url", config: ClientConfig{Model: "m", APIKey: "k", BaseURL: "not a url"}, wantErr: true},
+		{name: "plaintext to a remote host", config: ClientConfig{Model: "m", APIKey: "k", BaseURL: "http://gw.example.com/v1"}, wantErr: true},
+		{name: "a remote host without a key", config: ClientConfig{Model: "m", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
 	}
 
 	for _, test := range tests {
@@ -62,7 +62,7 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 		"http://[::1]:8080/v1",
 		"http://[::1]/v1",
 	} {
-		if _, err := (Config{Model: "m", BaseURL: url}).Resolve(); err != nil {
+		if _, err := (ClientConfig{Model: "m", BaseURL: url}).Resolve(); err != nil {
 			t.Errorf("%s was not treated as loopback: %v", url, err)
 		}
 	}
@@ -72,14 +72,14 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 		"http://[2001:db8::1]/v1",
 		"http://localhost.example.com/v1",
 	} {
-		if _, err := (Config{Model: "m", APIKey: "k", BaseURL: url}).Resolve(); err == nil {
+		if _, err := (ClientConfig{Model: "m", APIKey: "k", BaseURL: url}).Resolve(); err == nil {
 			t.Errorf("%s was accepted over plaintext", url)
 		}
 	}
 }
 
 func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
-	_, err := (Config{Provider: "acme", Model: "m", BaseURL: "https://gw.example.com/v1"}).Resolve()
+	_, err := (ClientConfig{Provider: "acme", Model: "m", BaseURL: "https://gw.example.com/v1"}).Resolve()
 
 	if !errors.Is(err, ErrMissingCredential) {
 		t.Fatalf("err = %v, want ErrMissingCredential", err)

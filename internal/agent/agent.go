@@ -10,7 +10,7 @@
 // half-measure: an agent either records an outcome or exhausts a budget trying.
 // See ExecuteWithTools.
 //
-//	client, _ := agent.NewClient(agent.ClientOptions{
+//	client, _ := loop.NewClient(loop.ClientConfig{
 //	    Provider: "local",
 //	    BaseURL:  "https://models.example.com/v1",
 //	    Model:    "my-model",
@@ -32,67 +32,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/loop"
 )
-
-// Client is a configured connection to a model provider.
-type Client struct {
-	inner *llm.Client
-}
-
-// ClientOptions configures a Client.
-type ClientOptions struct {
-	// Provider is the caller's name for this connection. Informational: it
-	// labels errors and diagnostics.
-	Provider string
-
-	// Model is the provider's own model name.
-	Model string
-
-	// APIKey authenticates against the endpoint. Not required when BaseURL is
-	// loopback.
-	APIKey string
-
-	// BaseURL is the endpoint root. Required, and must be https unless it is
-	// loopback.
-	BaseURL string
-
-	// ContentArray sends every message's content as an array of parts, for a
-	// self-hosted endpoint whose chat template rejects the bare string.
-	ContentArray bool
-}
-
-// NewClient validates the options and returns a client.
-func NewClient(options ClientOptions) (*Client, error) {
-	inner, err := llm.New(llm.Config{
-		Provider:     options.Provider,
-		Model:        options.Model,
-		APIKey:       options.APIKey,
-		BaseURL:      options.BaseURL,
-		ContentArray: options.ContentArray,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{inner: inner}, nil
-}
-
-// Model returns the resolved model name the client will send.
-func (c *Client) Model() string {
-	return c.inner.Config().Model
-}
-
-// Provider returns the connection's name.
-func (c *Client) Provider() string {
-	return c.inner.Config().Provider
-}
-
-// BaseURL returns the endpoint the client will call.
-func (c *Client) BaseURL() string {
-	return c.inner.Config().BaseURL
-}
 
 // MessageType identifies what a message is. See the constants below.
 type MessageType = loop.MessageType
@@ -203,7 +144,7 @@ type Summary struct {
 	// provider response: the status, the raw body, and the size of the request
 	// that was refused. Error says what the loop concluded; this is what an
 	// operator troubleshoots with.
-	Failure *Failure
+	Failure *loop.Failure
 
 	// Code is the process exit code the reason maps to.
 	Code int
@@ -381,7 +322,7 @@ const exitEventGrace = time.Second
 // learns how it ended.
 func ExecuteWithTools(
 	ctx context.Context,
-	client *Client,
+	client *loop.Client,
 	options ExecuteWithToolsOptions,
 ) (<-chan AgentEvent, <-chan error) {
 	events := make(chan AgentEvent)
@@ -412,7 +353,7 @@ func ExecuteWithTools(
 		log := &conversationLog{recorder: recorder, recorded: len(seed)}
 
 		engine, err := loop.New(loop.Options{
-			Client:           client.inner,
+			Client:           client,
 			Instructions:     options.Instructions,
 			Messages:         toLoopMessages(options),
 			Tools:            toLoopTools(options.Tools),
@@ -478,7 +419,7 @@ func ExecuteWithTools(
 				Reason:        string(result.Reason),
 				Message:       result.Message,
 				Error:         errText(result.Err),
-				Failure:       failureOf(result.Err),
+				Failure:       loop.FailureOf(result.Err),
 				Code:          exitCode(result.Reason),
 				Iterations:    result.Budget.Iterations,
 				Calls:         result.Budget.Calls,
@@ -554,34 +495,6 @@ func settleBudget(options ExecuteWithToolsOptions) int {
 	}
 
 	return loop.DefaultMaxSettles
-}
-
-// Failure is the wire evidence of a provider refusal.
-type Failure struct {
-	// Status is the HTTP status of the refusal.
-	Status int
-
-	// ResponseBody is the raw (bounded) body the provider returned.
-	ResponseBody string
-
-	// RequestBytes is the size of the request that was refused - against a
-	// suspected context ceiling, the number that turns a correlation into a
-	// diagnosis.
-	RequestBytes int
-}
-
-// failureOf extracts the wire evidence from an error ending, when there is any.
-func failureOf(err error) *Failure {
-	evidence, ok := llm.FailureOf(err)
-	if !ok {
-		return nil
-	}
-
-	return &Failure{
-		Status:       evidence.Status,
-		ResponseBody: evidence.Body,
-		RequestBytes: evidence.RequestBytes,
-	}
 }
 
 // errText renders an error for the record, tolerating nil.

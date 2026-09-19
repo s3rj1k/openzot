@@ -22,6 +22,7 @@ import (
 	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/config"
+	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/tui"
@@ -40,7 +41,7 @@ func TestMain(m *testing.M) {
 // headlessViewer is tui.Run without the screen. It reports endings the way the
 // viewer does: an agent-declared failure as an AgentExitError, an engine error
 // as itself.
-func headlessViewer(ctx context.Context, client *agent.Client, meta tui.Meta, opts agent.ExecuteWithToolsOptions) (tui.Outcome, error) {
+func headlessViewer(ctx context.Context, client *loop.Client, meta tui.Meta, opts agent.ExecuteWithToolsOptions) (tui.Outcome, error) {
 	fmt.Println(meta.Task)
 
 	events, errs := agent.ExecuteWithTools(ctx, client, opts)
@@ -1691,7 +1692,7 @@ providers:
 				t.Fatalf("resolve: %v", err)
 			}
 
-			if got := client.Model(); got != "gpt-4" {
+			if got := client.Config().Model; got != "gpt-4" {
 				t.Errorf("model = %q", got)
 			}
 
@@ -1915,15 +1916,15 @@ providers:
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
 
-		if got := client.Model(); got != "some-model" {
+		if got := client.Config().Model; got != "some-model" {
 			t.Errorf("%s model = %q, want it unchanged", name, got)
 		}
 
-		if got := client.Provider(); got != name {
+		if got := client.Config().Provider; got != name {
 			t.Errorf("%s provider = %q, want %q", name, got, name)
 		}
 
-		if got := client.BaseURL(); got != wantURL {
+		if got := client.Config().BaseURL; got != wantURL {
 			t.Errorf("%s endpoint = %q, want %q", name, got, wantURL)
 		}
 	}
@@ -1973,7 +1974,7 @@ providers:
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if got := client.Model(); got != "gpt-5" {
+	if got := client.Config().Model; got != "gpt-5" {
 		t.Errorf("model = %q, want gpt-5", got)
 	}
 	if opts.MaxIterations != 50 {

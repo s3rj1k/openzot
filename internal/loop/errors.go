@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"errors"
@@ -294,30 +294,33 @@ func DetectContextLimit(err error) (ContextLimit, bool) {
 	return limit, true
 }
 
-// Failure is the wire evidence behind a provider refusal.
+// Failure is the wire evidence behind a provider refusal. It is recorded in the
+// session log as it is, so its JSON tags are the log's schema.
 type Failure struct {
 	// Status is the HTTP status of the refusal.
-	Status int
+	Status int `json:"status"`
 
-	// Body is the raw (bounded) response body.
-	Body string
+	// ResponseBody is the raw (bounded) body the provider returned.
+	ResponseBody string `json:"response_body,omitempty"`
 
-	// RequestBytes is the size of the request that was refused.
-	RequestBytes int
+	// RequestBytes is the size of the request that was refused - against a
+	// suspected context ceiling, the number that turns a correlation into a
+	// diagnosis.
+	RequestBytes int `json:"request_bytes,omitempty"`
 }
 
 // FailureOf extracts the wire evidence from an error, when it carries any.
-func FailureOf(err error) (Failure, bool) {
+func FailureOf(err error) *Failure {
 	found, ok := providerError(err)
 	if !ok || found.StatusCode == 0 {
-		return Failure{}, false
+		return nil
 	}
 
-	return Failure{
+	return &Failure{
 		Status:       found.StatusCode,
-		Body:         clip(bodyOf(found.ResponseBody), maxDumpBody),
+		ResponseBody: clip(bodyOf(found.ResponseBody), maxDumpBody),
 		RequestBytes: len(found.RequestBody),
-	}, true
+	}
 }
 
 // bodyOf returns a response's body. The SDK hands back the whole dumped

@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"errors"
@@ -210,12 +210,12 @@ func TestFailureOfCarriesTheBodyNotTheDump(t *testing.T) {
 
 	err := &fantasy.ProviderError{StatusCode: 400, ResponseBody: []byte(dump), RequestBody: []byte(`{"model":"m"}`)}
 
-	failure, ok := FailureOf(fmt.Errorf("run: %w", err))
-	if !ok {
+	failure := FailureOf(fmt.Errorf("run: %w", err))
+	if failure == nil {
 		t.Fatal("a refusal carries evidence")
 	}
 
-	if failure.Status != 400 || failure.Body != `{"error":"nope"}` {
+	if failure.Status != 400 || failure.ResponseBody != `{"error":"nope"}` {
 		t.Errorf("failure = %+v, want the status and only the body", failure)
 	}
 
@@ -226,7 +226,7 @@ func TestFailureOfCarriesTheBodyNotTheDump(t *testing.T) {
 
 func TestFailureOfIsAbsentWithoutAStatus(t *testing.T) {
 	for _, err := range []error{nil, errors.New("cancelled"), &fantasy.ProviderError{Message: "cut connection"}} {
-		if _, ok := FailureOf(err); ok {
+		if FailureOf(err) != nil {
 			t.Errorf("%v carries no wire evidence", err)
 		}
 	}
@@ -235,9 +235,9 @@ func TestFailureOfIsAbsentWithoutAStatus(t *testing.T) {
 func TestFailureOfBoundsWhatItKeeps(t *testing.T) {
 	err := &fantasy.ProviderError{StatusCode: 500, ResponseBody: []byte(strings.Repeat("x", maxDumpBody+100))}
 
-	failure, _ := FailureOf(err)
+	failure := FailureOf(err)
 
-	if len(failure.Body) > maxDumpBody+len("…") {
-		t.Errorf("kept %d bytes, want the body bounded", len(failure.Body))
+	if len(failure.ResponseBody) > maxDumpBody+len("…") {
+		t.Errorf("kept %d bytes, want the body bounded", len(failure.ResponseBody))
 	}
 }

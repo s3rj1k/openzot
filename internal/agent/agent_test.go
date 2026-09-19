@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // testWindow is the context window every test engine is given. A window is
@@ -77,10 +79,10 @@ func toolFrame(id, name, arguments string) string {
 	)
 }
 
-func newTestClient(t *testing.T, server *httptest.Server) *Client {
+func newTestClient(t *testing.T, server *httptest.Server) *loop.Client {
 	t.Helper()
 
-	client, err := NewClient(ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "test-key",
@@ -359,7 +361,7 @@ func TestUnknownToolIsReportedNotFatal(t *testing.T) {
 }
 
 func TestClientRejectsPlaintextEndpoint(t *testing.T) {
-	_, err := NewClient(ClientOptions{
+	_, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "m",
 		APIKey:   "k",
@@ -372,7 +374,7 @@ func TestClientRejectsPlaintextEndpoint(t *testing.T) {
 }
 
 func TestClientRequiresCredential(t *testing.T) {
-	_, err := NewClient(ClientOptions{Provider: "gw", Model: "gpt-5.4", BaseURL: "https://gw.example.com/v1"})
+	_, err := loop.NewClient(loop.ClientConfig{Provider: "gw", Model: "gpt-5.4", BaseURL: "https://gw.example.com/v1"})
 
 	if err == nil {
 		t.Fatal("a provider that needs a key must not resolve without one")
@@ -482,7 +484,7 @@ func TestTerminalToolsAreAlwaysOffered(t *testing.T) {
 }
 
 func TestClientExposesItsResolvedConfiguration(t *testing.T) {
-	client, err := NewClient(ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "gw",
 		Model:    "glm-5.2",
 		APIKey:   "k",
@@ -492,15 +494,15 @@ func TestClientExposesItsResolvedConfiguration(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if got := client.Model(); got != "glm-5.2" {
+	if got := client.Config().Model; got != "glm-5.2" {
 		t.Errorf("Model = %q", got)
 	}
 
-	if got := client.Provider(); got != "gw" {
+	if got := client.Config().Provider; got != "gw" {
 		t.Errorf("Provider = %q", got)
 	}
 
-	if got := client.BaseURL(); got != "https://gw.example.com/v1" {
+	if got := client.Config().BaseURL; got != "https://gw.example.com/v1" {
 		t.Errorf("BaseURL = %q", got)
 	}
 }

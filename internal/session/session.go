@@ -27,6 +27,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // Kind identifies a record.
@@ -124,7 +126,7 @@ type Result struct {
 	// provider response. The raw exchange is what troubleshooting needs: an
 	// opaque upstream "ERROR" and a proper context-length message read the
 	// same in Error, but the refused request's size tells them apart.
-	Failure *Failure `json:"failure,omitempty"`
+	Failure *loop.Failure `json:"failure,omitempty"`
 
 	Code int `json:"code"`
 
@@ -139,13 +141,6 @@ type Result struct {
 	// produced it.
 	InputTokens  int `json:"inputTokens,omitempty"`
 	OutputTokens int `json:"outputTokens,omitempty"`
-}
-
-// Failure is the wire evidence of a provider refusal.
-type Failure struct {
-	Status       int    `json:"status"`
-	ResponseBody string `json:"response_body,omitempty"`
-	RequestBytes int    `json:"request_bytes,omitempty"`
 }
 
 // Writer appends records to a session log.

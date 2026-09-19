@@ -1,8 +1,4 @@
-// Package llm is zot's connection to a model. It speaks the OpenAI
-// chat-completions wire format through fantasy and keeps the rules that make an
-// unattended run safe: an endpoint the operator named, a credential scoped to
-// it, and errors classified for the loop to retry, back off from, or give up on.
-package llm
+package loop
 
 import (
 	"errors"
@@ -12,8 +8,8 @@ import (
 	"strings"
 )
 
-// Config identifies which endpoint to call and with what credential.
-type Config struct {
+// ClientConfig identifies which endpoint to call and with what credential.
+type ClientConfig struct {
 	// Provider is the operator's name for this connection. Informational: it
 	// labels errors, the session log and the viewer, and selects nothing.
 	Provider string
@@ -40,34 +36,39 @@ var ErrMissingCredential = errors.New("provider: no API key configured")
 // The endpoint is always the operator's, so the credential is too: a key is
 // scoped to the host it was issued for, and there is no ambient one to fall
 // back on. Only a loopback endpoint may go without.
-func (c Config) Resolve() (Config, error) {
+func (c ClientConfig) Resolve() (ClientConfig, error) {
 	resolved := c
 
 	resolved.Provider = strings.TrimSpace(c.Provider)
 
 	if resolved.Model == "" {
-		return Config{}, errors.New("provider: no model specified")
+		return ClientConfig{}, errors.New("provider: no model specified")
 	}
 
 	if resolved.BaseURL == "" {
-		return Config{}, errors.New("provider: no base URL configured (set base_url on the provider)")
+		return ClientConfig{}, errors.New("provider: no base URL configured (set base_url on the provider)")
 	}
 
 	parsed, err := url.Parse(resolved.BaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return Config{}, fmt.Errorf("provider: invalid base URL %q", resolved.BaseURL)
+		return ClientConfig{}, fmt.Errorf("provider: invalid base URL %q", resolved.BaseURL)
 	}
 
 	if parsed.Scheme != "https" && !isLoopbackHost(parsed.Hostname()) {
-		return Config{}, fmt.Errorf("provider: base URL must use https (got %q)", resolved.BaseURL)
+		return ClientConfig{}, fmt.Errorf("provider: base URL must use https (got %q)", resolved.BaseURL)
 	}
 
 	resolved.BaseURL = strings.TrimRight(resolved.BaseURL, "/")
 
 	if resolved.APIKey == "" && !isLoopbackHost(parsed.Hostname()) {
-		return Config{}, fmt.Errorf(
+		name := resolved.Provider
+		if name == "" {
+			name = "the provider"
+		}
+
+		return ClientConfig{}, fmt.Errorf(
 			"%w: %s at %s needs a key of its own - a credential is scoped to the host it was issued for",
-			ErrMissingCredential, firstNonEmpty(resolved.Provider, "the provider"), resolved.BaseURL)
+			ErrMissingCredential, name, resolved.BaseURL)
 	}
 
 	return resolved, nil
@@ -91,13 +92,4 @@ func isLoopbackHost(hostname string) bool {
 	}
 
 	return false
-}
-
-// firstNonEmpty returns value when it is set, else fallback.
-func firstNonEmpty(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-
-	return fallback
 }

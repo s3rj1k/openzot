@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // testWindow is the context window every test engine is given. A window is
@@ -27,7 +28,7 @@ const testWindow = 1_000_000
 // hanging on a spinner nobody will ever stop.
 
 // scriptedClient answers with the given SSE frame sets, one per turn.
-func scriptedClient(t *testing.T, turns ...[]string) *agent.Client {
+func scriptedClient(t *testing.T, turns ...[]string) *loop.Client {
 	t.Helper()
 
 	turn := 0
@@ -51,7 +52,7 @@ func scriptedClient(t *testing.T, turns ...[]string) *agent.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := agent.NewClient(agent.ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -208,7 +209,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := agent.NewClient(agent.ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -299,7 +300,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := agent.NewClient(agent.ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -379,7 +380,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := agent.NewClient(agent.ClientOptions{
+	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",

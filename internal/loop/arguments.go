@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"encoding/json"
@@ -8,12 +8,12 @@ import (
 	"charm.land/fantasy"
 )
 
-// DecodeArguments parses a tool call's JSON arguments.
+// decodeArguments parses a tool call's JSON arguments.
 //
 // An empty string decodes to an empty object: a model calling a no-argument tool
 // often sends "" rather than "{}", and rejecting that would fail the call for no
 // reason.
-func DecodeArguments(call fantasy.ToolCallContent) (map[string]any, error) {
+func decodeArguments(call fantasy.ToolCallContent) (map[string]any, error) {
 	raw := strings.TrimSpace(call.Input)
 
 	if raw == "" {

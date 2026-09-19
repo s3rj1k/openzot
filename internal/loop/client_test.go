@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	"charm.land/fantasy"
 )
 
-// request is what a fake endpoint saw.
-type request struct {
+// wireRequest is what a fake endpoint saw.
+type wireRequest struct {
 	mu      sync.Mutex
 	path    string
 	headers http.Header
@@ -23,7 +23,7 @@ type request struct {
 }
 
 // capture is a handler that records the request and answers with a finished turn.
-func (r *request) capture(w http.ResponseWriter, req *http.Request) {
+func (r *wireRequest) capture(w http.ResponseWriter, req *http.Request) {
 	raw, _ := io.ReadAll(req.Body)
 
 	r.mu.Lock()
@@ -41,7 +41,7 @@ func (r *request) capture(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, sse(`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`))
 }
 
-func (r *request) messages() []map[string]any {
+func (r *wireRequest) messages() []map[string]any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -107,7 +107,7 @@ func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
 		t.Fatalf("calls = %+v", result.calls)
 	}
 
-	if arguments, err := DecodeArguments(result.calls[0]); err != nil || len(arguments) != 0 {
+	if arguments, err := decodeArguments(result.calls[0]); err != nil || len(arguments) != 0 {
 		t.Errorf("arguments = %v, %v, want an empty object", arguments, err)
 	}
 }
@@ -224,8 +224,8 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 				t.Errorf("retriable = %v, limited = %v, want %v, %v", IsRetriable(err), IsRateLimited(err), test.retriable, test.limited)
 			}
 
-			if failure, ok := FailureOf(err); !ok || failure.Status != test.status {
-				t.Errorf("failure = %+v, %v, want the status kept as evidence", failure, ok)
+			if failure := FailureOf(err); failure == nil || failure.Status != test.status {
+				t.Errorf("failure = %+v, want the status kept as evidence", failure)
 			}
 
 			if test.limited {
@@ -252,7 +252,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 // The shape of everything sent: the credential and model, the endpoint, the
 // limit under the field every OpenAI-compatible server reads, and the tools.
 func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
 	client := serve(t, seen.capture)
 
@@ -301,9 +301,9 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 // field every OpenAI-compatible server reads is max_tokens, so that is the one
 // that goes out, whatever the model is called.
 func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *Config) { c.Model = "gpt-5.4" })
+	client := serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" })
 
 	limit := int64(64)
 
@@ -319,7 +319,7 @@ func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 }
 
 func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
 	collect(serve(t, seen.capture), hello())
 
@@ -333,9 +333,9 @@ func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 // A model name that a hosted provider also uses must not change the wire
 // format: this is a chat-completions endpoint whatever the name says.
 func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
-	collect(serve(t, seen.capture, func(c *Config) { c.Model = "gpt-5.4" }), hello())
+	collect(serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" }), hello())
 
 	if seen.path != "/chat/completions" {
 		t.Errorf("path = %q, want chat-completions for any model name", seen.path)
@@ -356,9 +356,9 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	}
 
 	for _, contentArray := range []bool{false, true} {
-		var seen request
+		var seen wireRequest
 
-		client := serve(t, seen.capture, func(c *Config) { c.ContentArray = contentArray })
+		client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = contentArray })
 
 		collect(client, fantasy.Call{Prompt: prompt})
 
@@ -383,7 +383,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 
 // Off by default: every endpoint zot reaches out of the box takes the string.
 func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
 	collect(serve(t, seen.capture), fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
@@ -397,9 +397,9 @@ func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 }
 
 func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
-	var seen request
+	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *Config) { c.ContentArray = true })
+	client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = true })
 
 	collect(client, fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
@@ -429,9 +429,9 @@ func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 	t.Setenv("OPENAI_ORG_ID", "org-ambient")
 	t.Setenv("OPENAI_PROJECT_ID", "proj-ambient")
 
-	var seen request
+	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *Config) { c.APIKey = "" })
+	client := serve(t, seen.capture, func(c *ClientConfig) { c.APIKey = "" })
 
 	// loopback, so no key is required, and none may be invented
 	if err := collect(client, hello()).err; err != nil {
@@ -448,7 +448,7 @@ func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 func TestAConfiguredKeyIsNotReplacedByTheEnvironment(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-from-the-environment")
 
-	var seen request
+	var seen wireRequest
 
 	collect(serve(t, seen.capture), hello())
 
@@ -458,7 +458,7 @@ func TestAConfiguredKeyIsNotReplacedByTheEnvironment(t *testing.T) {
 }
 
 func TestClientExposesItsResolvedConfig(t *testing.T) {
-	client := serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *Config) { c.BaseURL += "/" })
+	client := serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *ClientConfig) { c.BaseURL += "/" })
 
 	config := client.Config()
 
@@ -468,7 +468,7 @@ func TestClientExposesItsResolvedConfig(t *testing.T) {
 }
 
 func TestNewRefusesAnInvalidConfig(t *testing.T) {
-	if _, err := New(Config{}); err == nil {
+	if _, err := NewClient(ClientConfig{}); err == nil {
 		t.Error("an empty config must not connect")
 	}
 }

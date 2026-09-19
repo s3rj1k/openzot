@@ -1,4 +1,4 @@
-package llm
+package loop
 
 import (
 	"context"
@@ -12,20 +12,20 @@ import (
 )
 
 // serve stands up a fake endpoint and a client pointed at it.
-func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*Config)) *Client {
+func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*ClientConfig)) *Client {
 	t.Helper()
 
 	server := httptest.NewServer(handler)
 
 	t.Cleanup(server.Close)
 
-	config := Config{Provider: "test", Model: "test-model", APIKey: "test-key", BaseURL: server.URL}
+	config := ClientConfig{Provider: "test", Model: "test-model", APIKey: "test-key", BaseURL: server.URL}
 
 	for _, change := range tweak {
 		change(&config)
 	}
 
-	client, err := New(config)
+	client, err := NewClient(config)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/mattn/go-isatty"
 
 	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // Meta is the header display information shown above the activity log.
@@ -80,7 +81,7 @@ func IsInteractive() bool {
 //
 // Along with any error it returns the run's recorded Outcome, so a caller can
 // report how it ended without scraping the screen.
-func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
+func Run(ctx context.Context, client *loop.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
 	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
 	m.batchIndex = meta.BatchIndex
@@ -105,7 +106,7 @@ func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.Execut
 func runViewer(
 	ctx context.Context,
 	m model,
-	client *agent.Client,
+	client *loop.Client,
 	opts agent.ExecuteWithToolsOptions,
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,

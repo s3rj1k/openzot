@@ -67,22 +67,11 @@ func (r *Recorder) RecordResult(summary agent.Summary) error {
 		return nil
 	}
 
-	var failure *Failure
-
-	if summary.Failure != nil {
-		failure = &Failure{
-			Status:       summary.Failure.Status,
-			ResponseBody: summary.Failure.ResponseBody,
-			RequestBytes: summary.Failure.RequestBytes,
-		}
-
-	}
-
 	return r.writer.Result(Result{
 		Reason:        summary.Reason,
 		Message:       summary.Message,
 		Error:         summary.Error,
-		Failure:       failure,
+		Failure:       summary.Failure,
 		Code:          summary.Code,
 		Iterations:    summary.Iterations,
 		Calls:         summary.Calls,
