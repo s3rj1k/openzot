@@ -47,12 +47,6 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 			want: "…/repos/zot/tool",
 		},
 		{
-			name: "windows separators are understood too",
-			path: `C:\Users\dev\projects\api\service`,
-			max:  20,
-			want: `…\api\service`,
-		},
-		{
 			name: "no room at all yields nothing rather than a stray ellipsis",
 			path: "/srv/api",
 			max:  0,

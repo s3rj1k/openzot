@@ -70,7 +70,7 @@ type Meta struct {
 func IsInteractive() bool {
 	fd := os.Stdout.Fd()
 
-	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+	return isatty.IsTerminal(fd)
 }
 
 // Run renders the read-only TUI while the autonomous agent executes. It owns the

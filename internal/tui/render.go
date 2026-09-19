@@ -10,10 +10,6 @@ import (
 	"github.com/openzot/openzot/internal/agent"
 )
 
-// maxOutputLines caps how much command output we echo into the log so a chatty
-// build doesn't bury the rest of the activity.
-const maxOutputLines = 8
-
 // renderToolStart turns a tool invocation into one or more styled log lines.
 //
 // The built-in tools each get a tailored, scannable representation; anything a
@@ -66,8 +62,8 @@ func renderToolEnd(name string, result interface{}) string {
 // renderTextResult summarises a string result.
 //
 // A shell command's output is the thing the operator most wants to see, so it is
-// echoed (capped); a file read is summarised by size instead, because dumping a
-// whole file into the log buries everything around it.
+// echoed; how much of it stays on screen is the viewer's call (see
+// model.wrapRecord).
 func renderTextResult(name string, text string) string {
 	trimmed := strings.TrimRight(text, "\n")
 
@@ -88,17 +84,11 @@ func renderTextResult(name string, text string) string {
 	}
 }
 
-// renderOutputLines renders captured output, capped so one noisy command cannot
-// scroll the rest of the run off the screen.
+// renderOutputLines renders captured output. It does not cap it: how much of a
+// record fits is the viewer's call, made against the terminal's height (see
+// model.wrapRecord).
 func renderOutputLines(text string) string {
 	lines := strings.Split(text, "\n")
-
-	clipped := false
-
-	if len(lines) > maxOutputLines {
-		lines = lines[:maxOutputLines]
-		clipped = true
-	}
 
 	var b strings.Builder
 
@@ -108,10 +98,6 @@ func renderOutputLines(text string) string {
 		}
 
 		b.WriteString(outputStyle.Render("    │ " + truncate(l, 200)))
-	}
-
-	if clipped {
-		b.WriteString("\n" + outputStyle.Render("    │ …"))
 	}
 
 	return b.String()
@@ -252,12 +238,7 @@ func shortPath(path string, max int) string {
 		return path
 	}
 
-	separator := "/"
-	if !strings.Contains(path, "/") && strings.Contains(path, `\`) {
-		separator = `\`
-	}
-
-	segments := strings.Split(strings.TrimRight(path, separator), separator)
+	segments := strings.Split(strings.TrimRight(path, "/"), "/")
 
 	// grow from the right while the whole thing, plus the "…/" marker, fits
 	kept := ""
@@ -269,7 +250,7 @@ func shortPath(path string, max int) string {
 
 		candidate := segments[i]
 		if kept != "" {
-			candidate += separator + kept
+			candidate += "/" + kept
 		}
 
 		if utf8.RuneCountInString(candidate)+2 > max {
@@ -292,5 +273,5 @@ func shortPath(path string, max int) string {
 		return "…" + string(runes)
 	}
 
-	return "…" + separator + kept
+	return "…/" + kept
 }

@@ -521,22 +521,80 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 	}
 }
 
-// One noisy command must not scroll the rest of the run off the screen.
-func TestOutputIsCapped(t *testing.T) {
+// One record must not scroll the rest of the run off the screen: it is cut at a
+// third of the terminal's height, the last row an ellipsis.
+func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
+	var lines []string
+
+	for i := 0; i < 50; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+
+	m := sized(t, 100, 30)
+
+	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: strings.Join(lines, "\n")})
+
+	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
+
+	if len(rows) != 10 {
+		t.Fatalf("the record took %d rows on a 30-row terminal, want 10:\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+
+	if !strings.Contains(rows[len(rows)-1], "…") {
+		t.Errorf("the cut must end on an ellipsis, got %q", rows[len(rows)-1])
+	}
+
+	if !strings.Contains(rows[0], "done") || !strings.Contains(rows[1], "line 0") {
+		t.Errorf("the head of the record must survive:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// Rows are what count, not source lines: a few long lines wrap into many rows.
+func TestAWrappedRecordIsClippedByRows(t *testing.T) {
+	m := sized(t, 40, 30)
+
+	long := strings.Repeat("word ", 40)
+
+	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: long + "\n" + long + "\n" + long})
+
+	if got := len(strings.Split(m.committedWrapped, "\n")); got != 10 {
+		t.Errorf("a wrapped record took %d rows, want the 10 a third of 30 allows", got)
+	}
+}
+
+// A record that fits is left exactly as it is, with no ellipsis.
+func TestARecordThatFitsIsNotClipped(t *testing.T) {
+	m := sized(t, 100, 30)
+
+	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: "one\ntwo\nthree"})
+
+	got := stripANSI(m.committedWrapped)
+
+	if strings.Contains(got, "…") || !strings.Contains(got, "three") {
+		t.Errorf("a short record must be shown whole:\n%s", got)
+	}
+}
+
+// The limit follows the terminal: growing the window shows more of a record that
+// was cut, because the log is re-wrapped from the full record.
+func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 	var lines []string
 
 	for i := 0; i < 50; i++ {
 		lines = append(lines, "line")
 	}
 
-	got := stripANSI(renderToolEnd("shell", strings.Join(lines, "\n")))
+	m := sized(t, 100, 30)
 
-	if strings.Count(got, "line") > maxOutputLines+1 {
-		t.Errorf("output was not capped:\n%s", got)
-	}
+	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: strings.Join(lines, "\n")})
 
-	if !strings.Contains(got, "…") {
-		t.Error("clipping must be visible")
+	before := len(strings.Split(m.committedWrapped, "\n"))
+
+	resized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
+	m = resized.(model)
+
+	if after := len(strings.Split(m.committedWrapped, "\n")); after != 20 || after <= before {
+		t.Errorf("rows after growing the window = %d (was %d), want 20", after, before)
 	}
 }
 

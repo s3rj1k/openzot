@@ -327,7 +327,7 @@ func (m *model) appendEntry(s string) {
 	// viewport width is equivalent to wrapping the whole joined buffer - the wrap
 	// is per line - so per-append cost stays independent of how long the run has
 	// been, instead of re-wrapping the entire history on every line.
-	wrapped := m.wrap(s)
+	wrapped := m.wrapRecord(s)
 	if m.committedWrapped == "" {
 		m.committedWrapped = wrapped
 	} else {
@@ -349,7 +349,12 @@ func (m *model) flushPending() {
 
 // rewrap recomputes the cached content for a new width.
 func (m *model) rewrap() {
-	m.committedWrapped = m.wrap(strings.Join(m.entries, "\n"))
+	wrapped := make([]string, len(m.entries))
+	for i, entry := range m.entries {
+		wrapped[i] = m.wrapRecord(entry)
+	}
+
+	m.committedWrapped = strings.Join(wrapped, "\n")
 	m.render()
 }
 
@@ -372,7 +377,7 @@ func (m *model) render() {
 		if body != "" {
 			body += "\n"
 		}
-		body += m.wrap(thoughtStyle.Render("  ◆ " + p))
+		body += m.wrapRecord(thoughtStyle.Render("  ◆ " + p))
 	}
 	m.vp.SetContent(body)
 	if m.follow {
@@ -385,6 +390,49 @@ func (m *model) wrap(s string) string {
 		return s
 	}
 	return lipgloss.NewStyle().Width(m.vp.Width).Render(s)
+}
+
+// recordHeight is the most rows one log record may take: a third of the
+// terminal's height, so no single record - a chatty command, a long task list, a
+// wall of narration - can push the rest of the run off the screen. Zero, meaning
+// no limit, until the terminal has reported a size.
+func (m model) recordHeight() int {
+	if m.height <= 0 {
+		return 0
+	}
+
+	return max(m.height/3, 2)
+}
+
+// wrapRecord wraps one log record to the viewport width and cuts it at
+// recordHeight rows, the last of which is an ellipsis when anything was dropped.
+// The full run is always in the session log.
+func (m model) wrapRecord(s string) string {
+	limit := m.recordHeight()
+	if limit == 0 {
+		return m.wrap(s)
+	}
+
+	// Every source line takes at least one row, so lines past the limit can never
+	// be shown; dropping them first keeps a huge output from being wrapped whole.
+	source := strings.Split(s, "\n")
+	cut := len(source) > limit
+
+	if cut {
+		source = source[:limit]
+	}
+
+	rows := strings.Split(m.wrap(strings.Join(source, "\n")), "\n")
+
+	if len(rows) > limit {
+		cut = true
+	}
+
+	if !cut {
+		return strings.Join(rows, "\n")
+	}
+
+	return strings.Join(rows[:limit-1], "\n") + "\n" + outputStyle.Render("    …")
 }
 
 // --- view -------------------------------------------------------------------
