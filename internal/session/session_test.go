@@ -57,7 +57,7 @@ func kinds(records []Record) []Kind {
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
 
-	writer, err := Open(path, Meta{Task: "add a health endpoint", Model: "m", Provider: "p", Driver: "openai", Workdir: "/w"})
+	writer, err := Open(path, Meta{Task: "add a health endpoint", Model: "m", Provider: "p", Workdir: "/w"})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 
 	meta := records[0].Meta
 
-	if meta.Task != "add a health endpoint" || meta.Model != "m" || meta.Provider != "p" || meta.Driver != "openai" || meta.Workdir != "/w" {
+	if meta.Task != "add a health endpoint" || meta.Model != "m" || meta.Provider != "p" || meta.Workdir != "/w" {
 		t.Errorf("meta = %+v", meta)
 	}
 

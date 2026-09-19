@@ -42,11 +42,6 @@ type Config struct {
 // ProviderConfig is a named model-provider connection zot can run against.
 // Every provider authenticates with a Bearer credential.
 type ProviderConfig struct {
-	// Driver names the implementation this connection uses. Empty and "openai"
-	// are the same thing, and the only one there is: the OpenAI-compatible
-	// chat-completions API, which any endpoint may speak - it does not have to
-	// be OpenAI's.
-	Driver string `yaml:"driver"`
 	// BaseURL is the API endpoint root. Required, and https unless loopback.
 	BaseURL string `yaml:"base_url"`
 	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
@@ -82,20 +77,6 @@ type ModelConfig struct {
 	// endpoints whose chat template rejects the bare string.
 	ContentArray bool `yaml:"content_array"`
 }
-
-// ProviderDriver resolves which implementation a provider uses. Empty is the
-// only driver there is, "openai".
-func ProviderDriver(provider ProviderConfig) string {
-	if provider.Driver == "" {
-		return DriverOpenAI
-	}
-
-	return provider.Driver
-}
-
-// DriverOpenAI is the driver every provider uses: the OpenAI-compatible
-// chat-completions API.
-const DriverOpenAI = agent.DriverOpenAI
 
 // ProviderCredential returns the credential configured for a provider.
 func ProviderCredential(provider ProviderConfig) string {
@@ -364,11 +345,6 @@ func (c Config) Validate() error {
 			c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(provider), ", "))
 	}
 	for name, provider := range c.Providers {
-		if driver := ProviderDriver(provider); driver != DriverOpenAI {
-			return fmt.Errorf("providers.%s: driver %q is not known (the only driver is %q)",
-				name, driver, DriverOpenAI)
-		}
-
 		// there is no built-in endpoint to fall back on, and finding out
 		// mid-run that there is nowhere to send the request is worse than at
 		// load

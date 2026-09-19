@@ -23,11 +23,8 @@ func wire(config Config) option.Middleware {
 			request.Header.Del("Authorization")
 		}
 
-		for _, header := range []string{"OpenAI-Organization", "OpenAI-Project"} {
-			if _, set := config.Headers[header]; !set {
-				request.Header.Del(header)
-			}
-		}
+		request.Header.Del("OpenAI-Organization")
+		request.Header.Del("OpenAI-Project")
 
 		if request.Body != nil {
 			raw, err := io.ReadAll(request.Body)

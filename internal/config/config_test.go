@@ -90,8 +90,7 @@ agent:
   model: gpt-5.4
 default_provider: openai
 providers:
-  openai:
-    driver: openai
+  openai: {}
 `)
 
 	cfg, err := Load(path)
@@ -156,6 +155,21 @@ providers:
     models:
       fast:
         driver: openai
+	`,
+		"provider driver": `
+default_provider: corporate
+providers:
+  corporate:
+    driver: openai
+    base_url: https://gw.example.com/v1
+	`,
+		"provider headers": `
+default_provider: corporate
+providers:
+  corporate:
+    headers:
+      X-Team: core
+    base_url: https://gw.example.com/v1
 	`,
 	}
 
@@ -243,17 +257,12 @@ func TestValidate(t *testing.T) {
 		t.Error("expected an error for a provider with no base_url")
 	}
 	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{Driver: "anthropic", BaseURL: "https://gw.example.com/v1", APIKey: "x"}
-	}).Validate(); err == nil {
-		t.Error("expected an error for a driver other than openai")
-	}
-	if err := validConfig(func(c *Config) {
 		c.Providers["openai"] = ProviderConfig{
-			Driver: "openai", BaseURL: "https://gw.example.com/v1", APIKey: "x",
+			BaseURL: "https://gw.example.com/v1", APIKey: "x",
 			Models: map[string]ModelConfig{"m": {Context: 100_000}},
 		}
 	}).Validate(); err != nil {
-		t.Errorf("the openai driver was rejected: %v", err)
+		t.Errorf("a complete provider was rejected: %v", err)
 	}
 	if err := validConfig(func(c *Config) {
 		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
@@ -330,12 +339,6 @@ func TestProviderModelsIsTheCustomListOrNothing(t *testing.T) {
 	}
 	if got := ProviderModels(ProviderConfig{}); len(got) != 0 {
 		t.Fatalf("no custom list should mean no restriction, got %v", got)
-	}
-}
-
-func TestProviderDriverDefaultsToOpenAI(t *testing.T) {
-	if got := ProviderDriver(ProviderConfig{}); got != DriverOpenAI {
-		t.Errorf("driver = %q, want %q", got, DriverOpenAI)
 	}
 }
 
@@ -508,7 +511,7 @@ func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
 	t.Setenv("ZOT_TEST_UNSET_KEY", "")
 
 	cfg := Config{Providers: map[string]ProviderConfig{
-		"mine": {Driver: "custom", APIKey: "$ZOT_TEST_UNSET_KEY"},
+		"mine": {APIKey: "$ZOT_TEST_UNSET_KEY"},
 	}}
 
 	resolveProviders(&cfg)

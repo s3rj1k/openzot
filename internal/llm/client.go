@@ -32,10 +32,6 @@ func New(config Config) (*Client, error) {
 		openaicompat.WithLanguageModelOptions(openai.WithLanguageModelStreamUsageFunc(streamUsage)),
 	}
 
-	if len(resolved.Headers) > 0 {
-		options = append(options, openaicompat.WithHeaders(resolved.Headers))
-	}
-
 	provider, err := openaicompat.New(options...)
 	if err != nil {
 		return nil, err

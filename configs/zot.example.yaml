@@ -120,10 +120,6 @@ providers:
   # required and must be https (unless loopback); the key is required too, since
   # zot will not forward a credential issued for one host to another.
   mygateway:
-    # The only driver is 'openai' - the OpenAI-compatible chat-completions API,
-    # which any endpoint may speak, not only OpenAI's. It is the default, so this
-    # line can be left out.
-    driver: openai
     base_url: 'https://gateway.internal.example.com/v1'
     api_key: '$GATEWAY_KEY'
 

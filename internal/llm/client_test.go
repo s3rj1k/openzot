@@ -254,7 +254,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 	var seen request
 
-	client := serve(t, seen.capture, func(c *Config) { c.Headers = map[string]string{"X-Team": "core"} })
+	client := serve(t, seen.capture)
 
 	limit := int64(321)
 
@@ -276,10 +276,6 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 
 	if got := seen.headers.Get("Authorization"); got != "Bearer test-key" {
 		t.Errorf("Authorization = %q", got)
-	}
-
-	if got := seen.headers.Get("X-Team"); got != "core" {
-		t.Errorf("X-Team = %q, want the configured header on the wire", got)
 	}
 
 	if seen.body["model"] != "test-model" || seen.body["stream"] != true {
@@ -466,7 +462,7 @@ func TestClientExposesItsResolvedConfig(t *testing.T) {
 
 	config := client.Config()
 
-	if config.Model != "test-model" || config.Driver != DriverOpenAI || strings.HasSuffix(config.BaseURL, "/") {
+	if config.Model != "test-model" || strings.HasSuffix(config.BaseURL, "/") {
 		t.Errorf("config = %+v", config)
 	}
 }

@@ -500,10 +500,6 @@ func TestClientExposesItsResolvedConfiguration(t *testing.T) {
 		t.Errorf("Provider = %q", got)
 	}
 
-	if got := client.Driver(); got != DriverOpenAI {
-		t.Errorf("Driver = %q, want the default %q", got, DriverOpenAI)
-	}
-
 	if got := client.BaseURL(); got != "https://gw.example.com/v1" {
 		t.Errorf("BaseURL = %q", got)
 	}

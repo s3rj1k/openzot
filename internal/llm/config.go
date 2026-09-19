@@ -12,20 +12,11 @@ import (
 	"strings"
 )
 
-// DriverOpenAI is the only driver: the OpenAI-compatible chat-completions API,
-// which is what an "openai" connection means here - any endpoint that speaks
-// it, not only OpenAI's own.
-const DriverOpenAI = "openai"
-
 // Config identifies which endpoint to call and with what credential.
 type Config struct {
 	// Provider is the operator's name for this connection. Informational: it
 	// labels errors, the session log and the viewer, and selects nothing.
 	Provider string
-
-	// Driver is the wire implementation. Empty resolves to DriverOpenAI,
-	// the only one.
-	Driver string
 
 	// Model is the provider's own model name.
 	Model string
@@ -35,10 +26,6 @@ type Config struct {
 
 	// BaseURL is the endpoint root the request is sent under. Required.
 	BaseURL string
-
-	// Headers are merged into every request, for endpoints that need extra
-	// routing headers.
-	Headers map[string]string
 
 	// ContentArray sends every message's content as an array of parts, and an
 	// empty one as []. Off by default, for endpoints whose template wants arrays.
@@ -57,17 +44,6 @@ func (c Config) Resolve() (Config, error) {
 	resolved := c
 
 	resolved.Provider = strings.TrimSpace(c.Provider)
-
-	resolved.Driver = strings.ToLower(strings.TrimSpace(c.Driver))
-
-	switch resolved.Driver {
-	case "":
-		resolved.Driver = DriverOpenAI
-	case DriverOpenAI:
-	default:
-		return Config{}, fmt.Errorf(
-			"provider: driver %q is not known (the only driver is %q)", c.Driver, DriverOpenAI)
-	}
 
 	if resolved.Model == "" {
 		return Config{}, errors.New("provider: no model specified")
@@ -92,12 +68,6 @@ func (c Config) Resolve() (Config, error) {
 		return Config{}, fmt.Errorf(
 			"%w: %s at %s needs a key of its own - a credential is scoped to the host it was issued for",
 			ErrMissingCredential, firstNonEmpty(resolved.Provider, "the provider"), resolved.BaseURL)
-	}
-
-	resolved.Headers = make(map[string]string, len(c.Headers))
-
-	for key, value := range c.Headers {
-		resolved.Headers[key] = value
 	}
 
 	return resolved, nil

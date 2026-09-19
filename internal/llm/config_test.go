@@ -28,8 +28,6 @@ func TestResolveDefaultsAndValidation(t *testing.T) {
 		{name: "a malformed base url", config: Config{Model: "m", APIKey: "k", BaseURL: "not a url"}, wantErr: true},
 		{name: "plaintext to a remote host", config: Config{Model: "m", APIKey: "k", BaseURL: "http://gw.example.com/v1"}, wantErr: true},
 		{name: "a remote host without a key", config: Config{Model: "m", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
-		{name: "the openai driver", config: Config{Driver: "OpenAI", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1"}, wantURL: "https://gw.example.com/v1"},
-		{name: "any other driver", config: Config{Driver: "anthropic", Model: "m", APIKey: "k", BaseURL: "https://gw.example.com/v1"}, wantErr: true},
 	}
 
 	for _, test := range tests {
@@ -50,10 +48,6 @@ func TestResolveDefaultsAndValidation(t *testing.T) {
 
 			if resolved.BaseURL != test.wantURL {
 				t.Errorf("base URL = %q, want %q", resolved.BaseURL, test.wantURL)
-			}
-
-			if resolved.Driver != DriverOpenAI {
-				t.Errorf("Driver = %q, want the only driver %q", resolved.Driver, DriverOpenAI)
 			}
 		})
 	}
@@ -95,20 +89,5 @@ func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should mention %q", err, want)
 		}
-	}
-}
-
-func TestResolveDoesNotMutateTheCallersHeaders(t *testing.T) {
-	headers := map[string]string{"X-Team": "a"}
-
-	resolved, err := (Config{Model: "m", BaseURL: "http://127.0.0.1/v1", Headers: headers}).Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-
-	resolved.Headers["X-Team"] = "changed"
-
-	if headers["X-Team"] != "a" {
-		t.Error("Resolve handed back the caller's own header map")
 	}
 }

@@ -700,7 +700,6 @@ default_provider: local
 
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -793,7 +792,6 @@ skills_dir: skills
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -856,7 +854,6 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -967,7 +964,7 @@ providers:
 func TestRunRejectsAnInvalidConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	// a provider that names no known driver and has no endpoint
+	// a provider that has no endpoint
 	if err := os.WriteFile(configPath, []byte(`
 default_provider: nowhere
 providers:
@@ -1077,7 +1074,6 @@ default_provider: local
 
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -1163,7 +1159,6 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -1212,7 +1207,6 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: %s
     api_key: test-key
     models:
@@ -1684,7 +1678,6 @@ agent:
 default_provider: myprovider
 providers:
   myprovider:
-    driver: openai
     base_url: %s
 %s`, test.model, server.URL, test.config))
 
@@ -1794,7 +1787,6 @@ agent:
 default_provider: selfhosted
 providers:
   selfhosted:
-    driver: openai
     base_url: %s
     api_key: x
     models:
@@ -1902,7 +1894,6 @@ providers:
       some-model:
         context: 100000
   beta:
-    driver: openai
     base_url: https://beta.example.com/v1
     api_key: sk-beta
     models:
@@ -1930,10 +1921,6 @@ providers:
 
 		if got := client.Provider(); got != name {
 			t.Errorf("%s provider = %q, want %q", name, got, name)
-		}
-
-		if got := client.Driver(); got != agent.DriverOpenAI {
-			t.Errorf("%s driver = %q, want %q", name, got, agent.DriverOpenAI)
 		}
 
 		if got := client.BaseURL(); got != wantURL {
@@ -1970,7 +1957,6 @@ agent:
 default_provider: mygateway
 providers:
   mygateway:
-    driver: openai
     base_url: https://gw.example.com/v1
     models:
       fast:
@@ -2084,7 +2070,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 	cfg := testDefaults()
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
+		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
 	}
 
 	original := os.Stdout
@@ -2167,7 +2153,7 @@ func stubProvider(t *testing.T) config.Config {
 	cfg := testDefaults()
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
+		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
 	}
 
 	return cfg
@@ -2258,7 +2244,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 		t.Fatalf("the log must open with the meta: %+v", first)
 	}
 
-	if first.Meta.Task != "do the thing" || first.Meta.Provider != "local" || first.Meta.Driver != "openai" {
+	if first.Meta.Task != "do the thing" || first.Meta.Provider != "local" {
 		t.Errorf("meta = %+v", first.Meta)
 	}
 
@@ -2370,7 +2356,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cfg := stubProvider(t)
-	cfg.Providers["local"] = config.ProviderConfig{Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Providers["local"] = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	if output, err := quietly(t, func() error {
 		return runTask(context.Background(), cfg, "do the thing", runOptions{SessionPath: path})
@@ -2700,7 +2686,6 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
     models:
@@ -2741,7 +2726,6 @@ agent:
 default_provider: local
 providers:
   local:
-    driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
     models:

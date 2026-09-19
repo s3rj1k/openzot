@@ -708,7 +708,6 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 			Task:     task,
 			Model:    client.Model(),
 			Provider: cfg.DefaultProvider,
-			Driver:   client.Driver(),
 			Workdir:  workdir,
 		}
 
@@ -809,7 +808,6 @@ func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agen
 	// entry's settings take priority over the run defaults.
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
-	driver := config.ProviderDriver(providerConfig)
 	credential := config.ProviderCredential(providerConfig)
 
 	// Every model is declared, with its own context window. Validate says so at
@@ -846,7 +844,6 @@ func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agen
 
 	client, err := agent.NewClient(agent.ClientOptions{
 		Provider: cfg.DefaultProvider,
-		Driver:   driver,
 		Model:    model,
 		APIKey:   credential,
 		BaseURL:  providerConfig.BaseURL,

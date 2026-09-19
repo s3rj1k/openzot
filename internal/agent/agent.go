@@ -47,10 +47,6 @@ type ClientOptions struct {
 	// labels errors and diagnostics.
 	Provider string
 
-	// Driver is the wire implementation. Empty uses "openai", the only one: the
-	// OpenAI-compatible chat-completions API.
-	Driver string
-
 	// Model is the provider's own model name.
 	Model string
 
@@ -62,9 +58,6 @@ type ClientOptions struct {
 	// loopback.
 	BaseURL string
 
-	// Headers are merged into every request.
-	Headers map[string]string
-
 	// ContentArray sends every message's content as an array of parts, for a
 	// self-hosted endpoint whose chat template rejects the bare string.
 	ContentArray bool
@@ -74,11 +67,9 @@ type ClientOptions struct {
 func NewClient(options ClientOptions) (*Client, error) {
 	inner, err := llm.New(llm.Config{
 		Provider:     options.Provider,
-		Driver:       options.Driver,
 		Model:        options.Model,
 		APIKey:       options.APIKey,
 		BaseURL:      options.BaseURL,
-		Headers:      options.Headers,
 		ContentArray: options.ContentArray,
 	})
 	if err != nil {
@@ -98,18 +89,10 @@ func (c *Client) Provider() string {
 	return c.inner.Config().Provider
 }
 
-// Driver returns the resolved driver.
-func (c *Client) Driver() string {
-	return c.inner.Config().Driver
-}
-
 // BaseURL returns the endpoint the client will call.
 func (c *Client) BaseURL() string {
 	return c.inner.Config().BaseURL
 }
-
-// DriverOpenAI is the only driver: the OpenAI-compatible chat-completions API.
-const DriverOpenAI = llm.DriverOpenAI
 
 // MessageType identifies what a message is. See the constants below.
 type MessageType = loop.MessageType
