@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 )
 
 // Image is one image in a conversation: the bytes a model is shown, plus the
@@ -112,10 +111,19 @@ func (i Image) Encoded() string {
 	return i.Data
 }
 
-// DataURL renders the image as a data: URL, which is how both wire formats
-// carry an image that is not hosted anywhere.
-func (i Image) DataURL() string {
-	return fmt.Sprintf("data:%s;base64,%s", i.MediaType, i.Encoded())
+// Raw returns the encoded image bytes, from memory or decoded from an inline
+// record. Nil when the record carries neither.
+func (i Image) Raw() []byte {
+	if len(i.Bytes) > 0 {
+		return i.Bytes
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(i.Data)
+	if err != nil {
+		return nil
+	}
+
+	return raw
 }
 
 // Ready reports whether the image has bytes to send. A record whose blob has

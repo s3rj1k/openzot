@@ -117,12 +117,6 @@ type Activity struct {
 	Arguments string `json:"arguments,omitempty"`
 	Result    any    `json:"result,omitempty"`
 	Failure   string `json:"failure,omitempty"`
-
-	// The turn's reasoning state. Without it a resumed run replays its calls
-	// stripped of the thinking that produced them - which a reasoning model's
-	// provider may reject outright, and at best degrades the model's
-	// continuity.
-	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // Event is something that happened during the run.

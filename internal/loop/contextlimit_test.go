@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/llm"
 )
 
 // The context-limit recovery path: a provider rejecting an oversized prompt is
@@ -18,7 +18,7 @@ import (
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
-func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
+func contextLimitOnce(t *testing.T) (*llm.Client, *int) {
 	t.Helper()
 
 	requests := 0
@@ -47,14 +47,14 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	return client, &requests
@@ -157,7 +157,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	engine.inputBudget = MinInputTokens
 
 	// no stated window, so the only move is stepping the budget down
-	limit := provider.ContextLimit{}
+	limit := llm.ContextLimit{}
 
 	if engine.narrowInputBudget(limit, func(Event) {}) {
 		t.Errorf("the budget narrowed to %d, below the %d floor", engine.inputBudget, MinInputTokens)
@@ -179,7 +179,7 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 
 	engine.inputBudget = 40_000
 
-	if !engine.narrowInputBudget(provider.ContextLimit{}, func(Event) {}) {
+	if !engine.narrowInputBudget(llm.ContextLimit{}, func(Event) {}) {
 		t.Fatal("expected the budget to narrow")
 	}
 
@@ -201,14 +201,14 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -257,14 +257,14 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -304,14 +304,14 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -363,14 +363,14 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -423,7 +423,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 
 	defer server.Close()
 
-	client, _ := provider.New(provider.Config{
+	client, _ := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",

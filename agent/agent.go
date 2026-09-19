@@ -33,13 +33,13 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/internal/imaging"
+	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
 )
 
 // Client is a configured connection to a model provider.
 type Client struct {
-	inner *provider.Client
+	inner *llm.Client
 }
 
 // ClientOptions configures a Client.
@@ -73,7 +73,7 @@ type ClientOptions struct {
 
 // NewClient validates the options and returns a client.
 func NewClient(options ClientOptions) (*Client, error) {
-	inner, err := provider.New(provider.Config{
+	inner, err := llm.New(llm.Config{
 		Provider:     options.Provider,
 		Driver:       options.Driver,
 		Model:        options.Model,
@@ -110,7 +110,7 @@ func (c *Client) BaseURL() string {
 }
 
 // DriverOpenAI is the only driver: the OpenAI-compatible chat-completions API.
-const DriverOpenAI = provider.DriverOpenAI
+const DriverOpenAI = llm.DriverOpenAI
 
 // MessageType identifies what a message is. See the constants below.
 type MessageType = loop.MessageType
@@ -664,17 +664,16 @@ type Failure struct {
 
 // failureOf extracts the wire evidence from an error ending, when there is any.
 func failureOf(err error) *Failure {
-	var providerErr *provider.Error
-
-	if !errors.As(err, &providerErr) || providerErr.Status == 0 {
+	evidence, ok := llm.FailureOf(err)
+	if !ok {
 		return nil
 	}
 
 	return &Failure{
-		Status:       providerErr.Status,
-		ResponseBody: providerErr.Body,
-		RequestBytes: providerErr.RequestBytes,
-		RequestBody:  providerErr.RequestBody,
+		Status:       evidence.Status,
+		ResponseBody: evidence.Body,
+		RequestBytes: evidence.RequestBytes,
+		RequestBody:  evidence.RequestBody,
 	}
 }
 

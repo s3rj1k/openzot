@@ -80,18 +80,16 @@ func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
 		t.Fatalf("buildRequest: %v", err)
 	}
 
-	for _, message := range req.Messages {
-		for _, call := range message.ToolCalls {
-			if strings.Contains(call.Function.Arguments, huge) {
-				t.Error("the argument-heavy tool call was kept under a tight budget - its arguments were priced as empty, which is the bug")
-			}
+	for _, message := range req.Prompt {
+		if call, ok := toolCallOf(message); ok && strings.Contains(call.Input, huge) {
+			t.Error("the argument-heavy tool call was kept under a tight budget - its arguments were priced as empty, which is the bug")
 		}
 	}
 
 	// the recent turns must survive (sanity: the trimmer did keep something)
 	var keptRecent bool
-	for _, message := range req.Messages {
-		if strings.Contains(message.Content, "short recent") {
+	for _, message := range req.Prompt {
+		if strings.Contains(textOf(message), "short recent") {
 			keptRecent = true
 		}
 	}

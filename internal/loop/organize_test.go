@@ -3,6 +3,8 @@ package loop
 import (
 	"reflect"
 	"testing"
+
+	"charm.land/fantasy"
 )
 
 // These cases are ported from the TypeScript engine's organizeMessages suite.
@@ -376,7 +378,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 // The whole point, end to end: a history that trimming and interleaving have
 // mangled still renders into something a provider accepts.
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
-	chat := toChatMessages([]Message{
+	chat := toPrompt([]Message{
 		{Type: TypeInstructions, Text: "you are a coding agent"},
 		// this result's call fell outside the trimmed window
 		response("gone", "read", "{}", "old contents"),
@@ -391,7 +393,7 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 	var roles []string
 
 	for _, message := range chat {
-		roles = append(roles, message.Role)
+		roles = append(roles, string(message.Role))
 	}
 
 	want := []string{"system", "user", "assistant", "tool"}
@@ -400,7 +402,10 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 		t.Errorf("wire roles = %v, want %v", roles, want)
 	}
 
-	if len(chat[2].ToolCalls) != 1 || chat[3].ToolCallID != chat[2].ToolCalls[0].ID {
+	call, isCall := toolCallOf(chat[2])
+	result, isResult := chat[3].Content[0].(fantasy.ToolResultPart)
+
+	if !isCall || !isResult || result.ToolCallID != call.ToolCallID {
 		t.Errorf("the surviving pair must reference the same call id: %+v", chat[2:])
 	}
 }

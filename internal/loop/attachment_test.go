@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/openzot/openzot/internal/imaging"
-	"github.com/openzot/openzot/internal/provider"
 )
 
 // toolAt builds one call of a multi-call turn. The shared tool() helper pins
@@ -103,31 +102,6 @@ func TestAttachmentMessageCapsOneTurnAndSaysSo(t *testing.T) {
 
 	if !strings.Contains(message.Text, "3 further image(s) not attached") {
 		t.Errorf("text = %q, want the dropped images named so the loss is visible", message.Text)
-	}
-}
-
-func TestConvertSendsAnAttachmentAsAUserMessageWithItsImages(t *testing.T) {
-	image := testImage("/tmp/shot.png")
-
-	converted := toChatMessages([]Message{
-		{Type: TypeAttachment, Text: "Attached: /tmp/shot.png (image/png, 800x600)", Images: []imaging.Image{image}},
-	})
-
-	if len(converted) != 1 {
-		t.Fatalf("got %d messages, want one", len(converted))
-	}
-
-	// the only role an OpenAI-compatible endpoint accepts image parts on
-	if converted[0].Role != provider.RoleUser {
-		t.Errorf("role = %q, want %q", converted[0].Role, provider.RoleUser)
-	}
-
-	if len(converted[0].Images) != 1 {
-		t.Fatalf("images did not survive conversion")
-	}
-
-	if converted[0].Images[0].Digest != image.Digest {
-		t.Error("the image that reaches the wire must be the one that was attached")
 	}
 }
 

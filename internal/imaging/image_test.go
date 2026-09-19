@@ -1,6 +1,7 @@
 package imaging
 
 import (
+	"bytes"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -54,20 +55,22 @@ func TestExtensionNamesTheBlobByType(t *testing.T) {
 	}
 }
 
-func TestDataURLCarriesTheEncodedImage(t *testing.T) {
-	image := NewImage([]byte{1, 2, 3}, "image/png", 10, 10)
+func TestRawReturnsTheBytesWhetherHeldOrInline(t *testing.T) {
+	held := NewImage([]byte{1, 2, 3}, "image/png", 10, 10)
 
-	want := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte{1, 2, 3})
-
-	if got := image.DataURL(); got != want {
-		t.Errorf("DataURL = %q, want %q", got, want)
+	if !bytes.Equal(held.Raw(), []byte{1, 2, 3}) {
+		t.Errorf("Raw = %v, want the bytes held in memory", held.Raw())
 	}
 
 	// a record read back from a log carries base64 rather than bytes
 	stored := Image{MediaType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte{1, 2, 3})}
 
-	if stored.DataURL() != want {
-		t.Error("an inline image must render the same URL as one with bytes in memory")
+	if !bytes.Equal(stored.Raw(), []byte{1, 2, 3}) {
+		t.Errorf("Raw = %v, want an inline image to decode to the same bytes", stored.Raw())
+	}
+
+	if (Image{Data: "not base64!"}).Raw() != nil {
+		t.Error("a corrupt inline payload must yield nothing rather than garbage")
 	}
 }
 

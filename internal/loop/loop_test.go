@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openzot/openzot/internal/provider"
+	"charm.land/fantasy"
+
+	"github.com/openzot/openzot/internal/llm"
 )
 
 // stub serves scripted turns over the OpenAI-compatible wire format, so the loop
 // can be driven without a model.
-func stub(t *testing.T, turns ...[]string) *provider.Client {
+func stub(t *testing.T, turns ...[]string) *llm.Client {
 	t.Helper()
 
 	turn := 0
@@ -39,14 +41,14 @@ func stub(t *testing.T, turns ...[]string) *provider.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	return client
@@ -568,7 +570,7 @@ func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
 	names := map[string]bool{}
 
 	for _, tool := range engine.toolDefinitions() {
-		names[tool.Function.Name] = true
+		names[tool.GetName()] = true
 	}
 
 	for _, want := range []string{"echo", SuccessTool, FailureTool} {
@@ -582,8 +584,36 @@ func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
 	engine, _ = New(options)
 
 	for _, tool := range engine.toolDefinitions() {
-		if tool.Function.Name == SuccessTool {
+		if tool.GetName() == SuccessTool {
 			t.Error("terminal tools must not be offered outside settle mode")
+		}
+	}
+}
+
+// The tool list is built from a map, and Go randomises map order. A list that
+// reshuffles between requests defeats a server-side prompt cache keyed on the
+// prefix, so the order must be fixed.
+func TestToolDefinitionsAreOrderedByName(t *testing.T) {
+	tools := map[string]ToolDefinition{}
+
+	for _, name := range []string{"write", "read", "shell", "list", "edit"} {
+		tools[name] = ToolDefinition{Name: name}
+	}
+
+	engine, err := New(Options{Client: stub(t, []string{stop()}), Tools: tools})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	for round := 0; round < 20; round++ {
+		var names []string
+
+		for _, tool := range engine.toolDefinitions() {
+			names = append(names, tool.GetName())
+		}
+
+		if want := "edit,list,read,shell,write"; strings.Join(names, ",") != want {
+			t.Fatalf("tool order = %v, want %s", names, want)
 		}
 	}
 }
@@ -631,14 +661,14 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -730,16 +760,16 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		t.Fatalf("buildRequest: %v", err)
 	}
 
-	if request.Messages[0].Role != provider.RoleSystem {
-		t.Fatalf("first message = %q, want the system prompt", request.Messages[0].Role)
+	if request.Prompt[0].Role != fantasy.MessageRoleSystem {
+		t.Fatalf("first message = %q, want the system prompt", request.Prompt[0].Role)
 	}
 
 	var hasUser bool
 
 	var kept int
 
-	for _, message := range request.Messages[1:] {
-		if message.Role == provider.RoleUser {
+	for _, message := range request.Prompt[1:] {
+		if message.Role == fantasy.MessageRoleUser {
 			hasUser = true
 		}
 

@@ -74,12 +74,6 @@ type Activity struct {
 
 	// Failure explains why a call could not be run. Set instead of Result.
 	Failure string `json:"failure,omitempty"`
-
-	// ReasoningDetails is the gateway's structured reasoning blocks, replayed
-	// verbatim on the assistant message that carries this call. Set on the
-	// turn's first call only - the state belongs to the turn, not to each call,
-	// and replaying it once per call would send it several times.
-	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 }
 
 // IsPair reports whether two activities are the two halves of one call.
@@ -177,14 +171,6 @@ func (a *Activity) threadMeta() map[string]any {
 		"function": function,
 	}}
 
-	// A sibling of "activity" rather than a member of it: the activity map is
-	// the platform shape the thread heuristics match on, and this is zot's own
-	// state. It has to survive the round trip through the thread builder or the
-	// call it belongs to is replayed without it.
-	if len(a.ReasoningDetails) > 0 {
-		meta["reasoning_details"] = a.ReasoningDetails
-	}
-
 	return meta
 }
 
@@ -225,28 +211,5 @@ func activityFromMeta(meta map[string]any) *Activity {
 		return nil
 	}
 
-	activity.ReasoningDetails = reasoningDetailsFromMeta(meta["reasoning_details"])
-
 	return activity
-}
-
-// reasoningDetailsFromMeta reads the chat-completions reasoning blocks back
-// out of a meta map. They are opaque, so whatever shape the round trip gave
-// them is re-marshalled verbatim.
-func reasoningDetailsFromMeta(value any) json.RawMessage {
-	switch typed := value.(type) {
-	case nil:
-		return nil
-	case json.RawMessage:
-		return typed
-	case string:
-		return json.RawMessage(typed)
-	default:
-		data, err := json.Marshal(typed)
-		if err != nil {
-			return nil
-		}
-
-		return data
-	}
 }

@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/internal/imaging"
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/thread"
 	"github.com/openzot/openzot/internal/tokenizer"
 )
@@ -45,7 +48,7 @@ type Skill struct {
 // Options configures a run.
 type Options struct {
 	// Client is the provider connection.
-	Client *provider.Client
+	Client *llm.Client
 
 	// Instructions is the system prompt.
 	Instructions string
@@ -229,7 +232,7 @@ type Engine struct {
 // They are sent with every request and can be substantial - a dozen tools with
 // detailed JSON Schema runs to thousands of tokens - so leaving them out of the
 // budget is how a thread that "fits" gets rejected.
-func (e *Engine) toolSchemaTokens(tools []provider.Tool) int {
+func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 	if e.toolTokens > 0 || len(tools) == 0 {
 		return e.toolTokens
 	}
@@ -555,7 +558,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			// remember the failure so an abort during the ensuing backoff still
 			// carries it - only a provider error, so a bare cancellation does
 			// not overwrite the exchange worth keeping
-			if provider.IsProviderError(err) {
+			if llm.IsProviderError(err) {
 				lastFailure = err
 			}
 
@@ -572,7 +575,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 			// a context-limit rejection is recoverable: narrow the window the
 			// thread is trimmed to and retry
-			if limit, ok := provider.DetectContextLimit(err); ok && e.canContinue(budget) {
+			if limit, ok := llm.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
 				if e.narrowInputBudget(limit, emit) {
@@ -584,9 +587,9 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			// than ours - which is why 429 is not IsRetriable. Waiting out the
 			// advised delay is the other half of that contract; without it a
 			// single throttle response ends an overnight run outright.
-			limited := provider.IsRateLimited(err)
+			limited := llm.IsRateLimited(err)
 
-			if (limited || provider.IsRetriable(err)) && e.canContinue(budget) {
+			if (limited || llm.IsRetriable(err)) && e.canContinue(budget) {
 				budget.spendContinuation()
 				retries++
 
@@ -603,7 +606,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 					// the advised delay is honoured, but the backoff stays a
 					// floor under it - "Retry-After: 0" must not turn into the
 					// instant-retry loop the backoff exists to prevent
-					advised, ok := provider.RetryAfter(err)
+					advised, ok := llm.RetryAfter(err)
 					delay = rateLimitWait(advised, ok, delay)
 				}
 
@@ -643,7 +646,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 		// a truncated answer is continued rather than accepted
 
-		if turn.FinishReason == provider.FinishLength {
+		if turn.FinishReason == fantasy.FinishReasonLength {
 			if !e.canContinue(budget) {
 				return e.finish(messages, budget, StopContinuations,
 					"the model kept running out of output space", nil)
@@ -680,7 +683,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 		if len(turn.ToolCalls) > 0 {
 			var stop *Result
 
-			messages, stop = e.dispatch(ctx, messages, turn.ToolCalls, turn.ReasoningDetails, &budget, emit)
+			messages, stop = e.dispatch(ctx, messages, turn.ToolCalls, &budget, emit)
 
 			if stop != nil {
 				return *stop
@@ -756,12 +759,8 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 type turnResult struct {
 	Text         string
 	Reasoning    string
-	ToolCalls    []provider.ToolCall
-	FinishReason string
-
-	// ReasoningDetails is the gateway's reasoning state, replayed on the
-	// assistant message that carries the calls.
-	ReasoningDetails json.RawMessage
+	ToolCalls    []fantasy.ToolCallContent
+	FinishReason fantasy.FinishReason
 
 	// InputTokens and OutputTokens are the prompt- and completion-token counts the
 	// provider reported for this turn (zero when it reported none). Provider counts,
@@ -773,12 +772,11 @@ type turnResult struct {
 
 // runTurn performs a single model call, streaming its output through emit and
 // watching for a runaway.
-func (e *Engine) runTurn(ctx context.Context, request provider.Request, emit func(Event)) (turnResult, error) {
+func (e *Engine) runTurn(ctx context.Context, call fantasy.Call, emit func(Event)) (turnResult, error) {
 	// A turn can end while the provider is still streaming - the runaway guard
-	// cuts a degenerate one short - so every exit from here cancels the stream.
-	// Without it the abandoned transport goroutine stays parked on a send nobody
-	// will receive, holding its HTTP response body open for the life of the
-	// process, and a long run leaks one per trip of the guard.
+	// cuts a degenerate one short - so every exit from here cancels the stream,
+	// which closes the response body rather than leaving it open for the life
+	// of the process.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -792,22 +790,22 @@ func (e *Engine) runTurn(ctx context.Context, request provider.Request, emit fun
 
 	guard := thread.NewGuard(thread.GuardOptions{MinChars: &minChars})
 
-	for event := range e.options.Client.Stream(ctx, request) {
-		if event.Err != nil {
-			return turnResult{}, event.Err
-		}
+	for part := range e.options.Client.Stream(ctx, call) {
+		switch part.Type {
+		case fantasy.StreamPartTypeError:
+			return turnResult{}, part.Error
 
-		if event.Token != "" {
-			text.WriteString(event.Token)
+		case fantasy.StreamPartTypeTextDelta:
+			text.WriteString(part.Delta)
 
-			emit(Event{Kind: EventToken, Text: event.Token})
+			emit(Event{Kind: EventToken, Text: part.Delta})
 
 			// the streaming guard cuts a degenerate turn short rather than
 			// letting it burn the whole output budget
-			if guard.Push(event.Token) {
+			if guard.Push(part.Delta) {
 				result.Text = text.String()
 				result.Reasoning = reasoning.String()
-				result.FinishReason = provider.FinishStop
+				result.FinishReason = fantasy.FinishReasonStop
 
 				if reason := guard.Reason(); reason != nil {
 					emit(Event{Kind: EventRunaway, Text: reason.Text})
@@ -815,33 +813,31 @@ func (e *Engine) runTurn(ctx context.Context, request provider.Request, emit fun
 
 				return result, nil
 			}
-		}
 
-		if event.ReasoningToken != "" {
-			reasoning.WriteString(event.ReasoningToken)
+		case fantasy.StreamPartTypeReasoningDelta:
+			reasoning.WriteString(part.Delta)
 
-			emit(Event{Kind: EventReasoningToken, Text: event.ReasoningToken})
-		}
+			emit(Event{Kind: EventReasoningToken, Text: part.Delta})
 
-		if len(event.ToolCalls) > 0 {
-			result.ToolCalls = event.ToolCalls
-		}
+		case fantasy.StreamPartTypeToolCall:
+			result.ToolCalls = append(result.ToolCalls, fantasy.ToolCallContent{
+				ToolCallID: part.ID,
+				ToolName:   part.ToolCallName,
+				Input:      part.ToolCallInput,
+			})
 
-		if len(event.ReasoningDetails) > 0 {
-			result.ReasoningDetails = event.ReasoningDetails
-		}
+		case fantasy.StreamPartTypeFinish:
+			result.FinishReason = part.FinishReason
 
-		if event.FinishReason != "" {
-			result.FinishReason = event.FinishReason
-		}
-
-		if event.Usage != nil {
 			// the provider's own count, which reflects what it actually processed
 			// (server-side prompt caching and all) - never the local estimate
-			if event.Usage.PromptTokens > 0 {
-				result.InputTokens = event.Usage.PromptTokens
+			// fantasy reports the prompt without its cached part; zot has always
+			// counted the whole prompt, so the cached tokens are added back
+			if prompt := part.Usage.InputTokens + part.Usage.CacheReadTokens; prompt > 0 {
+				result.InputTokens = int(prompt)
 			}
-			result.OutputTokens = event.Usage.CompletionTokens
+
+			result.OutputTokens = int(part.Usage.OutputTokens)
 		}
 	}
 
@@ -852,13 +848,13 @@ func (e *Engine) runTurn(ctx context.Context, request provider.Request, emit fun
 }
 
 // terminalCall reports whether the model ended the run with a terminal tool.
-func (e *Engine) terminalCall(calls []provider.ToolCall) (StopReason, string, bool) {
+func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
 	if !e.settleMode() {
 		return "", "", false
 	}
 
 	for _, call := range calls {
-		switch call.Function.Name {
+		switch call.ToolName {
 		case SuccessTool:
 			return StopSettled, terminalDetail(call, "summary", "task complete"), true
 		case FailureTool:
@@ -870,8 +866,8 @@ func (e *Engine) terminalCall(calls []provider.ToolCall) (StopReason, string, bo
 }
 
 // terminalDetail pulls the explanation out of a terminal call's arguments.
-func terminalDetail(call provider.ToolCall, key, fallback string) string {
-	arguments, err := provider.DecodeArguments(call)
+func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
+	arguments, err := llm.DecodeArguments(call)
 	if err != nil {
 		return fallback
 	}
@@ -891,13 +887,10 @@ func terminalDetail(call provider.ToolCall, key, fallback string) string {
 func (e *Engine) dispatch(
 	ctx context.Context,
 	messages []Message,
-	calls []provider.ToolCall,
-	reasoningDetails json.RawMessage,
+	calls []fantasy.ToolCallContent,
 	budget *Budget,
 	emit func(Event),
 ) ([]Message, *Result) {
-	first := true
-
 	// images the turn's tools produced, held back until every call has been
 	// answered: a tool result may not carry them, and a user message wedged
 	// between two tool results would invalidate the turn
@@ -913,26 +906,16 @@ func (e *Engine) dispatch(
 
 		budget.Calls++
 
-		name := call.Function.Name
+		name := call.ToolName
 
-		request := activityMessage(ActivityRequest, call, nil, "")
-
-		// the turn's reasoning state rides on its first call, so it is replayed
-		// once ahead of the calls rather than once per call
-		if first {
-			request.Activity.ReasoningDetails = reasoningDetails
-
-			first = false
-		}
-
-		messages = append(messages, request)
+		messages = append(messages, activityMessage(ActivityRequest, call, nil, ""))
 
 		definition, known := e.options.Tools[name]
 
 		// decode before announcing, so the event carries usable arguments
-		arguments, decodeErr := provider.DecodeArguments(call)
+		arguments, decodeErr := llm.DecodeArguments(call)
 
-		emit(Event{Kind: EventToolCallStart, Tool: name, Args: arguments, Text: call.Function.Arguments})
+		emit(Event{Kind: EventToolCallStart, Tool: name, Args: arguments, Text: call.Input})
 
 		if !known {
 			failure := fmt.Sprintf("no such tool: %s", name)
@@ -968,7 +951,7 @@ func (e *Engine) dispatch(
 
 		if result, ok := output.(ToolResult); ok {
 			for _, image := range result.Images {
-				attached = append(attached, attachment{tool: name, call: call.ID, image: image})
+				attached = append(attached, attachment{tool: name, call: call.ToolCallID, image: image})
 			}
 		}
 	}
@@ -1054,12 +1037,12 @@ func describeAttachment(item attachment) string {
 }
 
 // activityMessage renders one half of a tool-call pair.
-func activityMessage(kind ActivityKind, call provider.ToolCall, result any, failure string) Message {
+func activityMessage(kind ActivityKind, call fantasy.ToolCallContent, result any, failure string) Message {
 	activity := &Activity{
 		Kind:      kind,
-		ID:        call.ID,
-		Name:      call.Function.Name,
-		Arguments: call.Function.Arguments,
+		ID:        call.ToolCallID,
+		Name:      call.ToolName,
+		Arguments: call.Input,
 	}
 
 	if kind == ActivityResponse {
@@ -1134,7 +1117,7 @@ func cycleDetail(heuristic string) string {
 //
 // Only the budget changes. The conversation itself is untouched; the thread
 // builder drops the oldest messages to fit it on the next request.
-func (e *Engine) narrowInputBudget(limit provider.ContextLimit, emit func(Event)) bool {
+func (e *Engine) narrowInputBudget(limit llm.ContextLimit, emit func(Event)) bool {
 	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.inputBudget {
 		e.inputBudget = limit.SuggestedLimit
 
@@ -1160,7 +1143,7 @@ func (e *Engine) narrowInputBudget(limit provider.ContextLimit, emit func(Event)
 }
 
 // buildRequest assembles the provider request, trimming the conversation to fit.
-func (e *Engine) buildRequest(messages []Message, tools []provider.Tool) (provider.Request, error) {
+func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy.Call, error) {
 	instructions := e.instructions()
 
 	// reserve room for the system prompt and the tool schemas, both of which are
@@ -1201,12 +1184,12 @@ func (e *Engine) buildRequest(messages []Message, tools []provider.Tool) (provid
 		},
 	})
 	if err != nil {
-		return provider.Request{}, err
+		return fantasy.Call{}, err
 	}
 
-	chat := []provider.ChatMessage{{Role: provider.RoleSystem, Content: instructions}}
+	chat := fantasy.Prompt{fantasy.NewSystemMessage(instructions)}
 
-	chat = append(chat, toChatMessages(fromThreadMessages(built.Messages))...)
+	chat = append(chat, toPrompt(fromThreadMessages(built.Messages))...)
 
 	// The thread builder keeps the largest suffix that fits, so the first
 	// message trimmed is the oldest - which is the run's opening user message.
@@ -1218,7 +1201,7 @@ func (e *Engine) buildRequest(messages []Message, tools []provider.Tool) (provid
 	hasUser := false
 
 	for _, message := range chat[1:] {
-		if message.Role == provider.RoleUser {
+		if message.Role == fantasy.MessageRoleUser {
 			hasUser = true
 
 			break
@@ -1226,15 +1209,19 @@ func (e *Engine) buildRequest(messages []Message, tools []provider.Tool) (provid
 	}
 
 	if !hasUser {
-		rest := append([]provider.ChatMessage{{Role: provider.RoleUser, Content: trimmedKickoff}}, chat[1:]...)
+		rest := append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat[1:]...)
 		chat = append(chat[:1], rest...)
 	}
 
-	return provider.Request{
-		Messages:  chat,
-		Tools:     tools,
-		MaxTokens: e.options.MaxTokens,
-	}, nil
+	call := fantasy.Call{Prompt: chat, Tools: tools}
+
+	if e.options.MaxTokens != nil {
+		limit := int64(*e.options.MaxTokens)
+
+		call.MaxOutputTokens = &limit
+	}
+
+	return call, nil
 }
 
 // trimmedKickoff stands in for the opening user message once trimming has
@@ -1289,31 +1276,30 @@ func (e *Engine) instructions() string {
 
 // toolDefinitions renders the tool schemas, adding the terminal tools in settle
 // mode.
-func (e *Engine) toolDefinitions() []provider.Tool {
-	var tools []provider.Tool
+func (e *Engine) toolDefinitions() []fantasy.Tool {
+	var definitions []ToolDefinition
 
 	for name, definition := range e.options.Tools {
-		tools = append(tools, provider.Tool{
-			Type: "function",
-			Function: provider.ToolFunction{
-				Name:        name,
-				Description: definition.Description,
-				Parameters:  definition.Parameters,
-			},
-		})
+		definition.Name = name
+		definitions = append(definitions, definition)
 	}
 
+	// map order is random, and a tool list that reshuffles between requests
+	// defeats any server-side prompt cache keyed on the prefix
+	slices.SortFunc(definitions, func(a, b ToolDefinition) int { return strings.Compare(a.Name, b.Name) })
+
 	if e.settleMode() {
-		for _, definition := range terminalTools() {
-			tools = append(tools, provider.Tool{
-				Type: "function",
-				Function: provider.ToolFunction{
-					Name:        definition.Name,
-					Description: definition.Description,
-					Parameters:  definition.Parameters,
-				},
-			})
-		}
+		definitions = append(definitions, terminalTools()...)
+	}
+
+	tools := make([]fantasy.Tool, 0, len(definitions))
+
+	for _, definition := range definitions {
+		tools = append(tools, fantasy.FunctionTool{
+			Name:        definition.Name,
+			Description: definition.Description,
+			InputSchema: definition.Parameters,
+		})
 	}
 
 	return tools

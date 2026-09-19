@@ -1,7 +1,9 @@
 package loop
 
 import (
-	"github.com/openzot/openzot/internal/provider"
+	"charm.land/fantasy"
+
+	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/thread"
 )
 
@@ -88,16 +90,16 @@ func fromThreadMessages(messages []thread.Message) []Message {
 	return converted
 }
 
-// toChatMessages renders the conversation into the provider wire format.
+// toPrompt renders the conversation into the prompt a model call carries.
 //
 // Activity messages are the interesting case: a request half becomes an
-// assistant turn carrying tool_calls, and a response half becomes a tool
+// assistant turn carrying a tool call, and a response half becomes a tool
 // message referencing the same id. Providers validate that pairing, so a
 // response whose request was trimmed away is dropped rather than sent.
-func toChatMessages(messages []Message) []provider.ChatMessage {
+func toPrompt(messages []Message) fantasy.Prompt {
 	var (
-		converted []provider.ChatMessage
-		pending   = map[string]bool{}
+		prompt  fantasy.Prompt
+		pending = map[string]bool{}
 	)
 
 	// repair the history before rendering it: a provider rejects the whole
@@ -116,22 +118,13 @@ func toChatMessages(messages []Message) []provider.ChatMessage {
 			case ActivityRequest:
 				pending[activity.ID] = true
 
-				converted = append(converted, provider.ChatMessage{
-					Role: provider.RoleAssistant,
-					ToolCalls: []provider.ToolCall{{
-						ID:   activity.ID,
-						Type: "function",
-						Function: provider.FunctionCall{
-							Name:      activity.Name,
-							Arguments: activity.Arguments,
-						},
+				prompt = append(prompt, fantasy.Message{
+					Role: fantasy.MessageRoleAssistant,
+					Content: []fantasy.MessagePart{fantasy.ToolCallPart{
+						ToolCallID: activity.ID,
+						ToolName:   activity.Name,
+						Input:      activity.Arguments,
 					}},
-
-					// a gateway's reasoning blocks go back verbatim on the assistant message, or a
-					// reasoning model loses its own thinking between tool
-					// rounds - and some upstreams reject the request outright
-					// once the chain has grown
-					ReasoningDetails: activity.ReasoningDetails,
 				})
 
 			case ActivityResponse:
@@ -142,18 +135,19 @@ func toChatMessages(messages []Message) []provider.ChatMessage {
 
 				delete(pending, activity.ID)
 
-				converted = append(converted, provider.ChatMessage{
-					Role:       provider.RoleTool,
-					Name:       activity.Name,
-					ToolCallID: activity.ID,
-					Content:    activity.ResultText(),
+				prompt = append(prompt, fantasy.Message{
+					Role: fantasy.MessageRoleTool,
+					Content: []fantasy.MessagePart{fantasy.ToolResultPart{
+						ToolCallID: activity.ID,
+						Output:     fantasy.ToolResultOutputContentText{Text: activity.ResultText()},
+					}},
 				})
 			}
 
 		case TypeBot:
-			converted = append(converted, provider.ChatMessage{
-				Role:    provider.RoleAssistant,
-				Content: message.Text,
+			prompt = append(prompt, fantasy.Message{
+				Role:    fantasy.MessageRoleAssistant,
+				Content: []fantasy.MessagePart{fantasy.TextPart{Text: message.Text}},
 			})
 
 		case TypeReasoning:
@@ -162,42 +156,48 @@ func toChatMessages(messages []Message) []provider.ChatMessage {
 			// scratchpad rather than conversation
 
 		case TypeInstructions:
-			converted = append(converted, provider.ChatMessage{
-				Role:    provider.RoleSystem,
-				Content: message.Text,
-			})
+			prompt = append(prompt, fantasy.NewSystemMessage(message.Text))
 
 		case TypeAttachment:
 			// the one role an OpenAI-compatible endpoint accepts image parts on
-			converted = append(converted, provider.ChatMessage{
-				Role:    provider.RoleUser,
-				Content: message.Text,
-				Images:  message.Images,
-			})
+			prompt = append(prompt, fantasy.NewUserMessage(message.Text, imageParts(message.Images)...))
 
 		default:
-			converted = append(converted, provider.ChatMessage{
-				Role:    provider.RoleUser,
-				Content: message.Text,
-			})
+			prompt = append(prompt, fantasy.NewUserMessage(message.Text))
 		}
 	}
 
 	// an assistant turn requesting a call that never got a result leaves the
 	// conversation invalid; drop the dangling halves
 	if len(pending) > 0 {
-		converted = dropDangling(converted, pending)
+		prompt = dropDangling(prompt, pending)
 	}
 
-	return converted
+	return prompt
+}
+
+// imageParts renders images as file parts. One whose bytes went missing is
+// skipped, and the message text still says it existed.
+func imageParts(images []imaging.Image) []fantasy.FilePart {
+	var parts []fantasy.FilePart
+
+	for _, image := range images {
+		if !image.Ready() {
+			continue
+		}
+
+		parts = append(parts, fantasy.FilePart{MediaType: image.MediaType, Data: image.Raw()})
+	}
+
+	return parts
 }
 
 // dropDangling removes assistant tool-call turns whose results are missing.
-func dropDangling(messages []provider.ChatMessage, pending map[string]bool) []provider.ChatMessage {
-	kept := make([]provider.ChatMessage, 0, len(messages))
+func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt {
+	kept := make(fantasy.Prompt, 0, len(prompt))
 
-	for _, message := range messages {
-		if len(message.ToolCalls) == 1 && pending[message.ToolCalls[0].ID] {
+	for _, message := range prompt {
+		if call, ok := singleToolCall(message); ok && pending[call.ToolCallID] {
 			continue
 		}
 
@@ -205,4 +205,15 @@ func dropDangling(messages []provider.ChatMessage, pending map[string]bool) []pr
 	}
 
 	return kept
+}
+
+// singleToolCall returns the call an assistant message consists of, if it is one.
+func singleToolCall(message fantasy.Message) (fantasy.ToolCallPart, bool) {
+	if message.Role != fantasy.MessageRoleAssistant || len(message.Content) != 1 {
+		return fantasy.ToolCallPart{}, false
+	}
+
+	call, ok := message.Content[0].(fantasy.ToolCallPart)
+
+	return call, ok
 }

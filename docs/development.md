@@ -5,7 +5,7 @@ the codebase. For running zot, see the [README](../README.md).
 
 ## Build from source
 
-Requires Go 1.26+.
+Requires Go 1.27+.
 
 ```bash
 git clone https://github.com/openzot/openzot
@@ -70,11 +70,11 @@ which kind you have.
 | Path                   | Responsibility                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------ |
 | `cmd/zot/`             | the binary: flag parsing, sessions, working dir, then `zot.Run`                |
-| `zot.go`               | embeddable core: builds the provider client + agent options and runs it        |
+| `zot.go`               | embeddable core: builds the model client + agent options and runs it           |
 | `agent/`               | the public harness: `ExecuteWithTools`, tools, skills, events                  |
 | `internal/loop/`       | the agentic loop: budgets, guards, settle mode, message hygiene                |
 | `internal/thread/`     | context-window assembly and the four loop-detection heuristics                 |
-| `internal/provider/`   | the `Transport` seam: today, chat-completions                                 |
+| `internal/llm/`        | the model connection: fantasy over chat-completions, plus error classification |
 | `internal/catalogue/`  | what each model's context window and capabilities are                          |
 | `internal/tokenizer/`  | BPE token counting with embedded vocabularies                                  |
 | `internal/session/`    | JSONL run logs: write, read, list, resume                                      |

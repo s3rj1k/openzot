@@ -45,13 +45,12 @@ func (r *Recorder) RecordMessage(message agent.Message) error {
 
 	if activity := message.Activity; activity != nil {
 		entry.Activity = &Activity{
-			Kind:             string(activity.Kind),
-			ID:               activity.ID,
-			Name:             activity.Name,
-			Arguments:        activity.Arguments,
-			Result:           activity.Result,
-			Failure:          activity.Failure,
-			ReasoningDetails: activity.ReasoningDetails,
+			Kind:      string(activity.Kind),
+			ID:        activity.ID,
+			Name:      activity.Name,
+			Arguments: activity.Arguments,
+			Result:    activity.Result,
+			Failure:   activity.Failure,
 		}
 	}
 
@@ -143,13 +142,12 @@ func (s *Session) AgentMessages() []agent.Message {
 
 		if activity := message.Activity; activity != nil {
 			entry.Activity = &agent.Activity{
-				Kind:             agent.ActivityKind(activity.Kind),
-				ID:               activity.ID,
-				Name:             activity.Name,
-				Arguments:        activity.Arguments,
-				Result:           activity.Result,
-				Failure:          activity.Failure,
-				ReasoningDetails: activity.ReasoningDetails,
+				Kind:      agent.ActivityKind(activity.Kind),
+				ID:        activity.ID,
+				Name:      activity.Name,
+				Arguments: activity.Arguments,
+				Result:    activity.Result,
+				Failure:   activity.Failure,
 			}
 		}
 

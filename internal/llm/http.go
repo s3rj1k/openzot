@@ -1,7 +1,6 @@
-package provider
+package llm
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net"
@@ -9,18 +8,6 @@ import (
 	"sync"
 	"time"
 )
-
-// Client is a configured connection to a model.
-//
-// It owns the configuration and the HTTP client, and delegates the actual
-// conversation to a Transport. Choosing the transport is the only decision it
-// makes - everything about how a turn is encoded belongs to the transport, which
-// is what keeps adding a non-OpenAI provider from touching anything here.
-type Client struct {
-	config    Config
-	http      *http.Client
-	transport Transport
-}
 
 // The bounds on a turn.
 //
@@ -39,14 +26,7 @@ const (
 )
 
 // streamStallTimeout is how long a stream may say nothing at all before it is
-// treated as hung.
-//
-// As generous as the whole-request cap it replaces, deliberately: this is the
-// same backstop, applied to the thing that actually indicates a hang. A model
-// that has been silent for ten minutes mid-stream is not thinking - keep-alive
-// comments, in-progress frames and reasoning deltas all count as progress.
-//
-// A variable rather than a constant only so tests can drive it without waiting
+// treated as hung. A variable only so tests can drive it without waiting
 // minutes; it is not a configuration knob.
 var streamStallTimeout = 10 * time.Minute
 
@@ -59,7 +39,24 @@ func newHTTPClient() *http.Client {
 	transport.TLSHandshakeTimeout = dialTimeout
 	transport.ResponseHeaderTimeout = responseHeaderTimeout
 
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: stallTransport{base: transport}}
+}
+
+// stallTransport puts a stallReader on every response body, so a stream that
+// goes silent fails - and an error body that is held open does too.
+type stallTransport struct {
+	base http.RoundTripper
+}
+
+func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+
+	response.Body = newStallReader(response.Body, streamStallTimeout)
+
+	return response, nil
 }
 
 // stallReader fails a stream that has gone silent, without bounding one that is
@@ -95,16 +92,17 @@ func (r *stallReader) Read(p []byte) (int, error) {
 	}
 
 	if err != nil && r.didStall() {
-		return n, &Error{Status: 0, Message: fmt.Sprintf(
-			"the stream stalled: nothing arrived for %s", r.timeout)}
+		return n, fmt.Errorf("the stream stalled: nothing arrived for %s", r.timeout)
 	}
 
 	return n, err
 }
 
-// stop releases the watchdog once the turn is over.
-func (r *stallReader) stop() {
+// Close releases the watchdog along with the body.
+func (r *stallReader) Close() error {
 	r.timer.Stop()
+
+	return r.inner.Close()
 }
 
 func (r *stallReader) fire() {
@@ -123,37 +121,4 @@ func (r *stallReader) didStall() bool {
 	defer r.mu.Unlock()
 
 	return r.stalled
-}
-
-// New creates a client, validating the configuration and resolving its
-// transport.
-func New(config Config) (*Client, error) {
-	resolved, err := config.Resolve()
-	if err != nil {
-		return nil, err
-	}
-
-	httpClient := newHTTPClient()
-
-	transport, err := lookupTransport(TransportChatCompletions, httpClient)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{config: resolved, http: httpClient, transport: transport}, nil
-}
-
-// Config returns the resolved configuration.
-func (c *Client) Config() Config {
-	return c.config
-}
-
-// Transport names the wire format in use, for diagnostics and the UI header.
-func (c *Client) Transport() string {
-	return c.transport.Name()
-}
-
-// Stream runs one turn.
-func (c *Client) Stream(ctx context.Context, request Request) <-chan Event {
-	return c.transport.Stream(ctx, c.config, request)
 }

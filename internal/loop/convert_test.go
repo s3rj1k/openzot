@@ -3,7 +3,9 @@ package loop
 import (
 	"testing"
 
-	"github.com/openzot/openzot/internal/provider"
+	"charm.land/fantasy"
+
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 // activity builds one half of a tool-call pair.
@@ -17,7 +19,31 @@ func activity(kind ActivityKind, id, name, arguments string, result any) Message
 	return Message{Type: TypeActivity, Text: entry.ResultText(), Activity: entry}
 }
 
-func TestToChatMessagesPairsToolCalls(t *testing.T) {
+// toolCallOf returns the call an assistant message carries, if it carries one.
+func toolCallOf(message fantasy.Message) (fantasy.ToolCallPart, bool) {
+	for _, part := range message.Content {
+		if call, ok := part.(fantasy.ToolCallPart); ok {
+			return call, true
+		}
+	}
+
+	return fantasy.ToolCallPart{}, false
+}
+
+// textOf joins the text parts of a message.
+func textOf(message fantasy.Message) string {
+	var text string
+
+	for _, part := range message.Content {
+		if piece, ok := part.(fantasy.TextPart); ok {
+			text += piece.Text
+		}
+	}
+
+	return text
+}
+
+func TestToPromptPairsToolCalls(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "list the files"},
 		activity(ActivityRequest, "c1", "shell", `{"command":"ls"}`, nil),
@@ -25,45 +51,49 @@ func TestToChatMessagesPairsToolCalls(t *testing.T) {
 		{Type: TypeBot, Text: "there is a README"},
 	}
 
-	chat := toChatMessages(messages)
+	prompt := toPrompt(messages)
 
-	if len(chat) != 4 {
-		t.Fatalf("got %d messages, want 4: %+v", len(chat), chat)
+	if len(prompt) != 4 {
+		t.Fatalf("got %d messages, want 4: %+v", len(prompt), prompt)
 	}
 
-	if chat[0].Role != provider.RoleUser {
-		t.Errorf("chat[0] role = %q, want user", chat[0].Role)
+	if prompt[0].Role != fantasy.MessageRoleUser {
+		t.Errorf("prompt[0] role = %q, want user", prompt[0].Role)
 	}
 
-	if chat[1].Role != provider.RoleAssistant || len(chat[1].ToolCalls) != 1 {
-		t.Fatalf("chat[1] should be an assistant turn carrying one tool call: %+v", chat[1])
+	call, ok := toolCallOf(prompt[1])
+	if prompt[1].Role != fantasy.MessageRoleAssistant || !ok {
+		t.Fatalf("prompt[1] should be an assistant turn carrying one tool call: %+v", prompt[1])
 	}
 
-	if got := chat[1].ToolCalls[0].ID; got != "c1" {
-		t.Errorf("tool call id = %q, want c1", got)
+	if call.ToolCallID != "c1" || call.ToolName != "shell" || call.Input != `{"command":"ls"}` {
+		t.Errorf("tool call = %+v", call)
 	}
 
-	if chat[2].Role != provider.RoleTool || chat[2].ToolCallID != "c1" {
-		t.Errorf("chat[2] should be a tool result referencing c1: %+v", chat[2])
+	if prompt[2].Role != fantasy.MessageRoleTool {
+		t.Fatalf("prompt[2] should be a tool result: %+v", prompt[2])
 	}
 
-	if chat[2].Content != "README.md" {
-		t.Errorf("tool result content = %q, want the handler output", chat[2].Content)
+	result, ok := prompt[2].Content[0].(fantasy.ToolResultPart)
+	if !ok || result.ToolCallID != "c1" {
+		t.Fatalf("prompt[2] should reference c1: %+v", prompt[2])
+	}
+
+	if output, _ := result.Output.(fantasy.ToolResultOutputContentText); output.Text != "README.md" {
+		t.Errorf("tool result = %+v, want the handler output", result.Output)
 	}
 }
 
 // A tool result whose request was trimmed away would be rejected by the
 // provider, so it must not be sent on its own.
-func TestToChatMessagesDropsOrphanedResult(t *testing.T) {
+func TestToPromptDropsOrphanedResult(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "go"},
 		activity(ActivityResponse, "c1", "shell", `{}`, "output"),
 	}
 
-	chat := toChatMessages(messages)
-
-	for _, message := range chat {
-		if message.Role == provider.RoleTool {
+	for _, message := range toPrompt(messages) {
+		if message.Role == fantasy.MessageRoleTool {
 			t.Fatalf("an orphaned tool result must be dropped: %+v", message)
 		}
 	}
@@ -71,26 +101,26 @@ func TestToChatMessagesDropsOrphanedResult(t *testing.T) {
 
 // The mirror case: a request whose result never arrived leaves the conversation
 // invalid, so the assistant turn goes too.
-func TestToChatMessagesDropsDanglingRequest(t *testing.T) {
+func TestToPromptDropsDanglingRequest(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "go"},
 		activity(ActivityRequest, "c1", "shell", `{}`, nil),
 	}
 
-	chat := toChatMessages(messages)
+	prompt := toPrompt(messages)
 
-	for _, message := range chat {
-		if len(message.ToolCalls) > 0 {
+	for _, message := range prompt {
+		if _, ok := toolCallOf(message); ok {
 			t.Fatalf("a request with no result must be dropped: %+v", message)
 		}
 	}
 
-	if len(chat) != 1 {
-		t.Errorf("got %d messages, want just the user turn", len(chat))
+	if len(prompt) != 1 {
+		t.Errorf("got %d messages, want just the user turn", len(prompt))
 	}
 }
 
-func TestToChatMessagesRoleMapping(t *testing.T) {
+func TestToPromptRoleMapping(t *testing.T) {
 	messages := []Message{
 		{Type: TypeInstructions, Text: "you are an agent"},
 		{Type: TypeReasoning, Text: "thinking out loud"},
@@ -98,47 +128,82 @@ func TestToChatMessagesRoleMapping(t *testing.T) {
 		{Type: TypeUser, Text: "a question"},
 	}
 
-	chat := toChatMessages(messages)
+	prompt := toPrompt(messages)
 
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
-	for _, message := range chat {
-		if message.Content == "thinking out loud" {
+	for _, message := range prompt {
+		if textOf(message) == "thinking out loud" {
 			t.Fatal("reasoning must not be replayed to the provider")
 		}
 	}
 
-	want := []string{
-		provider.RoleSystem,
-		provider.RoleAssistant,
-		provider.RoleUser,
+	want := []fantasy.MessageRole{
+		fantasy.MessageRoleSystem,
+		fantasy.MessageRoleAssistant,
+		fantasy.MessageRoleUser,
 	}
 
-	if len(chat) != len(want) {
-		t.Fatalf("got %d messages, want %d: %+v", len(chat), len(want), chat)
+	if len(prompt) != len(want) {
+		t.Fatalf("got %d messages, want %d: %+v", len(prompt), len(want), prompt)
 	}
 
 	for index, role := range want {
-		if chat[index].Role != role {
-			t.Errorf("chat[%d] role = %q, want %q", index, chat[index].Role, role)
+		if prompt[index].Role != role {
+			t.Errorf("prompt[%d] role = %q, want %q", index, prompt[index].Role, role)
 		}
 	}
 }
 
-func TestToChatMessagesEncodesStructuredResults(t *testing.T) {
+func TestToPromptEncodesStructuredResults(t *testing.T) {
 	messages := []Message{
 		activity(ActivityRequest, "c1", "search", `{}`, nil),
 		activity(ActivityResponse, "c1", "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
-	chat := toChatMessages(messages)
+	prompt := toPrompt(messages)
 
-	if len(chat) != 2 {
-		t.Fatalf("got %d messages, want 2", len(chat))
+	if len(prompt) != 2 {
+		t.Fatalf("got %d messages, want 2", len(prompt))
 	}
 
-	if chat[1].Content != `{"records":[]}` {
-		t.Errorf("structured result = %q, want it JSON-encoded", chat[1].Content)
+	result, _ := prompt[1].Content[0].(fantasy.ToolResultPart)
+
+	if output, _ := result.Output.(fantasy.ToolResultOutputContentText); output.Text != `{"records":[]}` {
+		t.Errorf("structured result = %+v, want it JSON-encoded", result.Output)
+	}
+}
+
+// An attachment goes out as a user message carrying its images as file parts,
+// and an image whose bytes went missing is left out while the text stays.
+func TestToPromptAttachesReadyImages(t *testing.T) {
+	ready := imaging.NewImage([]byte("png-bytes"), "image/png", 4, 3)
+	gone := imaging.Image{MediaType: "image/png", Digest: "sha256:gone"}
+
+	prompt := toPrompt([]Message{{
+		Type:   TypeAttachment,
+		Text:   "Attached: shot.png",
+		Images: []imaging.Image{ready, gone},
+	}})
+
+	if len(prompt) != 1 || prompt[0].Role != fantasy.MessageRoleUser {
+		t.Fatalf("an attachment must be one user message: %+v", prompt)
+	}
+
+	var files []fantasy.FilePart
+
+	for _, part := range prompt[0].Content {
+		if file, ok := part.(fantasy.FilePart); ok {
+			files = append(files, file)
+		}
+	}
+
+	if len(files) != 1 || string(files[0].Data) != "png-bytes" || files[0].MediaType != "image/png" {
+		t.Errorf("files = %+v, want only the image whose bytes exist", files)
+	}
+
+	if textOf(prompt[0]) != "Attached: shot.png" {
+		t.Errorf("text = %q, want the description kept", textOf(prompt[0]))
 	}
 }
 
@@ -152,8 +217,8 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	}
 
 	for index, message := range cases {
-		if chat := toChatMessages([]Message{message}); len(chat) != 0 {
-			t.Errorf("case %d: a malformed activity reached the wire as %+v", index, chat)
+		if prompt := toPrompt([]Message{message}); len(prompt) != 0 {
+			t.Errorf("case %d: a malformed activity reached the wire as %+v", index, prompt)
 		}
 	}
 }

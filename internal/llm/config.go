@@ -1,10 +1,8 @@
-// Package provider talks to OpenAI-compatible chat-completions endpoints.
-//
-// zot ships no provider of its own: every connection is one the operator
-// declares, with an endpoint and a credential. There is a single driver,
-// openai, because that is the one wire format all of them are asked to
-// speak - so this is one client plus a URL and a key, not a set of integrations.
-package provider
+// Package llm is zot's connection to a model. It speaks the OpenAI
+// chat-completions wire format through fantasy and keeps the rules that make an
+// unattended run safe: an endpoint the operator named, a credential scoped to
+// it, and errors classified for the loop to retry, back off from, or give up on.
+package llm
 
 import (
 	"errors"
@@ -123,11 +121,6 @@ func isLoopbackHost(hostname string) bool {
 	}
 
 	return false
-}
-
-// completionsURL is the chat-completions endpoint for this configuration.
-func (c Config) completionsURL() string {
-	return c.BaseURL + "/chat/completions"
 }
 
 // firstNonEmpty returns value when it is set, else fallback.

@@ -935,13 +935,13 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 		}
 
 		if requests.Add(1) == 1 {
-			fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"on it"}}]}`)
-			fmt.Fprintln(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`)
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"on it\"}}]}\n\n")
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
 		} else {
-			fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
+			fmt.Fprintf(w, "data: %s\n\n", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
 		}
 
-		fmt.Fprintln(w, "data: [DONE]")
+		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
 	defer server.Close()

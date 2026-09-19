@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/llm"
 )
 
 // Budget semantics, ported from the TypeScript engine's maxIterations and
@@ -580,14 +580,14 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	started := time.Now()
@@ -633,14 +633,14 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	engine, err := New(Options{
@@ -674,7 +674,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	// The abort landed during a backoff wait, but the provider failure that
 	// preceded it is carried along as the evidence - it is the exchange the
 	// operator quit to go and read. A bare "context canceled" would discard it.
-	if result.Err == nil || !provider.IsProviderError(result.Err) {
+	if result.Err == nil || !llm.IsProviderError(result.Err) {
 		t.Errorf("aborted result carries %v, want the last provider failure preserved", result.Err)
 	}
 }
@@ -764,14 +764,14 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	started := time.Now()
@@ -846,14 +846,14 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	started := time.Now()
@@ -922,14 +922,14 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	calls := 0
@@ -1009,14 +1009,14 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	base := 300 * time.Millisecond
@@ -1132,14 +1132,14 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	calls := 0
@@ -1179,14 +1179,14 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	result := run(t, Options{
@@ -1240,14 +1240,14 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	calls := 0
@@ -1321,14 +1321,14 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.New(provider.Config{
+	client, err := llm.New(llm.Config{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
 	if err != nil {
-		t.Fatalf("provider.New: %v", err)
+		t.Fatalf("llm.New: %v", err)
 	}
 
 	calls := 0
