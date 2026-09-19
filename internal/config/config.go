@@ -32,6 +32,10 @@ type Config struct {
 	// Skills are the skills loaded from SkillsDir at startup. Not configured
 	// directly.
 	Skills []tools.Skill `yaml:"-"`
+	// ProjectContext is the instructions found in the AGENTS.md files of the
+	// config directory and the project, for an order's prompt to use as
+	// .Project. Not configured directly.
+	ProjectContext string `yaml:"-"`
 	// DefaultProvider names the entry in Providers used by every run. There is
 	// no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`
@@ -167,11 +171,6 @@ type Agent struct {
 	// pace itself. Unset uses the built-in default (50, 80, 90); an explicit
 	// empty list turns the notices off.
 	LimitCheckpoints []int `yaml:"limit_checkpoints"`
-	// Instructions optionally overrides the built-in system prompt. Leave
-	// empty to use zot.DefaultInstructions. An override replaces the prompt
-	// but not zot's non-interactive contract, which is re-attached to whatever
-	// a run resolves to: the run has no input channel to opt back into.
-	Instructions string `yaml:"instructions"`
 }
 
 // MaxDuration parses Agent.MaxTime into a duration. An empty value is zero

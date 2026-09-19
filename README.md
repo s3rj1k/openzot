@@ -53,15 +53,41 @@ providers:
 
 ```bash
 export GATEWAY_KEY="..."
-zot new    # opens a blank order in your editor
+zot new    # opens a new order in your editor
 zot
 ```
 
-`zot new` creates a small YAML order under `.zot/orders/` and opens it in your
-editor; write the objective and the acceptance criteria, then a bare `zot` runs
-the orders in the folder, each from zero. Any OpenAI-compatible endpoint works -
-a hosted service, a gateway, a local server - declare it under `providers:` and
-name it with `default_provider`.
+`zot new` creates an order under `.zot/orders/` and opens it in your editor. An
+order is one file: a front matter block that says what to do, then the whole
+system prompt as a Go template that reads it.
+
+```markdown
+---
+objective: |
+  Add rate limiting to the API.
+acceptance:
+  - requests beyond the limit receive a 429
+  - the test suite passes
+constraints:
+  - do not change handler signatures
+---
+You are zot, a fully autonomous software engineering agent ...
+{{ range .Tools }}- "{{ .Name }}": {{ .Description }}
+{{ end }}
+## Your task
+
+{{ .Objective }}
+```
+
+Write the objective and leave the prompt alone, or rewrite the prompt to change
+how the agent works: the template can use the order's fields, the tool list, the
+working directory, the date, the model, the project's `AGENTS.md` (`{{ .Project }}`)
+and the functions `file "path"`, `env "NAME"` and `inc N`. Whatever the prompt
+says, zot adds its non-interactive contract back if the rendered text lacks it: a
+run has no way to ask anyone anything. A bare `zot` runs the orders in the folder,
+each from zero. Any OpenAI-compatible endpoint works - a hosted service, a
+gateway, a local server - declare it under `providers:` and name it with
+`default_provider`.
 
 Skills - folders of `SKILL.md` instructions - live in the directory named by
 `skills_dir` in the config. They are read into memory at startup and offered to

@@ -130,7 +130,7 @@ func TestResolveOrdersLoadsEveryFile(t *testing.T) {
 func TestResolveOrdersFailsTheWholeBatchUpFront(t *testing.T) {
 	good := orderFile(t, "fine")
 
-	if _, err := resolveOrders([]string{good, filepath.Join(t.TempDir(), "nope.yaml")}, ""); err == nil {
+	if _, err := resolveOrders([]string{good, filepath.Join(t.TempDir(), "nope.md")}, ""); err == nil {
 		t.Error("a batch with a broken order must not resolve")
 	}
 }
@@ -176,7 +176,7 @@ func withEditor(t *testing.T, body string) {
 func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	withEditor(t, `printf 'objective: fix the typo\n' > "$1"`)
+	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
 	var out strings.Builder
 
@@ -184,12 +184,12 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 		t.Fatalf("newOrder: %v", err)
 	}
 
-	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.yaml"))
+	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
 	if len(matches) != 1 {
 		t.Fatalf("orders written = %v, want the one", matches)
 	}
 
-	if name := filepath.Base(matches[0]); !regexp.MustCompile(`^\d+\.yaml$`).MatchString(name) {
+	if name := filepath.Base(matches[0]); !regexp.MustCompile(`^\d+\.md$`).MatchString(name) {
 		t.Errorf("name = %q, want a unix timestamp", name)
 	}
 
@@ -218,7 +218,7 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 func TestNewOrderTakesNoProse(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	withEditor(t, `printf 'objective: never\n' > "$1"`)
+	withEditor(t, `printf -- '---\nobjective: never\n---\nbody\n' > "$1"`)
 
 	err := newOrder([]string{"fix", "the", "typo"}, io.Discard)
 	if err == nil {
@@ -244,7 +244,7 @@ func TestNewOrderWithOrdersDirFilesItThere(t *testing.T) {
 
 	t.Chdir(invocation)
 
-	withEditor(t, `printf 'objective: fix the typo\n' > "$1"`)
+	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
 	var out strings.Builder
 
@@ -252,7 +252,7 @@ func TestNewOrderWithOrdersDirFilesItThere(t *testing.T) {
 		t.Fatalf("newOrder: %v", err)
 	}
 
-	matches, _ := filepath.Glob(filepath.Join(briefs, "*.yaml"))
+	matches, _ := filepath.Glob(filepath.Join(briefs, "*.md"))
 	if len(matches) != 1 {
 		t.Fatalf("orders in --orders-dir = %v, want the one", matches)
 	}
@@ -273,7 +273,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 
 	t.Chdir(invocation)
 
-	withEditor(t, `printf 'objective: fix the typo\n' > "$1"`)
+	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
 	if err := newOrder([]string{"--dir", target}, io.Discard); err != nil {
 		t.Fatalf("newOrder: %v", err)
@@ -283,7 +283,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 		t.Errorf("the invoking directory must stay untouched: %v", err)
 	}
 
-	matches, _ := filepath.Glob(filepath.Join(target, order.BookDir, "orders", "*.yaml"))
+	matches, _ := filepath.Glob(filepath.Join(target, order.BookDir, "orders", "*.md"))
 	if len(matches) != 1 {
 		t.Errorf("orders in the target project = %v, want the one", matches)
 	}
@@ -303,7 +303,7 @@ func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 		t.Fatalf("newOrder: %v", err)
 	}
 
-	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.yaml")); len(matches) != 0 {
+	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md")); len(matches) != 0 {
 		t.Errorf("an unedited order was kept: %v", matches)
 	}
 
@@ -317,13 +317,13 @@ func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	withEditor(t, `printf 'objective: half written\n' > "$1"; exit 3`)
+	withEditor(t, `printf -- '---\nobjective: half written\n---\nbody\n' > "$1"; exit 3`)
 
 	if err := newOrder(nil, io.Discard); err == nil {
 		t.Fatal("an editor that fails must be reported")
 	}
 
-	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.yaml"))
+	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
 	if len(matches) != 1 {
 		t.Fatalf("orders = %v, want the file kept", matches)
 	}
@@ -343,7 +343,7 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 		t.Fatalf("err = %v, want it to say no editor was found", err)
 	}
 
-	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.yaml")); len(matches) != 1 {
+	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md")); len(matches) != 1 {
 		t.Errorf("orders = %v, want the blank order left to be edited", matches)
 	}
 }
@@ -351,7 +351,18 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 func orderFile(t *testing.T, objective string) string {
 	t.Helper()
 
-	return orderFileIn(t, t.TempDir(), "order.yaml", objective)
+	return orderFileIn(t, t.TempDir(), "order.md", objective)
+}
+
+// orderText is an order file with the given objective and the smallest prompt
+// that uses it: the contract is not in it, because the run supplies that.
+func orderText(objective string) string {
+	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n{{ .Objective }}\n"
+}
+
+// testOrder is an order for a run that never was a file.
+func testOrder(objective string) order.Order {
+	return order.Order{Objective: objective, Body: "{{ .Objective }}"}
 }
 
 // orderFileIn writes an order with the given objective to dir/name.
@@ -360,7 +371,7 @@ func orderFileIn(t *testing.T, dir, name, objective string) string {
 
 	path := filepath.Join(dir, name)
 
-	if err := os.WriteFile(path, []byte("objective: "+fmt.Sprintf("%q", objective)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(orderText(objective)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -467,7 +478,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	text := builder.String()
 
-	for _, want := range []string{"zot [flags] [<order.yaml>", "zot new", "zot config", "--dir", ".jsonl"} {
+	for _, want := range []string{"zot [flags] [<order.md>", "zot new", "zot config", "--dir", ".jsonl"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("usage does not mention %q:\n%s", want, text)
 		}
@@ -502,7 +513,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 }
 
 // The CLI uses pflag (GNU-style), so a flag may appear AFTER the positional
-// order paths: `zot orders/a.yaml --dir proj` parses --dir as a flag and keeps
+// order paths: `zot orders/a.md --dir proj` parses --dir as a flag and keeps
 // the paths intact. The stdlib flag package stopped at the first non-flag,
 // folding the flag into the positionals - this locks the behaviour that
 // motivated the switch.
@@ -510,7 +521,7 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
 	dir := set.String("dir", ".", "")
 
-	if err := set.Parse([]string{"a.yaml", "b.yaml", "--dir", "proj"}); err != nil {
+	if err := set.Parse([]string{"a.md", "b.md", "--dir", "proj"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
@@ -518,7 +529,7 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 		t.Errorf("--dir given after the orders = %q, want it parsed as a flag", *dir)
 	}
 
-	if got := strings.Join(set.Args(), " "); got != "a.yaml b.yaml" {
+	if got := strings.Join(set.Args(), " "); got != "a.md b.md" {
 		t.Errorf("positional orders = %q, want the paths before the flag", got)
 	}
 }
@@ -713,6 +724,92 @@ providers:
 	}
 }
 
+// The whole loop of the new order: zot new scaffolds the file with the full
+// prompt in it, the operator writes the objective, and what the model is sent is
+// that prompt rendered - the objective, the tools the run really has, where it is
+// working, and the project's AGENTS.md, with the contract once.
+func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
+	project := t.TempDir()
+
+	mustWrite(t, filepath.Join(project, "AGENTS.md"), "Always mention PINECONE.")
+
+	// the operator fills in the objective and a criterion and leaves the prompt as
+	// zot wrote it
+	withEditor(t, `sed -i 's/^objective:$/objective: build the parser\nacceptance:\n  - it parses/' "$1"`)
+
+	var out strings.Builder
+
+	if err := newOrder([]string{"--dir", project}, &out); err != nil {
+		t.Fatalf("newOrder: %v", err)
+	}
+
+	written, err := filepath.Glob(filepath.Join(project, order.BookDir, "orders", "*.md"))
+	if err != nil || len(written) != 1 {
+		t.Fatalf("orders written = %v, %v", written, err)
+	}
+
+	var system string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
+		}
+
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		if system == "" && len(body.Messages) > 0 && body.Messages[0].Role == "system" {
+			system, _ = body.Messages[0].Content.(string)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		fmt.Fprintf(w, "data: %s\n\n", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"ok\"}"}}]},"finish_reason":"tool_calls"}]}`)
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	mustWrite(t, configPath, fmt.Sprintf(`
+agent:
+  model: test-model
+default_provider: local
+providers:
+  local:
+    base_url: %s
+    api_key: test-key
+    models:
+      test-model:
+        context: 100000
+`, server.URL))
+
+	withArgs(t, "--config", configPath, "--dir", project, written[0])
+
+	if _, err := captureStdout(t, run); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	for _, want := range []string{
+		"## Your task\n\nbuild the parser",
+		"1. it parses",
+		`- "shell":`,
+		`- "tasks":`,
+		"# Project context\n\nAlways mention PINECONE.",
+	} {
+		if !strings.Contains(system, want) {
+			t.Errorf("the system prompt is missing %q:\n%s", want, system)
+		}
+	}
+
+	if n := strings.Count(system, contractHeading); n != 1 {
+		t.Errorf("the contract appears %d times, want once", n)
+	}
+}
+
 // A run pointed at another directory works end to end: every relative path on
 // the command line - --config, the order itself - resolves from
 // the invoking directory before zot chdirs into --dir, the session records the
@@ -741,7 +838,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	// every path on the command line is relative to the invoking directory -
 	// none of them exist inside --dir, so they must resolve before the chdir
-	if err := os.WriteFile("order.yaml", []byte("objective: do the thing\n"), 0o644); err != nil {
+	if err := os.WriteFile("order.md", []byte(orderText("do the thing")+"{{ .Project }}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -789,7 +886,7 @@ providers:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", "config.yaml", "--dir", target, "order.yaml")
+	withArgs(t, "--config", "config.yaml", "--dir", target, "order.md")
 
 	output, err := captureStdout(t, run)
 	if err != nil {
@@ -863,8 +960,8 @@ providers:
 		orders := t.TempDir()
 
 		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
-			orderFileIn(t, orders, "first.yaml", "the first order"),
-			orderFileIn(t, orders, "second.yaml", "the second order"))
+			orderFileIn(t, orders, "first.md", "the first order"),
+			orderFileIn(t, orders, "second.md", "the second order"))
 
 		if _, err := captureStdout(t, run); err != nil {
 			t.Fatalf("run: %v", err)
@@ -888,10 +985,10 @@ providers:
 
 		orders := t.TempDir()
 
-		first := orderFileIn(t, orders, "doomed.yaml", "the doomed order")
+		first := orderFileIn(t, orders, "doomed.md", "the doomed order")
 
 		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
-			first, orderFileIn(t, orders, "never.yaml", "the never-run order"))
+			first, orderFileIn(t, orders, "never.md", "the never-run order"))
 
 		var err error
 
@@ -1073,7 +1170,7 @@ providers:
 		t.Fatal(err)
 	}
 
-	orderPath := orderFileIn(t, t.TempDir(), "1758300000.yaml", "the first task")
+	orderPath := orderFileIn(t, t.TempDir(), "1758300000.md", "the first task")
 
 	withArgs(t, "--config", configPath, "--dir", workdir, orderPath)
 
@@ -1223,19 +1320,19 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 	}{
 		{
 			name: "a declared title",
-			body: "title: Rate limiting\nobjective: add rate limiting to the api\n",
+			body: "---\ntitle: Rate limiting\nobjective: add rate limiting to the api\n---\nbody\n",
 			want: "Rate limiting",
 		},
 		{
 			name: "otherwise the file name",
-			body: "objective: add rate limiting to the api\n",
-			want: "Fix the flaky test", // from fix-the-flaky-test.yaml
+			body: "---\nobjective: add rate limiting to the api\n---\nbody\n",
+			want: "Fix the flaky test", // from fix-the-flaky-test.md
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			orderPath := filepath.Join(t.TempDir(), "fix-the-flaky-test.yaml")
+			orderPath := filepath.Join(t.TempDir(), "fix-the-flaky-test.md")
 
 			if err := os.WriteFile(orderPath, []byte(test.body), 0o644); err != nil {
 				t.Fatal(err)
@@ -1251,7 +1348,7 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 			runs := oneRun{
 				ctx:  context.Background(),
 				logs: t.TempDir(),
-				run: func(_ context.Context, _ config.Config, _ string, options runOptions) error {
+				run: func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
 					got = options
 
 					return nil
@@ -1276,10 +1373,10 @@ func TestABatchRunKnowsItsPosition(t *testing.T) {
 
 	var orders []order.Order
 
-	for _, name := range []string{"a-first.yaml", "b-second.yaml", "c-third.yaml"} {
+	for _, name := range []string{"a-first.md", "b-second.md", "c-third.md"} {
 		path := filepath.Join(dir, name)
 
-		if err := os.WriteFile(path, []byte("objective: "+name+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(orderText(name)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1296,7 +1393,7 @@ func TestABatchRunKnowsItsPosition(t *testing.T) {
 	runs := oneRun{
 		ctx:  context.Background(),
 		logs: t.TempDir(),
-		run: func(_ context.Context, _ config.Config, _ string, options runOptions) error {
+		run: func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
 			seen = append(seen, options)
 
 			return nil
@@ -1319,7 +1416,7 @@ func TestABatchRunKnowsItsPosition(t *testing.T) {
 	// a lone order is not a batch, and must not claim to be 1 of 1
 	var solo runOptions
 
-	runs.run = func(_ context.Context, _ config.Config, _ string, options runOptions) error {
+	runs.run = func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
 		solo = options
 
 		return nil
@@ -1345,10 +1442,10 @@ func TestABareInvocationRunsTheBook(t *testing.T) {
 
 	// written out of order, and with a file that is not an order beside them
 	for name, objective := range map[string]string{
-		"b-second.yaml": "the second job",
-		"a-first.yaml":  "the first job",
+		"b-second.md": "the second job",
+		"a-first.md":  "the first job",
 	} {
-		if err := os.WriteFile(filepath.Join(book, name), []byte("objective: "+objective+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(book, name), []byte(orderText(objective)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1419,15 +1516,16 @@ func TestLoadProjectContext(t *testing.T) {
 	mustWrite(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
 
 	cfg := config.Config{}
-	loadProjectContext(&cfg, configDir, workDir)
+	loadProjectContext(&cfg, configDir, workDir, workDir)
 
-	// Instructions keeps the default and appends both AGENTS.md files in order.
-	for _, want := range []string{defaultInstructions[:20], "GLOBAL CONVENTIONS", "PROJECT CONVENTIONS"} {
-		if !strings.Contains(cfg.Agent.Instructions, want) {
-			t.Errorf("instructions missing %q", want)
+	// both files are there, the config directory's first, each once
+	for _, want := range []string{"GLOBAL CONVENTIONS", "PROJECT CONVENTIONS"} {
+		if strings.Count(cfg.ProjectContext, want) != 1 {
+			t.Errorf("project context should hold %q once:\n%s", want, cfg.ProjectContext)
 		}
 	}
-	if i, j := strings.Index(cfg.Agent.Instructions, "GLOBAL"), strings.Index(cfg.Agent.Instructions, "PROJECT"); i > j {
+
+	if i, j := strings.Index(cfg.ProjectContext, "GLOBAL"), strings.Index(cfg.ProjectContext, "PROJECT"); i > j {
 		t.Error("expected config-dir AGENTS.md to appear before work-dir AGENTS.md")
 	}
 }
@@ -1436,8 +1534,8 @@ func TestLoadProjectContextNoFiles(t *testing.T) {
 	cfg := config.Config{}
 	loadProjectContext(&cfg, t.TempDir())
 
-	if cfg.Agent.Instructions != "" {
-		t.Error("expected instructions untouched when no AGENTS.md is present")
+	if cfg.ProjectContext != "" {
+		t.Error("expected no project context when no AGENTS.md is present")
 	}
 }
 
@@ -1548,7 +1646,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	}
 
 	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, "do the thing", runOptions{})
+		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
 	}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -1674,7 +1772,7 @@ providers:
 				t.Fatalf("Load: %v", err)
 			}
 
-			client, _, err := resolve(cfg, defaultInstructions)
+			client, _, err := resolve(cfg)
 			if err != nil {
 				t.Fatalf("resolve: %v", err)
 			}
@@ -1684,7 +1782,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return runTask(context.Background(), cfg, "do the thing", runOptions{})
+				return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -1789,7 +1887,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return runTask(context.Background(), cfg, "do the thing", runOptions{})
+				return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -1819,7 +1917,7 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg.DefaultProvider = "myprovider"
 	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test", Models: declared("glm-5.2")}}
 
-	_, _, err := resolve(cfg, defaultInstructions)
+	_, _, err := resolve(cfg)
 	if err == nil {
 		t.Fatal("a provider naming no endpoint must be rejected")
 	}
@@ -1839,7 +1937,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 		"p": {BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")},
 	}
 
-	_, opts, err := resolve(cfg, defaultInstructions)
+	_, opts, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1868,7 +1966,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 				"local": {BaseURL: "http://127.0.0.1:1", Models: models},
 			}
 
-			_, _, err := resolve(cfg, defaultInstructions)
+			_, _, err := resolve(cfg)
 			if err == nil {
 				t.Fatal("a model with no context window resolved")
 			}
@@ -1917,7 +2015,7 @@ providers:
 	} {
 		cfg.DefaultProvider = name
 
-		client, _, err := resolve(cfg, defaultInstructions)
+		client, _, err := resolve(cfg)
 		if err != nil {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
@@ -1946,7 +2044,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 	for _, name := range []string{"openai", "anthropic", "zai", "ollama", "openrouter"} {
 		cfg.DefaultProvider = name
 
-		if _, _, err := resolve(cfg, defaultInstructions); err == nil {
+		if _, _, err := resolve(cfg); err == nil {
 			t.Errorf("%q resolved with nothing declared", name)
 		}
 	}
@@ -1976,7 +2074,7 @@ providers:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	client, opts, err := resolve(cfg, defaultInstructions)
+	client, opts, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2012,7 +2110,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 		},
 	}
 
-	_, opts, err := resolve(cfg, defaultInstructions)
+	_, opts, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2033,7 +2131,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
 	cfg.Providers["openai"].Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
 
-	_, opts, err = resolve(cfg, defaultInstructions)
+	_, opts, err = resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2106,7 +2204,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		done <- builder.String()
 	}()
 
-	err := runTask(context.Background(), cfg, "do the thing", runOptions{})
+	err := runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
 
 	write.Close()
 
@@ -2132,7 +2230,7 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg.DefaultProvider = "nowhere"
 	cfg.Providers = map[string]config.ProviderConfig{}
 
-	err := runTask(context.Background(), cfg, "task", runOptions{})
+	err := runTask(context.Background(), cfg, testOrder("task"), runOptions{})
 
 	if err == nil {
 		t.Fatal("an unconfigured provider must fail")
@@ -2238,7 +2336,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".zot", "orders", "task.jsonl")
 
 	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, "do the thing", runOptions{SessionPath: path})
+		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{SessionPath: path})
 	}); err != nil {
 		t.Fatalf("RunWith: %v", err)
 	}
@@ -2288,7 +2386,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		if output, err := quietly(t, func() error {
-			return runTask(context.Background(), cfg, "the same brief", runOptions{SessionPath: path})
+			return runTask(context.Background(), cfg, testOrder("the same brief"), runOptions{SessionPath: path})
 		}); err != nil {
 			t.Fatalf("run %d: %v\n%s", i+1, err, output)
 		}
@@ -2366,7 +2464,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	cfg.Providers["local"] = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	if output, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, "do the thing", runOptions{SessionPath: path})
+		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{SessionPath: path})
 	}); err != nil {
 		t.Fatalf("RunWith: %v\n%s", err, output)
 	}
@@ -2437,7 +2535,7 @@ func TestRunWithSurvivesAnUnwritableSessionPath(t *testing.T) {
 	}
 
 	output, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, "do the thing", runOptions{
+		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
 	})
@@ -2460,7 +2558,7 @@ func TestRunWithoutASessionPathWritesNothing(t *testing.T) {
 	t.Chdir(dir)
 
 	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, "do the thing", runOptions{})
+		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
 	}); err != nil {
 		t.Fatalf("RunWith: %v", err)
 	}
@@ -2533,43 +2631,89 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	}
 
 	// and the library entry point, which does not validate, says the same
-	err = runTask(context.Background(), cfg, "task", runOptions{})
+	err = runTask(context.Background(), cfg, testOrder("task"), runOptions{})
 	if err == nil || !strings.Contains(err.Error(), "providers:") {
 		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
 }
 
-// The task is the durable objective, so it must land in the instructions (the
-// system prompt), which trimming never drops and always orders first -
-// not as a user message, which a long run can trim away. An agent that
-// forgets its own objective is the worst way for a run to fail.
-func TestTaskGoesIntoTheInstructions(t *testing.T) {
-	got := withTask("SYSTEM PROMPT", "  build a parser  ")
+// promptOf renders an order the way a run does, with the tools a run really has.
+func promptOf(t *testing.T, o order.Order) string {
+	t.Helper()
 
-	if !strings.Contains(got, "SYSTEM PROMPT") {
-		t.Error("the base instructions must be preserved")
+	client, opts, err := resolve(stubProviderConfig(t))
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
 	}
 
-	if !strings.Contains(got, "build a parser") {
-		t.Errorf("the task must be in the instructions: %q", got)
+	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work"))
+	if err != nil {
+		t.Fatalf("Render: %v", err)
 	}
 
-	// trimmed, and clearly the task rather than run together with the prompt
-	if strings.Contains(got, "  build a parser  ") {
-		t.Error("the task should be trimmed")
+	return prompt
+}
+
+// stubProviderConfig is a config that resolves without a network.
+func stubProviderConfig(t *testing.T) config.Config {
+	t.Helper()
+
+	cfg := testDefaults()
+	cfg.DefaultProvider = "local"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"local": {BaseURL: "http://127.0.0.1:1", APIKey: "k", Models: declared("glm-5.2")},
 	}
 
-	// an empty task leaves the instructions untouched
-	if withTask("SYSTEM PROMPT", "   ") != "SYSTEM PROMPT" {
-		t.Error("an empty task must not alter the instructions")
+	return cfg
+}
+
+// newOrderNamed is the order zot new scaffolds, with its objective written in.
+func newOrderNamed(t *testing.T, objective string) order.Order {
+	t.Helper()
+
+	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: "+objective+"\n", 1)))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	return o
+}
+
+// defaultPrompt is what a freshly scaffolded order sends the model.
+func defaultPrompt(t *testing.T) string {
+	t.Helper()
+
+	return promptOf(t, newOrderNamed(t, "build a parser"))
+}
+
+// The task is the durable objective, so it must land in the system prompt, which
+// trimming never drops and always orders first - not as a user message, which a
+// long run can trim away. An agent that forgets its own objective is the worst
+// way for a run to fail.
+func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
+	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := promptOf(t, o)
+
+	if !strings.Contains(got, "You are zot") {
+		t.Error("the order's own prompt must be what is sent")
+	}
+
+	if !strings.Contains(got, "## Your task\n\nbuild a parser") {
+		t.Errorf("the objective must be in the prompt, trimmed:\n%s", got)
 	}
 }
 
-// The instructions drifted once already - it told the agent to call "edit",
-// "exec", "exit" and "progress" when those tools did not exist. This pins it:
-// every tool the default instructions names in quotes must be a real tool the
-// agent is actually given, or a terminal tool the engine adds in settle mode.
-func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
+// The tools the prompt names come from the tool set the run really has, so it
+// cannot describe tools that are not offered. The prompt drifted once already -
+// it told the agent to call "edit", "exec", "exit" and "progress" when those
+// tools did not exist - which is what generating the list prevents; this pins it.
+func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
+	prompt := defaultPrompt(t)
+
 	real := map[string]bool{
 		// the terminal tools the loop injects in settle mode
 		"success": true,
@@ -2580,9 +2724,9 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 		real[tool.Info().Name] = true
 	}
 
-	// pull every "quoted" token out of the instructions and check the tool-looking
-	// ones are real
-	for _, quoted := range regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(defaultInstructions, -1) {
+	// pull every "quoted" token out of the prompt and check the tool-looking ones
+	// are real
+	for _, quoted := range regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(prompt, -1) {
 		name := quoted[1]
 
 		// only check things that look like tool names (a real tool, or the
@@ -2590,26 +2734,54 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "read": true, "write": true, "list": true, "plan": true, "progress": true}
 
 		if !real[name] && phantom[name] {
-			t.Errorf("the instructions names %q, which is not a real tool", name)
+			t.Errorf("the prompt names %q, which is not a real tool", name)
 		}
 	}
 
-	// and positively assert the tools the instructions promises are all present
+	// and positively assert the tools the prompt promises are all present
 	for _, want := range []string{"tasks", "shell", "success", "failure"} {
 		if !real[want] {
-			t.Errorf("the instructions relies on %q but it is not a real tool", want)
+			t.Errorf("the prompt relies on %q but it is not a real tool", want)
 		}
 
-		if !strings.Contains(defaultInstructions, `"`+want+`"`) {
-			t.Errorf("the instructions should name the %q tool so the model knows to use it", want)
+		if !strings.Contains(prompt, `"`+want+`"`) {
+			t.Errorf("the prompt should name the %q tool so the model knows to use it", want)
 		}
+	}
+}
+
+// A tool the run does not have is not in its prompt: no skills, no skills tool.
+func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
+	without := defaultPrompt(t)
+
+	if strings.Contains(without, `- "skills":`) {
+		t.Error("the prompt lists a skills tool the run does not have")
+	}
+
+	cfg := stubProviderConfig(t)
+	cfg.Skills = []tools.Skill{{Name: "deploy", Description: "ship it"}}
+
+	client, opts, err := resolve(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(with, `- "skills":`) {
+		t.Errorf("the prompt must list the skills tool when the run has one:\n%s", with)
 	}
 }
 
 // With shell the only tool that touches the machine, the model has to be told so
 // and shown how to read, list and write with it. A prompt that only said "shell"
 // would leave a model reaching for file tools it does not have.
-func TestDefaultInstructionsTeachShellAsTheOnlyWayToTouchTheMachine(t *testing.T) {
+func TestTheDefaultPromptTeachesShellAsTheOnlyWayToTouchTheMachine(t *testing.T) {
+	prompt := defaultPrompt(t)
+
 	for _, want := range []string{
 		"only way to act on the machine",
 		"cat", "sed -n", "grep -n", "ls", "heredoc",
@@ -2618,8 +2790,8 @@ func TestDefaultInstructionsTeachShellAsTheOnlyWayToTouchTheMachine(t *testing.T
 		// what was written, so the rule that prevents it is part of the prompt
 		"quoted heredoc",
 	} {
-		if !strings.Contains(defaultInstructions, want) {
-			t.Errorf("the instructions should mention %q so the model knows how to work through shell", want)
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt should mention %q so the model knows how to work through shell", want)
 		}
 	}
 }
@@ -2627,11 +2799,39 @@ func TestDefaultInstructionsTeachShellAsTheOnlyWayToTouchTheMachine(t *testing.T
 // The tasks tool only helps if the model keeps it current, and the prompt is the
 // only thing that says how: each status it may use, and that a blocker or an
 // assumption belongs in a note.
-func TestDefaultInstructionsTeachHowToKeepTheTasksCurrent(t *testing.T) {
+func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
+	prompt := defaultPrompt(t)
+
 	for _, want := range []string{"in_progress", "done", "blocked", "note", "whole list"} {
-		if !strings.Contains(defaultInstructions, want) {
-			t.Errorf("the instructions should mention %q so the model keeps its tasks current", want)
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt should mention %q so the model keeps its tasks current", want)
 		}
+	}
+}
+
+// The prompt knows where the run is: the project's AGENTS.md, and the facts of the
+// run itself.
+func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
+	cfg := stubProviderConfig(t)
+	cfg.ProjectContext = "Always mention PINECONE."
+
+	client, opts, err := resolve(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	o, err := order.Parse([]byte("---\nobjective: go\n---\n{{ .Workdir }}|{{ .Model }}|{{ .Provider }}|{{ .Date }}|{{ .Project }}|{{ range .Tools }}{{ .Name }},{{ end }}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasPrefix(got, "/work/project|glm-5.2|local|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,") {
+		t.Errorf("rendered = %q", got)
 	}
 }
 
@@ -2669,11 +2869,13 @@ func assertNonInteractive(t *testing.T, where, instructions string) {
 	}
 }
 
-// The built-in prompt carries the contract.
-func TestDefaultInstructionsForbidWaitingForTheUser(t *testing.T) {
-	assertNonInteractive(t, "defaultInstructions", defaultInstructions)
+// The prompt zot scaffolds carries the contract.
+func TestTheDefaultPromptForbidsWaitingForTheUser(t *testing.T) {
+	prompt := defaultPrompt(t)
 
-	if n := strings.Count(defaultInstructions, contractHeading); n != 1 {
+	assertNonInteractive(t, "the default prompt", prompt)
+
+	if n := strings.Count(prompt, contractHeading); n != 1 {
 		t.Errorf("the contract appears %d times in the default prompt, want once", n)
 	}
 }
@@ -2681,97 +2883,59 @@ func TestDefaultInstructionsForbidWaitingForTheUser(t *testing.T) {
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// Overriding the instructions replaces zot's prompt - that is what an override
-// is for - but it cannot hand the agent an interactivity the run does not have.
-// A custom prompt that forgot to say "never wait" would otherwise produce runs
+// The order's prompt is the operator's to rewrite - that is what having it in the
+// file is for - but it cannot hand the agent an interactivity the run does not
+// have. A prompt that forgot to say "never wait" would otherwise produce runs
 // that hang on a question nobody can answer, and the operator would have no way
 // to tell that from a slow model.
-func TestCustomInstructionsKeepTheNonInteractiveContract(t *testing.T) {
-	cfg, err := config.Load(writeCfg(t, `
-agent:
-  model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: http://127.0.0.1:1
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
-`))
+func TestACustomPromptKeepsTheNonInteractiveContract(t *testing.T) {
+	o, err := order.Parse([]byte("---\nobjective: write a haiku\n---\nYou are a haiku bot. Write only haiku about {{ .Objective }}.\n"))
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatal(err)
 	}
 
-	cfg.Agent.Instructions = "You are a haiku bot. Write only haiku.\n"
+	got := promptOf(t, o)
 
-	_, opts, err := resolve(cfg, defaultInstructions)
-	if err != nil {
-		t.Fatalf("resolve: %v", err)
+	// the custom prompt really is what is sent...
+	if !strings.HasPrefix(got, "You are a haiku bot. Write only haiku about write a haiku.") {
+		t.Errorf("the order's own prompt was not used:\n%s", got)
 	}
 
-	// the override really did replace the built-in prompt...
-	if !strings.Contains(opts.Instructions, "haiku bot") {
-		t.Errorf("the custom instructions were not used:\n%s", opts.Instructions)
-	}
-
-	if strings.Contains(opts.Instructions, "Your tools:") {
-		t.Error("an override should replace the built-in prompt, not be appended to it")
+	if strings.Contains(got, "Your tools:") {
+		t.Error("a custom prompt replaces zot's, it is not appended to it")
 	}
 
 	// ...and the contract came along anyway
-	assertNonInteractive(t, "custom instructions", opts.Instructions)
+	assertNonInteractive(t, "a custom prompt", got)
 }
 
-// The contract must not pile up. The default prompt already carries it, and so
-// does a default prompt that LoadProjectContext extended with an AGENTS.md;
-// re-attaching it there would spend context repeating the same paragraph.
-func TestResolvedInstructionsCarryTheContractExactlyOnce(t *testing.T) {
-	configPath := writeCfg(t, `
-agent:
-  model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: http://127.0.0.1:1
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
-`)
+// The contract must not pile up: a prompt that carries it - the default one does,
+// or one that places it with {{ .Contract }} - must not get it again.
+func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
+	custom := func(body string) order.Order {
+		o, err := order.Parse([]byte("---\nobjective: x\n---\n" + body))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	project := t.TempDir()
-
-	mustWrite(t, filepath.Join(project, "AGENTS.md"), "PROJECT CONVENTIONS")
+		return o
+	}
 
 	for _, test := range []struct {
-		name    string
-		prepare func(*config.Config)
+		name  string
+		order order.Order
 	}{
-		{"the built-in prompt", func(*config.Config) {}},
-		{"the built-in prompt plus AGENTS.md", func(cfg *config.Config) { loadProjectContext(cfg, project) }},
-		{"a custom prompt", func(cfg *config.Config) { cfg.Agent.Instructions = "Do the thing." }},
-		{"a custom prompt that already quotes the contract", func(cfg *config.Config) {
-			cfg.Agent.Instructions = "Do the thing.\n\n" + nonInteractiveContract
-		}},
+		{"the scaffolded prompt", newOrderNamed(t, "x")},
+		{"a custom prompt", custom("Do the thing.")},
+		{"a custom prompt that places the contract itself", custom("Do the thing.\n\n{{ .Contract }}\n")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			cfg, err := config.Load(configPath)
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
+			got := promptOf(t, test.order)
 
-			test.prepare(&cfg)
+			assertNonInteractive(t, test.name, got)
 
-			_, opts, err := resolve(cfg, defaultInstructions)
-			if err != nil {
-				t.Fatalf("resolve: %v", err)
-			}
-
-			assertNonInteractive(t, test.name, opts.Instructions)
-
-			if n := strings.Count(opts.Instructions, contractHeading); n != 1 {
-				t.Errorf("the contract appears %d times, want once:\n%s", n, opts.Instructions)
+			if n := strings.Count(got, contractHeading); n != 1 {
+				t.Errorf("the contract appears %d times, want once:\n%s", n, got)
 			}
 		})
 	}
@@ -2788,7 +2952,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
-	_, opts, err := resolve(cfg, defaultInstructions)
+	_, opts, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2804,7 +2968,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// max_time is a duration string on the config, a time.Duration on the run
 	cfg.Agent.MaxTime = "30m"
 
-	_, timed, err := resolve(cfg, defaultInstructions)
+	_, timed, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2817,7 +2981,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// ending, so zero means the default budget, never "no settling".
 	cfg.Agent.MaxSettles = 0
 
-	_, opts, err = resolve(cfg, defaultInstructions)
+	_, opts, err = resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2832,7 +2996,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 func TestQuitOnDoneDefaultsOff(t *testing.T) {
 	cfg := stubProvider(t)
 
-	_, opts, err := resolve(cfg, defaultInstructions)
+	_, opts, err := resolve(cfg)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}

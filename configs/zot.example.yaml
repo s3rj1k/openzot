@@ -84,11 +84,8 @@ agent:
   # summarised. The window is the `context` every model states under providers,
   # so trimming fits the endpoint before it rejects a request.
 
-  # Optional override of the built-in system prompt. Leave blank to use the
-  # default fully-autonomous instructions. Whatever you put here, zot's
-  # non-interactive contract - never wait for input, end only by recording an
-  # outcome - is appended to it: a run has no input channel to ask through.
-  # instructions: ''
+# The system prompt is not configured here: it is the body of each order file,
+# a Go template `zot new` writes out in full, so it can be changed order by order.
 
 # Presentation.
 ui:

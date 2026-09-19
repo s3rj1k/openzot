@@ -1,10 +1,11 @@
 // Command zot is an automated software factory you watch, not drive.
 //
-// zot takes work orders, not prompts. A work order is a small YAML file - the
-// durable objective, the acceptance criteria that define "done", the
-// constraints the work must hold to - and each order becomes one autonomous
-// run: the agent reads files, edits them, and runs shell commands on its own
-// while the terminal streams a live, read-only view of everything it does.
+// zot takes work orders, not prompts. A work order is one file: a front matter
+// block with the durable objective, the acceptance criteria that define "done"
+// and the constraints the work must hold to, then the system prompt itself, a
+// Go template that reads that block. Each order becomes one autonomous run: the
+// agent reads files, edits them, and runs shell commands on its own while the
+// terminal streams a live, read-only view of everything it does.
 //
 // Usage:
 //
@@ -17,7 +18,7 @@
 //
 //	# a bare zot runs the whole book, in filename order; naming orders runs
 //	# exactly those
-//	zot .zot/orders/1758300000.yaml
+//	zot .zot/orders/1758300000.md
 //
 //	# every run is logged, appended to .zot/orders/1758300000.jsonl
 //	jq . .zot/orders/1758300000.jsonl
@@ -213,7 +214,7 @@ type oneRun struct {
 
 	// run is the engine entry point - runTask everywhere in production,
 	// replaced by tests so no provider is ever reached.
-	run func(context.Context, config.Config, string, runOptions) error
+	run func(context.Context, config.Config, order.Order, runOptions) error
 }
 
 // sessionFile names an order's log: the order's own name with .jsonl for its
@@ -245,7 +246,7 @@ func (r oneRun) executeAt(o order.Order, quitOnDone bool, index, size int) error
 		QuitOnDone: quitOnDone,
 	}
 
-	return r.run(r.ctx, r.cfg, o.Task(), options)
+	return r.run(r.ctx, r.cfg, o, options)
 }
 
 // resolveOrders loads the orders this invocation is about: the ones named on
@@ -440,20 +441,22 @@ func firstNonEmpty(values ...string) string {
 func usage() {
 	fmt.Fprintln(os.Stderr, `zot - an automated software factory powered by an autonomous coding harness
 
-zot takes work orders, not prompts. A work order is a small YAML file: the
-durable objective, the acceptance criteria that define "done", and the
-constraints the work must hold to. Each order is one autonomous run.
+zot takes work orders, not prompts. A work order is one file: a front matter
+block with the durable objective, the acceptance criteria that define "done",
+and the constraints the work must hold to, then the system prompt itself - a Go
+template that reads that block, so the order says what to do and how the agent
+works. Each order is one autonomous run.
 
 Usage:
-  zot [flags] [<order.yaml> ...]
+  zot [flags] [<order.md> ...]
   zot new [--dir <dir>] [--orders-dir <dir>]
   zot config
 
 Examples:
   zot new
   zot
-  zot .zot/orders/1758300000.yaml
-  zot --dir ./scratch .zot/orders/*.yaml
+  zot .zot/orders/1758300000.md
+  zot --dir ./scratch .zot/orders/*.md
 
 The book: a project keeps its orders under .zot/orders in its root - written by
 zot new, and named for the moment they were made. Bare zot runs that book:
@@ -475,148 +478,52 @@ A batch runs each order as its own run, in sequence, and stops at the first
 order that does not end in success.
 
 Commands:
-  new        create a blank work order under ./.zot/orders - under
-             <dir>/.zot/orders with --dir, or anywhere with --orders-dir - and
-             open it in $EDITOR, the way zot config does. It takes no prose:
-             write the objective in the file
+  new        create a work order under ./.zot/orders - under <dir>/.zot/orders
+             with --dir, or anywhere with --orders-dir - and open it in $EDITOR,
+             the way zot config does. The file holds the full default prompt
+             and a blank objective: write the objective, and change the prompt
+             if you want the agent to work differently. It takes no prose
   config     edit the config file in $EDITOR (creates it on first run)
 
 Flags:`)
 	pflag.PrintDefaults()
 }
 
-// Names zot looks for under each context directory.
-const (
-	agentFile      = "AGENTS.md"
-	projectContext = "# Project context"
-)
-
-// defaultInstructions is the system prompt handed to the agent when the
-// configuration does not override it. It establishes the fully-autonomous,
-// no-questions-asked contract: zot has no input channel, so the agent must
-// never wait for the user.
-//
-// The opening and the "act, don't narrate" rule imitate the batch-mode prompt of
-// the engine zot was derived from: a run is a non-interactive background session
-// whose deliverable is the changed working tree, not prose, and which ends only
-// by recording an outcome with a terminal tool.
-//
-// It is assembled rather than written out because its closing half is not the
-// caller's to drop - see nonInteractiveContract.
-const defaultInstructions = baseInstructions + "\n\n" + nonInteractiveContract
-
-// baseInstructions is the overridable half: who the agent is, what it can call,
-// and how it is expected to work. A configuration that sets its own
-// instructions replaces this and nothing else.
-const baseInstructions = `You are zot, a fully autonomous software engineering agent operating inside a real working directory on the user's machine.
-
-This is a non-interactive session running in the background. No one is watching, and no questions or further guidance can be answered - you will receive NO further input. Complete the assigned task end to end on your own, using your tools.
-
-Your tools:
-- "tasks": list the tasks the work needs and keep each one's status current. Every call carries the whole list, so use it to lay the work out before you start and to revise it whenever your approach changes.
-- "shell": your only way to act on the machine, so use it for everything. Read files with cat, head, tail, sed -n 'START,ENDp' and grep -n; list directories with ls and find; create and change files with heredocs, tee, sed -i, patch or a small script; run builds, tests, linters and any other non-interactive command. Never run interactive or long-lived commands.
-
-Operating rules:
-- Begin by calling "tasks" to list the concrete tasks the work needs, in the order you will do them.
-- Look before you change. Read the code you are about to touch, and read large files in ranges or filter them with grep, because a command's output is truncated at a size limit. After you change anything, build and run the tests, and fix what you broke.
-- Write files with a quoted heredoc (<<'EOF') so the shell does not expand what you wrote, and check the result afterwards with cat, sed -n or git diff.
-- Keep "tasks" current: mark a task in_progress when you begin it and done when it is finished, and mark it blocked, with a note saying why, when it cannot go on.
-- Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarise, interpret, or analyse tool output - keep working, and use "tasks" for status.`
-
-// nonInteractiveContract is the half no configuration may leave out. Every
-// other prompt rule is a preference; this one is a fact about the machine the
-// agent is running on. zot has no input channel at all - a run is a work order,
-// a provider and a read-only viewer - so an agent that asks a question is not
-// answered tersely, it is not answered at all: it waits until a guard kills the
-// run, and everything it had not yet written is lost. That failure is silent
-// and expensive, and it costs a whole run to discover, so the contract is
-// re-attached to whatever instructions a run resolves to rather than left to
-// whoever wrote them.
-//
-// It is written to stand alone, naming the terminal tools itself, because the
-// custom instructions it may be appended to need not mention them at all.
-const nonInteractiveContract = `## Non-interactive contract
-
-Nothing you address to the user is delivered. There is no reader, no reply, and no approval on its way. A question you ask is discarded unheard, and a run that stops to wait for an answer waits until a guard kills it, losing the work it had not yet finished.
-
-- Never stop to wait for input, approval, permission or confirmation. No one can grant what you asked for, so asking and waiting is the one certain way to fail the task.
-- Never end your turn with a question, an offer, or a promise to continue once told to. Continue now instead.
-- Where the task is ambiguous or underspecified, decide it the way a careful engineer would, act on the decision, and record the assumption in a task's note and again in your final summary. A stated assumption is reviewable afterwards; an unasked question is not.
-- Only a terminal tool call ends the task: "success" with a summary when the objective is met, or "failure" with the reason when it genuinely cannot be. Uncertainty is not a reason to stop - it is a reason to choose, act, and say what you chose. Do not simply stop.`
-
-// taskHeading introduces the task inside the instructions. The task lives in the
-// system prompt rather than as a user message so it survives trimming: the
-// oldest messages are dropped first to fit the window, so a user message can
-// fall out of a long run, and an autonomous agent that forgets its own objective
-// is the worst way for a run to fail. The instructions are never dropped and
-// always ordered first.
-const taskHeading = "\n\n## Your task\n\n"
+// The file zot looks for under each context directory.
+const agentFile = "AGENTS.md"
 
 // taskKickoff is the user message that starts a run. The objective is in the
 // instructions; this only has to get the agent moving.
 const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
-// withNonInteractiveContract guarantees the no-questions contract reaches the
-// model whatever the instructions say. Custom instructions replace the built-in
-// prompt wholesale - that is what an override is for - but they cannot opt a run
-// into an interactivity zot does not have. Instructions that already carry the
-// contract (the defaults, or the defaults plus an AGENTS.md) are left untouched,
-// so the common path is unchanged and the text is never repeated.
-func withNonInteractiveContract(instructions string) string {
-	if strings.Contains(instructions, nonInteractiveContract) {
-		return instructions
-	}
-
-	return strings.TrimRight(instructions, "\n") + "\n\n" + nonInteractiveContract
-}
-
-// withTask appends the task to the instructions, or returns them unchanged when
-// there is no task.
-func withTask(instructions, task string) string {
-	task = strings.TrimSpace(task)
-	if task == "" {
-		return instructions
-	}
-
-	return instructions + taskHeading + task
-}
-
-// loadProjectContext augments cfg with on-disk context discovered under the
-// given directories, searched in order (typically the config directory first,
-// then the working directory):
+// loadProjectContext reads the instructions found on disk under the given
+// directories, searched in order (typically the config directory first, then the
+// working directory), into cfg.ProjectContext:
 //
-//   - <dir>/AGENTS.md  - appended to the agent instructions
+//   - <dir>/AGENTS.md
 //
-// Missing files are ignored, and duplicate directories are searched once.
-// AGENTS.md content augments (never replaces) the base instructions.
+// Missing files are ignored, and duplicate directories are searched once. An
+// order's prompt decides whether and where to use them, as .Project.
 func loadProjectContext(cfg *config.Config, dirs ...string) {
 	seen := map[string]bool{}
-	var search []string
-	for _, d := range dirs {
-		if d == "" || seen[d] {
+
+	var found []string
+
+	for _, dir := range dirs {
+		if dir == "" || seen[dir] {
 			continue
 		}
-		seen[d] = true
-		search = append(search, d)
-	}
 
-	base := cfg.Agent.Instructions
-	if base == "" {
-		base = defaultInstructions
-	}
+		seen[dir] = true
 
-	var instructions []string
-	for _, d := range search {
-		if data, err := os.ReadFile(filepath.Join(d, agentFile)); err == nil {
-			if s := strings.TrimSpace(string(data)); s != "" {
-				instructions = append(instructions, s)
+		if data, err := os.ReadFile(filepath.Join(dir, agentFile)); err == nil {
+			if text := strings.TrimSpace(string(data)); text != "" {
+				found = append(found, text)
 			}
 		}
 	}
 
-	if len(instructions) > 0 {
-		cfg.Agent.Instructions = base + "\n\n" + projectContext + "\n\n" + strings.Join(instructions, "\n\n---\n\n")
-	}
+	cfg.ProjectContext = strings.Join(found, "\n\n---\n\n")
 }
 
 // loadSkills reads the skills folder named by skills_dir into cfg.Skills. An
@@ -672,30 +579,59 @@ type runOptions struct {
 	QuitOnDone bool
 }
 
+// orderEnv is what an order's prompt can know about the run beyond the order: the
+// tools it really has, where it is working, and what it is talking to.
+func orderEnv(cfg config.Config, client *loop.Client, opts loop.Options, workdir string) order.Env {
+	env := order.Env{
+		Workdir:  workdir,
+		Date:     time.Now().Format("2006-01-02"),
+		Model:    client.Config().Model,
+		Provider: cfg.DefaultProvider,
+		Project:  cfg.ProjectContext,
+	}
+
+	for _, tool := range opts.Tools {
+		info := tool.Info()
+
+		env.Tools = append(env.Tools, order.Tool{Name: info.Name, Description: info.Description})
+	}
+
+	return env
+}
+
 // runTask executes one autonomous coding task, rendering the agent's activity in
 // the read-only TUI. The agent's file and shell tools operate on the current
 // working directory, so the caller chdirs into the target project first. It
 // blocks until the user quits the viewer or the run errors.
-func runTask(ctx context.Context, cfg config.Config, task string, options runOptions) error {
+func runTask(ctx context.Context, cfg config.Config, o order.Order, options runOptions) error {
 	config.ScrubProviderSecrets(cfg)
 
-	client, opts, err := resolve(cfg, defaultInstructions)
+	client, opts, err := resolve(cfg)
 	if err != nil {
 		return err
 	}
 
-	// The task is the durable objective and goes into the system prompt; the
-	// opening user message only has to get the agent moving. This is what keeps
-	// the objective in context however long the run grows - see withTask.
+	workdir, _ := os.Getwd()
+
+	// The order is the system prompt: its objective, criteria and constraints go
+	// in it, where they survive trimming however long the run grows, and the
+	// opening user message only has to get the agent moving. It is rendered here,
+	// once the provider secrets are out of the environment, so nothing it reads
+	// can be one of them.
 	//
 	// @note there is deliberately no way to open a run with a prompt of the
 	// caller's own. zot takes a work order, not a conversation; anything worth
 	// saying to the agent belongs in the order, where it is durable.
+	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir))
+	if err != nil {
+		return fmt.Errorf("order %s: %w", firstNonEmpty(o.Path, "(unsaved)"), err)
+	}
+
 	opts.Client = client
-	opts.Instructions = withTask(opts.Instructions, task)
+	opts.Instructions = prompt
 	opts.Messages = []loop.Message{{Type: loop.TypeUser, Text: taskKickoff}}
 
-	workdir, _ := os.Getwd()
+	task := o.Objective
 
 	var (
 		sessionPath string
@@ -796,7 +732,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, loop.Options, error) {
+func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 	var empty loop.Options
 
 	if cfg.DefaultProvider == "" {
@@ -841,13 +777,6 @@ func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, loop.
 	contextWindow := mc.Context
 	contentArray := mc.ContentArray
 
-	instructions := cfg.Agent.Instructions
-	if instructions == "" {
-		instructions = defaultInstructions
-	}
-
-	instructions = withNonInteractiveContract(instructions)
-
 	client, err := loop.NewClient(loop.ClientConfig{
 		Provider: cfg.DefaultProvider,
 		Model:    model,
@@ -875,8 +804,7 @@ func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, loop.
 	}
 
 	opts := loop.Options{
-		Instructions: instructions,
-		Tools:        tools.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
+		Tools: tools.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
 
 		// shell acts on the machine, so a command the model did not finish
 		// writing is refused rather than repaired into one that runs

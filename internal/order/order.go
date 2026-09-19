@@ -2,10 +2,15 @@
 // from.
 //
 // zot deliberately takes no prose on the command line. A factory accepts a work
-// order, not a conversation - a durable objective, the acceptance criteria that
-// define "done", and the constraints the work must hold to. The order is a file
-// so it outlives the invocation: it can be edited, committed and re-run, and
-// every run of it starts from zero.
+// order, not a conversation. The order is a file so it outlives the invocation:
+// it can be edited, committed and re-run, and every run of it starts from zero.
+//
+// An order is the run's whole system prompt. The file opens with a front matter
+// block - the objective, the acceptance criteria that define "done", the
+// constraints the work must hold to - and the rest is the prompt itself, a Go
+// text/template that reads that block and a few facts about the run. Someone who
+// only wants to say what to do fills in the front matter and leaves the prompt as
+// zot wrote it; someone who wants to change how the agent works rewrites it.
 //
 // An order is advisory input - what to do - and may therefore live anywhere,
 // including the repository being worked on. How the result is judged (quality
@@ -16,6 +21,7 @@ package order
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,7 +37,7 @@ import (
 
 // The book's layout. A project's orders live under one dotted directory at its
 // root, the way every other tool that keeps state in a repository does it:
-// .zot/orders/<name>.yaml. A top-level orders/ directory would claim a generic
+// .zot/orders/<name>.md. A top-level orders/ directory would claim a generic
 // name in the root of somebody else's project, which is not zot's to take.
 //
 // Only the default lives here. An order may be read from anywhere, so this
@@ -41,35 +47,49 @@ const (
 	BookDir = ".zot"
 
 	ordersName = "orders"
+
+	// Ext is the extension of an order file: front matter and a prompt, which is
+	// Markdown-shaped text.
+	Ext = ".md"
 )
 
 // OrdersDir is where new orders for the project rooted at dir are created.
 func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersName) }
 
-// Order is one work order: a single run's brief.
+// Order is one work order: a single run's brief, and the prompt it is run with.
 type Order struct {
 	// Title is an optional short label for the order, for people rather than
-	// for the agent. It never reaches the model - see Task - because the
-	// objective is the contract and a title is only how a human recognises it
-	// in a list or a viewer.
-	Title string `yaml:"title,omitempty"`
+	// for the agent: it is how a human recognises the order in a list or a
+	// viewer. The prompt may use it, but nothing does by default.
+	Title string
 
-	// Objective is the durable goal of the run. It goes into the system prompt
-	// and survives trimming, so the agent cannot forget it on a long run.
-	Objective string `yaml:"objective"`
+	// Objective is the durable goal of the run. The prompt puts it where the
+	// agent cannot forget it on a long run.
+	Objective string
 
 	// Acceptance are the criteria that define "done". They travel with the
-	// objective into the system prompt, and they are the contract a future
+	// objective into the prompt, and they are the contract a future
 	// verification gate judges the result against.
-	Acceptance []string `yaml:"acceptance,omitempty"`
+	Acceptance []string
 
 	// Constraints are rules the work must hold to throughout - boundaries, not
 	// goals.
-	Constraints []string `yaml:"constraints,omitempty"`
+	Constraints []string
+
+	// Body is the system prompt, as a Go text/template. See Render.
+	Body string
 
 	// Path is where the order was loaded from, for reporting. Empty for an
 	// order that never was a file (a synthesized one).
-	Path string `yaml:"-"`
+	Path string
+}
+
+// frontMatter is the data block at the head of an order file.
+type frontMatter struct {
+	Title       string   `yaml:"title"`
+	Objective   string   `yaml:"objective"`
+	Acceptance  []string `yaml:"acceptance"`
+	Constraints []string `yaml:"constraints"`
 }
 
 // List returns the order files directly inside dir, in filename order - the
@@ -90,7 +110,7 @@ func List(dir string) ([]string, error) {
 	var paths []string
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".yaml") {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), Ext) {
 			continue
 		}
 
@@ -119,43 +139,81 @@ func Load(path string) (Order, error) {
 	return order, nil
 }
 
-// Parse decodes order YAML. Unknown fields are rejected - a typo like
-// "acceptence:" must fail loudly rather than silently dropping the criteria the
-// operator thought they set.
+// Parse reads an order: the front matter, then the prompt.
+//
+// Unknown front matter keys are rejected - a typo like "acceptence:" must fail
+// loudly rather than silently dropping the criteria the operator thought they
+// set. The prompt is parsed as a template and run once against stand-in data, so
+// a syntax error or a misspelt field is found now, at load, and not when the run
+// reaches it: a batch is loaded whole before any of it runs, and a bad order
+// should fail it there.
 func Parse(data []byte) (Order, error) {
-	var order Order
-
-	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
-	decoder.KnownFields(true)
-
-	if err := decoder.Decode(&order); err != nil {
-		return Order{}, fmt.Errorf("parse: %w", err)
+	header, body, err := splitFrontMatter(string(data))
+	if err != nil {
+		return Order{}, err
 	}
 
-	order.Title = strings.TrimSpace(order.Title)
-	order.Objective = strings.TrimSpace(order.Objective)
-	order.Acceptance = cleanList(order.Acceptance)
-	order.Constraints = cleanList(order.Constraints)
+	var front frontMatter
+
+	decoder := yaml.NewDecoder(strings.NewReader(header))
+	decoder.KnownFields(true)
+
+	if err := decoder.Decode(&front); err != nil && !errors.Is(err, io.EOF) {
+		return Order{}, fmt.Errorf("front matter: %w", err)
+	}
+
+	order := Order{
+		Title:       strings.TrimSpace(front.Title),
+		Objective:   strings.TrimSpace(front.Objective),
+		Acceptance:  cleanList(front.Acceptance),
+		Constraints: cleanList(front.Constraints),
+		Body:        body,
+	}
 
 	if order.Objective == "" {
 		return Order{}, fmt.Errorf("no objective")
 	}
 
+	if strings.TrimSpace(order.Body) == "" {
+		return Order{}, fmt.Errorf("no prompt: the text after the front matter is the system prompt, and it is empty")
+	}
+
+	if err := order.check(); err != nil {
+		return Order{}, err
+	}
+
 	return order, nil
 }
 
-// Encode renders the order back to YAML, for handing to another process.
-func (o Order) Encode() string {
-	// Order is plain strings and slices, which Marshal cannot fail on.
-	data, _ := yaml.Marshal(o)
+// splitFrontMatter separates the data block from the prompt. The block opens the
+// file with a line of three dashes and closes with another; the prompt is what
+// follows.
+func splitFrontMatter(text string) (header, body string, err error) {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 
-	return string(data)
+	start := 0
+
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+
+	if start == len(lines) || strings.TrimSpace(lines[start]) != "---" {
+		return "", "", fmt.Errorf("no front matter: an order starts with a line of three dashes, then its objective")
+	}
+
+	for end := start + 1; end < len(lines); end++ {
+		if strings.TrimSpace(lines[end]) == "---" {
+			return strings.Join(lines[start+1:end], "\n"), strings.Join(lines[end+1:], "\n"), nil
+		}
+	}
+
+	return "", "", fmt.Errorf("the front matter is not closed: it ends with a line of three dashes")
 }
 
 // DisplayTitle is what to call this order on screen.
 //
 // A declared title wins. Failing that the file name is one: order files are
-// named from their objective already, so fix-the-flaky-test.yaml is a
+// named from their objective already, so fix-the-flaky-test.md is a
 // perfectly good "Fix the flaky test" and deriving it costs the operator
 // nothing. An order that is neither titled nor a file - one synthesized in
 // memory by a dispatcher - has no name to show, and gets none: inventing a
@@ -199,57 +257,6 @@ func titleFromFilename(path string) string {
 	return string(unicode.ToUpper(first)) + name[size:]
 }
 
-// Task renders the order as the durable objective text placed in the system
-// prompt: the objective, then the acceptance criteria and constraints as the
-// terms the agent works - and is judged - against.
-func (o Order) Task() string {
-	var b strings.Builder
-
-	b.WriteString(o.Objective)
-
-	if len(o.Acceptance) > 0 {
-		b.WriteString("\n\nAcceptance criteria - the objective is not met until every one of these holds:")
-
-		for i, criterion := range o.Acceptance {
-			fmt.Fprintf(&b, "\n%d. %s", i+1, criterion)
-		}
-	}
-
-	if len(o.Constraints) > 0 {
-		b.WriteString("\n\nConstraints - these hold for the whole run:")
-
-		for _, constraint := range o.Constraints {
-			b.WriteString("\n- " + constraint)
-		}
-	}
-
-	return b.String()
-}
-
-// blank is the form a new order starts from. The objective is left empty, so
-// the order will not run until it is written.
-const blank = `# zot work order - what to do, and what "done" means.
-
-# An optional short label for this order, shown in the viewer. Without
-# one the file name is used.
-# title:
-
-# The durable goal of the run. The order will not run until this is filled in.
-objective:
-
-# The objective is not met until every one of these holds.
-# acceptance:
-#   - the new behaviour is covered by a test that fails without the change
-#   - the full test suite passes
-
-# Rules that hold for the whole run.
-# constraints:
-#   - do not change public API signatures
-`
-
-// Blank returns the form a new order starts from.
-func Blank() string { return blank }
-
 // Create writes a blank order into dir, creating the directory if needed, and
 // returns its path. The file is named for the moment it was made, in unix
 // seconds, so orders sort in the order they were written and no name has to be
@@ -261,7 +268,7 @@ func Create(dir string, now time.Time) (string, error) {
 	}
 
 	for stamp := now.Unix(); ; stamp++ {
-		path := filepath.Join(dir, strconv.FormatInt(stamp, 10)+".yaml")
+		path := filepath.Join(dir, strconv.FormatInt(stamp, 10)+Ext)
 
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if errors.Is(err, fs.ErrExist) {
@@ -272,7 +279,7 @@ func Create(dir string, now time.Time) (string, error) {
 			return "", fmt.Errorf("create order: %w", err)
 		}
 
-		_, err = file.WriteString(blank)
+		_, err = file.WriteString(Blank())
 
 		if closeErr := file.Close(); err == nil {
 			err = closeErr

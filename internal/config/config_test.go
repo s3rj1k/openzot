@@ -125,6 +125,10 @@ providers:
   corporate:
     provider: openai
 	`,
+		"agent instructions (the prompt lives in the order now)": `
+agent:
+  instructions: be brief
+	`,
 		"attribution": `
 attribution:
   name: acme-bot
