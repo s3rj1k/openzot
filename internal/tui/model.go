@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/tools"
 )
 
 type status int
@@ -50,22 +49,12 @@ type model struct {
 	entries          []string
 	committedWrapped string
 	pending          string
-	follow           bool     // auto-scroll to the newest activity
-	truncated        bool     // oldest lines have been dropped to bound memory
-	maxEntries       int      // scrollback cap (DefaultMaxScrollback unless overridden)
-	stats            []string // header fields to show, in order (DefaultStats when empty)
-
-	// Task progress, read off the agent's own plan and progress calls: how many
-	// steps it laid out, and how many it has since reported finished. The model
-	// is the only thing that knows what "done" means for its plan, so this is
-	// its claim rather than a measurement - which is why it is shown as its own
-	// stat and never mixed into a limit-style budget.
-	planSteps int
-	stepsDone int
+	follow           bool // auto-scroll to the newest activity
+	truncated        bool // oldest lines have been dropped to bound memory
+	maxEntries       int  // scrollback cap (DefaultMaxScrollback unless overridden)
 
 	status     status
 	iteration  int
-	toolCount  int
 	exitCode   int
 	exitReason string
 	exitMsg    string
@@ -78,7 +67,6 @@ type model struct {
 	// Configured limits, for the "5/1000" progress display. Zero means the limit
 	// is unbounded (or the caller chose not to show it), so no denominator shows.
 	maxIterations int
-	maxCalls      int
 	maxDuration   time.Duration
 
 	startedAt time.Time
@@ -190,8 +178,6 @@ func (m *model) handleEvent(ev loop.Event) {
 
 	case loop.EventToolCallStart:
 		m.flushPending()
-		m.toolCount++
-		m.trackProgress(ev.Tool, ev.Args)
 		m.appendEntry(renderToolStart(ev.Tool, ev.Args))
 
 	case loop.EventToolCallEnd:
@@ -444,105 +430,26 @@ func (m model) badge() string {
 	}
 }
 
-// trackProgress reads task progress out of the agent's tasks tool. Every call
-// carries the whole list, so the counts are simply read off the latest one: a
-// revised list is a different set of tasks, and there is nothing to carry over.
-// A call that does not parse is refused by the tool, so it leaves the counts
-// as they were.
-func (m *model) trackProgress(name string, args map[string]any) {
-	if name != "tasks" {
-		return
-	}
-
-	if tasks, err := tools.ParseTasks(args); err == nil {
-		m.planSteps = len(tasks)
-		m.stepsDone = tools.CountDone(tasks)
-	}
-}
-
-// tokensPerSecond is the run's output throughput: generated tokens over wall
-// time. Output rather than total, because that is the number a provider's
-// throughput actually varies in and the one a watcher recognises as fast or
-// slow. Zero until there is enough of a run to divide by.
-func (m model) tokensPerSecond() float64 {
-	if m.elapsed <= 0 || m.outputTokens <= 0 {
-		return 0
-	}
-
-	return float64(m.outputTokens) / m.elapsed.Seconds()
-}
-
-// perIteration is the average wall time of one agentic round. Where tps says
-// how fast the model writes, this says how long a whole think-act-observe cycle
-// takes - the number that actually predicts when a long run will finish, since
-// tool calls and not tokens are usually what a slow round is made of.
-func (m model) perIteration() time.Duration {
-	if m.iteration <= 0 || m.elapsed <= 0 {
-		return 0
-	}
-
-	return m.elapsed / time.Duration(m.iteration)
-}
-
-// KnownStats is every field the header meta bar can show. A caller's stat list
-// (Meta.Stats / ui.stats) is validated against it, and new stats are added here
-// as they arrive.
-var KnownStats = []string{
-	"provider", "model", "dir", "iter", "tools", "elapsed", "tokens",
-	"tps", "pace", "task",
-}
-
-// DefaultStats is the field set and order used when no stats are configured.
+// metaBar is the header: provider, model, iteration, elapsed time, tokens and
+// directory, in that order.
 //
-// Not everything renderable belongs here. The bar is one line and drops what
-// does not fit, so each default costs the ones after it: a stat earns its place
-// by telling the watcher something they would act on. "tools" is a cumulative
-// count of calls - it climbs on every run and says nothing about whether this
-// one is going well - so it is available but off. The rate stats are the
-// opposite of cumulative and answer "is this run healthy", so they are on.
-//
-// Order is load-bearing for the same reason: the bar keeps the segments that
-// fit and drops the rest, so what is listed first is what survives a narrow
-// terminal. "dir" is last despite being useful because it never changes: a
-// static path is not worth the live stats it would push off the end.
-var DefaultStats = []string{
-	"provider", "model", "task", "iter", "elapsed", "tps", "pace", "tokens", "dir",
-}
-
-// IsKnownStat reports whether name is a renderable meta-bar field.
-func IsKnownStat(name string) bool {
-	for _, k := range KnownStats {
-		if k == name {
-			return true
-		}
-	}
-
-	return false
-}
-
+// The order is load-bearing. The bar is one line and drops what does not fit, so
+// what comes first is what survives a narrow terminal. "dir" is last despite
+// being useful because it never changes: a static path is not worth the live
+// numbers it would push off the end.
 func (m model) metaBar() string {
 	seg := func(k, v string, value lipgloss.Style) string {
 		return metaKey.Render(k+" ") + value.Render(v)
 	}
 
-	// counted renders "n" or "n/max" when a limit is set, so progress against a
+	// iterations renders "n" or "n/max" when a limit is set, so progress against a
 	// configured budget is visible.
-	counted := func(n, max int) string {
-		if max > 0 {
-			return fmt.Sprintf("%d/%d", n, max)
-		}
+	iterations := fmt.Sprintf("%d", m.iteration)
+	iterationsWidth := 4
 
-		return fmt.Sprintf("%d", n)
-	}
-
-	// countedWidth is the cell a counted value is padded to: wide enough for the
-	// limit shown twice over, or for four digits when there is none.
-	countedWidth := func(max int) int {
-		if max > 0 {
-			return lipgloss.Width(counted(max, max))
-		}
-
-		return 4
+	if m.maxIterations > 0 {
+		iterations = fmt.Sprintf("%d/%d", m.iteration, m.maxIterations)
+		iterationsWidth = lipgloss.Width(fmt.Sprintf("%d/%d", m.maxIterations, m.maxIterations))
 	}
 
 	elapsed := fmtDuration(m.elapsed)
@@ -550,51 +457,34 @@ func (m model) metaBar() string {
 		elapsed += "/" + fmtDuration(m.maxDuration)
 	}
 
-	// Every renderable field, keyed by its stat name. The keys must match
-	// KnownStats (a test guards this).
-	//
 	// Live values sit in fixed-width cells (see cell) so a number growing a digit
-	// - 9 to 10 iterations, 999 to 1.0k tokens, a rate gaining or losing its
-	// decimal - does not shove every segment after it sideways. The cell widths
-	// are the widest value each stat normally shows; a value that outgrows its
-	// cell still renders whole, and the bar shifts once rather than clipping.
-	segments := map[string]string{
-		"provider": seg("provider", m.provider, metaProvider),
-		"model":    seg("model", m.model, metaModel),
-		"dir":      seg("dir", shortPath(m.workdir, 28), metaStyle),
-		"iter":     seg("iter", cell(counted(m.iteration, m.maxIterations), countedWidth(m.maxIterations)), metaCount),
-		"tools":    seg("tools", cell(counted(m.toolCount, m.maxCalls), countedWidth(m.maxCalls)), metaTools),
-		"elapsed":  seg("elapsed", elapsed, metaStyle),
-		"tokens":   seg("tokens", fmt.Sprintf("↑%s ↓%s", cell(fmtTokens(m.inputTokens), 6), cell(fmtTokens(m.outputTokens), 6)), metaModel),
-		"tps":      seg("tps", cell(fmtRate(m.tokensPerSecond()), 6), metaModel),
-		"pace":     seg("pace", cell(fmtPace(m.perIteration()), 5), metaCount),
-		"task":     seg("task", cell(fmtProgress(m.stepsDone, m.planSteps), progressWidth(m.planSteps)), metaCount),
-	}
-
-	fields := m.stats
-	if len(fields) == 0 {
-		fields = DefaultStats
+	// - 9 to 10 iterations, 999 to 1.0k tokens - does not shove every segment
+	// after it sideways. The cell widths are the widest value each field normally
+	// shows; a value that outgrows its cell still renders whole, and the bar shifts
+	// once rather than clipping.
+	segments := []string{
+		seg("provider", m.provider, metaProvider),
+		seg("model", m.model, metaModel),
+		seg("iter", cell(iterations, iterationsWidth), metaCount),
+		seg("elapsed", elapsed, metaStyle),
+		seg("tokens", fmt.Sprintf("↑%s ↓%s", cell(fmtTokens(m.inputTokens), 6), cell(fmtTokens(m.outputTokens), 6)), metaModel),
+		seg("dir", shortPath(m.workdir, 28), metaStyle),
 	}
 
 	// A segment is shown whole or not at all. Clipping the line to the terminal
 	// width left whichever segment straddled the edge half-rendered - "elap",
 	// "tok" - which reads as a broken UI rather than a narrow one, and a
 	// half-written number is worse than no number: it can be misread. So the
-	// bar takes segments in the configured order for as long as they fit and
-	// stops at the first that does not, giving a prefix that grows and shrinks
-	// predictably as the terminal is resized.
+	// bar takes segments in order for as long as they fit and stops at the first
+	// that does not, giving a prefix that grows and shrinks predictably as the
+	// terminal is resized.
 	separator := metaStyle.Render("  ·  ")
 	separatorWidth := lipgloss.Width(separator)
 
-	parts := make([]string, 0, len(fields))
+	parts := make([]string, 0, len(segments))
 	used := 0
 
-	for _, name := range fields {
-		segment, ok := segments[name]
-		if !ok {
-			continue
-		}
-
+	for _, segment := range segments {
 		needed := lipgloss.Width(segment)
 		if len(parts) > 0 {
 			needed += separatorWidth
@@ -640,17 +530,6 @@ func cell(v string, width int) string {
 	return v
 }
 
-// progressWidth is the cell a "done/total" value is padded to: the width of
-// the total shown twice over, so every step of the plan lines up. With
-// no total the value is "-" and the cell is a minimal placeholder.
-func progressWidth(total int) int {
-	if total <= 0 {
-		return 1
-	}
-
-	return lipgloss.Width(fmtProgress(total, total))
-}
-
 // fmtTokens renders a token count compactly: 532, 45.2k, 1.2M.
 func fmtTokens(n int) string {
 	switch {
@@ -666,44 +545,4 @@ func fmtTokens(n int) string {
 func fmtDuration(d time.Duration) string {
 	d = d.Round(time.Second)
 	return fmt.Sprintf("%02d:%02d", int(d.Minutes()), int(d.Seconds())%60)
-}
-
-// fmtRate renders a tokens-per-second figure. A rate nobody can compute yet -
-// no elapsed time, no tokens - shows as "-" rather than "0.0", because zero is
-// a measurement and this is the absence of one.
-func fmtRate(perSecond float64) string {
-	if perSecond <= 0 {
-		return "-"
-	}
-
-	if perSecond >= 100 {
-		return fmt.Sprintf("%.0f/s", perSecond)
-	}
-
-	return fmt.Sprintf("%.1f/s", perSecond)
-}
-
-// fmtPace renders an average time per iteration. Sub-minute rounds are the
-// normal case and read better in seconds than as 00:07, and here too an
-// unmeasured pace is "-" rather than a confident zero.
-func fmtPace(d time.Duration) string {
-	switch {
-	case d <= 0:
-		return "-"
-	case d < time.Minute:
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	default:
-		return fmtDuration(d)
-	}
-}
-
-// fmtProgress renders "done/total", or "-" when there is no total to be a
-// fraction of. A run whose model has not planned yet has nothing to report - and
-// "0/0" reads as a measurement of nothing rather than the absence of one.
-func fmtProgress(done, total int) string {
-	if total <= 0 {
-		return "-"
-	}
-
-	return fmt.Sprintf("%d/%d", done, total)
 }

@@ -94,12 +94,6 @@ ui:
   # full, untrimmed run is always in the session log regardless.
   # scrollback: 5000
 
-  # Which fields the header stats bar shows, and in what order. Valid fields:
-  # model, provider, dir, iter, tools, elapsed, tokens (default: all).
-  # `tokens` shows the provider's own reported usage; iter/tools/elapsed show
-  # progress against a limit (e.g. 5/1000) when one is set.
-  # stats: [model, provider, iter, tools, elapsed, tokens]
-
 # Skills: a folder of subdirectories, each holding a SKILL.md - front matter with
 # a name and a short description, then the instructions. They are read into
 # memory at startup and offered to the model through a "skills" tool: it lists

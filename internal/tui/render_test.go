@@ -73,7 +73,6 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 // The header shows the project you are in, not the machine you are on.
 func TestTheDirStatShowsTheProjectEnd(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.stats = []string{"dir"}
 	m.workdir = "/workspaces/monorepo-zot/repos/zot/tool"
 
 	bar := stripANSI(m.metaBar())

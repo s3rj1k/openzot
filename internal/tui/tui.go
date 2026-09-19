@@ -38,15 +38,10 @@ type Meta struct {
 	// The full run is always in the session log regardless.
 	MaxScrollback int
 
-	// Stats selects which header fields to show, and in what order (see
-	// KnownStats). Empty uses DefaultStats. Unknown names are ignored.
-	Stats []string
-
-	// MaxIterations, MaxCalls and MaxDuration are the configured run limits, shown
+	// MaxIterations and MaxDuration are the configured run limits, shown
 	// as "5/1000" progress in the meta bar. Zero means unbounded (or not worth
 	// showing, e.g. the default iteration backstop), so no denominator appears.
 	MaxIterations int
-	MaxCalls      int
 	MaxDuration   time.Duration
 }
 
@@ -78,9 +73,7 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 	if meta.MaxScrollback > 0 {
 		m.maxEntries = meta.MaxScrollback
 	}
-	m.stats = meta.Stats
 	m.maxIterations = meta.MaxIterations
-	m.maxCalls = meta.MaxCalls
 	m.maxDuration = meta.MaxDuration
 
 	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })

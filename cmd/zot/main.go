@@ -591,9 +591,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 		Workdir:       workdir,
 		MaxScrollback: cfg.UI.Scrollback,
 		MaxIterations: iterLimit,
-		MaxCalls:      opts.MaxCalls,
 		MaxDuration:   opts.MaxDuration,
-		Stats:         cfg.UI.Stats,
 	}
 }
 

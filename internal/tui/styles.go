@@ -37,7 +37,6 @@ var (
 	metaModel    = lipgloss.NewStyle().Foreground(colCyan)
 	metaProvider = lipgloss.NewStyle().Foreground(colBlue)
 	metaCount    = lipgloss.NewStyle().Foreground(colFg)
-	metaTools    = lipgloss.NewStyle().Foreground(colGreen)
 
 	// Footer / hints.
 	footerStyle = lipgloss.NewStyle().Foreground(colDim)

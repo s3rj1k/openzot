@@ -17,7 +17,6 @@ import (
 
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/tools"
-	"github.com/openzot/openzot/internal/tui"
 )
 
 // Config is the fully-resolved zot configuration.
@@ -113,12 +112,6 @@ type UI struct {
 	// Zero uses the built-in default; raise it to keep more of a long run visible
 	// (at more memory). The full run is always in the session log regardless.
 	Scrollback int `yaml:"scrollback"`
-	// Stats selects which fields the header bar shows, and in what order (see
-	// tui.KnownStats: provider, model, dir, iter, tools, edits, elapsed,
-	// tokens, tps, pace, task, order). Order matters - the bar drops what does
-	// not fit, so earlier fields survive a narrower terminal. Empty
-	// uses the default set.
-	Stats []string `yaml:"stats"`
 }
 
 // Agent holds the knobs that shape an autonomous run.
@@ -330,12 +323,6 @@ func (c Config) Validate() error {
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")
-	}
-	for _, s := range c.UI.Stats {
-		if !tui.IsKnownStat(s) {
-			return fmt.Errorf("ui.stats: %q is not a known field (valid: %s)",
-				s, strings.Join(tui.KnownStats, ", "))
-		}
 	}
 	if strings.TrimSpace(c.DefaultProvider) == "" {
 		return fmt.Errorf(

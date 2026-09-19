@@ -766,19 +766,17 @@ ui:
 	}
 }
 
-// ui.stats selects header fields; an unknown field name is a typo worth catching
-// at load rather than silently dropping the field.
-func TestUIStatsAreValidated(t *testing.T) {
-	if err := validConfig(func(c *Config) { c.UI.Stats = []string{"model", "iter"} }).Validate(); err != nil {
-		t.Errorf("a valid stat list must pass: %v", err)
-	}
+// The header is fixed, so ui.stats is gone rather than ignored: a config that
+// still sets it must fail at load and name the key, not quietly show a header
+// the operator did not ask for.
+func TestUIStatsIsNoLongerAKey(t *testing.T) {
+	path := writeConfig(t, `
+ui:
+  stats: [model, iter]
+`)
 
-	if err := validConfig(func(c *Config) { c.UI.Stats = []string{"model", "bogus"} }).Validate(); err == nil {
-		t.Error("an unknown stat field must fail validation")
-	}
-
-	if err := validConfig(func(c *Config) { c.UI.Stats = nil }).Validate(); err != nil {
-		t.Errorf("an unset stat list must pass (defaults): %v", err)
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "stats") {
+		t.Errorf("err = %v, want the removed ui.stats key refused and named", err)
 	}
 }
 

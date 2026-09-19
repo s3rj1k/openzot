@@ -175,10 +175,6 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 		t.Errorf("iteration = %d, want 1", m.iteration)
 	}
 
-	if m.toolCount != 1 {
-		t.Errorf("toolCount = %d, want 1", m.toolCount)
-	}
-
 	log := strings.Join(m.entries, "\n")
 
 	for _, want := range []string{"shell", "here is the answer"} {
@@ -405,7 +401,6 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 	m := sized(t, 100, 30)
 
 	m.iteration = 3
-	m.toolCount = 7
 
 	footer := m.footer()
 
@@ -826,21 +821,26 @@ func TestScrollbackCapIsConfigurable(t *testing.T) {
 	}
 }
 
-// The header shows only the configured fields, in the configured order.
-func TestMetaBarRendersConfiguredFieldsInOrder(t *testing.T) {
-	m := sized(t, 200, 30)
-	m.stats = []string{"iter", "model"} // a reversed subset
-	m.model = "glm-5.2"
-	m.iteration = 5
+// headerSegments is how many segments the header has when everything fits.
+const headerSegments = 6
 
-	bar := m.metaBar()
+// The header reads provider, model, iteration, elapsed, tokens, directory - in
+// that order, so what survives a narrow terminal is what changes most.
+func TestMetaBarOrder(t *testing.T) {
+	m := sized(t, 400, 30)
+	m.workdir = "/work/project"
 
-	if strings.Contains(bar, "provider") || strings.Contains(bar, "elapsed") {
-		t.Errorf("unconfigured fields must not show: %q", bar)
-	}
+	bar := stripANSI(m.metaBar())
 
-	if i, j := strings.Index(bar, "iter"), strings.Index(bar, "model"); i < 0 || j < 0 || i > j {
-		t.Errorf("fields must appear in the configured order (iter then model): %q", bar)
+	last := -1
+
+	for _, label := range []string{"provider", "model", "iter", "elapsed", "tokens", "dir"} {
+		at := strings.Index(bar, label)
+		if at < 0 || at < last {
+			t.Fatalf("%q is missing or out of order in %q", label, bar)
+		}
+
+		last = at
 	}
 }
 
@@ -870,8 +870,8 @@ func metaSegments(bar string) []string {
 func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
 	reference := metaSegments(sized(t, 400, 30).metaBar())
 
-	if len(reference) != len(DefaultStats) {
-		t.Fatalf("a wide terminal must show every default stat: %q", reference)
+	if len(reference) != headerSegments {
+		t.Fatalf("a wide terminal must show every header segment: %q", reference)
 	}
 
 	for _, width := range []int{12, 20, 33, 47, 68, 95, 140} {
@@ -925,9 +925,8 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 		previous = shown
 	}
 
-	if previous != len(DefaultStats) {
-		t.Errorf("the widest terminal shows %d segments, want every default stat (%d)",
-			previous, len(DefaultStats))
+	if previous != headerSegments {
+		t.Errorf("the widest terminal shows %d segments, want all %d", previous, headerSegments)
 	}
 }
 
@@ -941,42 +940,12 @@ func TestMetaBarIsEmptyWhenNothingFits(t *testing.T) {
 	}
 }
 
-// An empty stat list falls back to the default set.
-func TestMetaBarDefaultsWhenUnset(t *testing.T) {
-	m := sized(t, 400, 30)
-
-	bar := m.metaBar()
-
-	for _, field := range DefaultStats {
-		if !strings.Contains(bar, field) {
-			t.Errorf("the default bar must include %q: %q", field, bar)
-		}
-	}
-}
-
-// Guard against drift: every name in KnownStats must actually be renderable by
-// the meta bar (config validates against KnownStats, so a listed-but-unrendered
-// name would validate and then silently vanish).
-func TestEveryKnownStatIsRenderable(t *testing.T) {
-	m := sized(t, 500, 30)
-
-	for _, name := range KnownStats {
-		m.stats = []string{name}
-
-		if bar := m.metaBar(); !strings.Contains(bar, name) {
-			t.Errorf("KnownStats lists %q but the meta bar does not render it", name)
-		}
-	}
-}
-
 // The header shows the provider-reported token usage, and progress against any
 // configured limits (5/1000); a limit that is unset shows no denominator.
 func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.stats = []string{"iter", "tools", "elapsed", "tokens"}
 	m.iteration = 5
 	m.maxIterations = 1000
-	m.toolCount = 12 // maxCalls unset -> no denominator
 	m.maxDuration = 30 * time.Minute
 	m.inputTokens = 32000
 	m.outputTokens = 13000
@@ -985,10 +954,6 @@ func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 
 	if !strings.Contains(bar, "5/1000") {
 		t.Errorf("iter must show progress against its limit: %q", bar)
-	}
-
-	if strings.Contains(bar, "12/") {
-		t.Errorf("tools has no limit and must show no denominator: %q", bar)
 	}
 
 	if !strings.Contains(bar, "/30:00") {
@@ -1093,148 +1058,53 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	}
 }
 
-// The default bar is curated, not "everything renderable". The line is one row
-// and drops what does not fit, so every default costs the stats after it.
-func TestDefaultStatsAreCuratedNotEverything(t *testing.T) {
-	defaults := map[string]bool{}
-	for _, name := range DefaultStats {
-		defaults[name] = true
-	}
-
-	// a cumulative call count climbs on every run and says nothing about
-	// whether this one is going well - available, but not worth a default slot
-	if defaults["tools"] {
-		t.Error("tools is a cumulative counter and should be opt-in, not a default")
-	}
-
-	// the rate stats are the opposite: they answer "is this run healthy now"
-	for _, want := range []string{"tps", "pace", "task"} {
-		if !defaults[want] {
-			t.Errorf("%q tells the watcher something actionable and should default on", want)
-		}
-	}
-
-	// everything defaulted on must actually be renderable
-	for _, name := range DefaultStats {
-		if !IsKnownStat(name) {
-			t.Errorf("DefaultStats lists %q, which is not a known stat", name)
-		}
-	}
-}
-
 // A live value growing a digit - nine iterations becoming ten, 999 tokens
-// becoming 1.0k, a rate gaining or losing its decimal - must not shove the
-// segments after it sideways: a header that jitters on every tick is unreadable
-// at a glance, which is the only way a header is read. Each volatile stat is
-// followed by a fixed one, and the test asks whether that fixed one moved.
+// becoming 1.0k - must not shove the segments after it sideways: a header that
+// jitters on every tick is unreadable at a glance, which is the only way a
+// header is read. Each volatile field is followed by a fixed one, and the test
+// asks whether that fixed one moved.
 func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
-	anchor := func(m model) int {
-		return strings.Index(stripANSI(m.metaBar()), "model")
-	}
-
 	tests := []struct {
 		name   string
-		stat   string
+		next   string // the label of the segment after the one that changes
 		before func(*model)
 		after  func(*model)
 	}{
 		{
 			name:   "iterations gaining a digit",
-			stat:   "iter",
+			next:   "elapsed",
 			before: func(m *model) { m.iteration = 9 },
 			after:  func(m *model) { m.iteration = 10 },
 		},
 		{
 			name:   "iterations against a limit",
-			stat:   "iter",
+			next:   "elapsed",
 			before: func(m *model) { m.iteration, m.maxIterations = 9, 300 },
 			after:  func(m *model) { m.iteration, m.maxIterations = 100, 300 },
 		},
 		{
-			name:   "tool calls gaining a digit",
-			stat:   "tools",
-			before: func(m *model) { m.toolCount = 99 },
-			after:  func(m *model) { m.toolCount = 100 },
-		},
-		{
 			name:   "tokens crossing into thousands",
-			stat:   "tokens",
+			next:   "dir",
 			before: func(m *model) { m.inputTokens, m.outputTokens = 532, 40 },
 			after:  func(m *model) { m.inputTokens, m.outputTokens = 120_000, 4_500 },
-		},
-		{
-			name:   "a rate appearing, then losing its decimal",
-			stat:   "tps",
-			before: func(m *model) { m.elapsed, m.outputTokens = 0, 0 },
-			after:  func(m *model) { m.elapsed, m.outputTokens = 20*time.Second, 8000 },
-		},
-		{
-			name:   "a pace appearing",
-			stat:   "pace",
-			before: func(m *model) { m.elapsed, m.iteration = 0, 0 },
-			after:  func(m *model) { m.elapsed, m.iteration = 20*time.Second, 4 },
-		},
-		{
-			name:   "task progress within one list",
-			stat:   "task",
-			before: func(m *model) { m.stepsDone, m.planSteps = 0, 12 },
-			after:  func(m *model) { m.stepsDone, m.planSteps = 10, 12 },
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := sized(t, 400, 30)
-			m.stats = []string{test.stat, "model"}
-			m.model = "glm-5.2"
+			m.workdir = "/work/project"
 
 			test.before(&m)
 
-			was := anchor(m)
+			was := strings.Index(stripANSI(m.metaBar()), test.next)
 
 			test.after(&m)
 
-			if now := anchor(m); now != was {
-				t.Errorf("%s moved the next segment from column %d to %d:\n%q", test.stat, was, now, stripANSI(m.metaBar()))
+			if now := strings.Index(stripANSI(m.metaBar()), test.next); now != was {
+				t.Errorf("the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.metaBar()))
 			}
 		})
-	}
-}
-
-// A rate is a measurement; its absence is not zero. Until there is enough of a
-// run to divide by, the bar says so rather than reporting a confident 0.0.
-func TestRateStatsReportAbsenceRatherThanZero(t *testing.T) {
-	m := sized(t, 400, 30)
-	m.stats = []string{"tps", "pace", "task"}
-
-	bar := stripANSI(m.metaBar())
-
-	for _, unmeasured := range []string{"tps -", "pace -", "task -"} {
-		if !strings.Contains(bar, unmeasured) {
-			t.Errorf("an unmeasured stat should read as absent, not zero: want %q in %q", unmeasured, bar)
-		}
-	}
-
-	// once there is something to divide, real figures appear
-	m.elapsed = 20 * time.Second
-	m.outputTokens = 1000
-	m.iteration = 4
-
-	bar = stripANSI(m.metaBar())
-
-	if !strings.Contains(bar, "tps 50.0/s") {
-		t.Errorf("1000 output tokens over 20s is 50/s: %q", bar)
-	}
-
-	// a fast run drops the decimal, which would be noise at three digits
-	m.outputTokens = 8000
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "tps 400/s") {
-		t.Errorf("a high rate should lose the decimal: %q", got)
-	}
-
-	if !strings.Contains(bar, "pace 5.0s") {
-		t.Errorf("4 iterations over 20s is 5s each: %q", bar)
 	}
 }
 
@@ -1295,64 +1165,5 @@ func TestRenderTasksIsRobust(t *testing.T) {
 		if strings.Contains(out, "done") {
 			t.Errorf("%s: a refused list must not report progress: %q", name, out)
 		}
-	}
-}
-
-// Task progress is read off the list the agent itself keeps - the model is the
-// only thing that knows what "done" means for its work. Every call carries the
-// whole list, so the count is whatever the latest call says.
-func TestTaskProgressFollowsTheTasksCalls(t *testing.T) {
-	m := sized(t, 400, 30)
-	m.stats = []string{"task"}
-
-	call := func(args map[string]any) { m.trackProgress("tasks", args) }
-
-	call(tasksArgs(
-		[3]string{"a", "in_progress", ""}, [3]string{"b", "pending", ""},
-		[3]string{"c", "pending", ""}, [3]string{"d", "pending", ""},
-	))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/4") {
-		t.Errorf("a fresh list is 0 of its tasks: %q", got)
-	}
-
-	call(tasksArgs(
-		[3]string{"a", "done", ""}, [3]string{"b", "done", ""},
-		[3]string{"c", "in_progress", ""}, [3]string{"d", "pending", ""},
-	))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 2/4") {
-		t.Errorf("progress should count the done tasks, and only those: %q", got)
-	}
-
-	// a task that is blocked or under way is not done
-	call(tasksArgs(
-		[3]string{"a", "done", ""}, [3]string{"b", "blocked", "stuck"},
-		[3]string{"c", "in_progress", ""}, [3]string{"d", "pending", ""},
-	))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 1/4") {
-		t.Errorf("a task that went back to blocked is no longer done: %q", got)
-	}
-
-	// revising the list is a different set of tasks: nothing carries over
-	call(tasksArgs([3]string{"x", "pending", ""}, [3]string{"y", "pending", ""}))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
-		t.Errorf("a new list stands alone: %q", got)
-	}
-
-	// a call the tool refuses leaves the counts where they were
-	call(tasksArgs([3]string{"x", "finished", ""}))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
-		t.Errorf("a refused call must not change the count: %q", got)
-	}
-
-	// and other tools never touch them, even with an argument shaped like a list
-	m.trackProgress("shell", tasksArgs([3]string{"one", "done", ""}, [3]string{"two", "done", ""}, [3]string{"three", "done", ""}))
-
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
-		t.Errorf("a shell call changed the task count: %q", got)
 	}
 }
