@@ -10,7 +10,6 @@ import (
 	"github.com/openzot/openzot/agent"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/version"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -602,14 +601,10 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	}
 }
 
-// The package re-exports these so an embedder does not have to reach into
-// internal packages. What matters is that they are the same values, not that
-// they are non-empty.
-func TestVersionAndConfigPathAreExposed(t *testing.T) {
-	if got, want := Version(), version.Version; got != want {
-		t.Errorf("Version() = %q, want %q", got, want)
-	}
-
+// The package re-exports this so an embedder does not have to reach into
+// internal packages. What matters is that it is the same value, not that it is
+// non-empty.
+func TestConfigPathIsExposed(t *testing.T) {
 	t.Setenv("ZOT_CONFIG", "/custom/path.yaml")
 
 	if got, want := DefaultConfigPath(), config.DefaultConfigPath(); got != want {

@@ -12,38 +12,12 @@ git clone https://github.com/openzot/openzot
 cd openzot
 make                     # lists the targets
 make build               # or: go build -o zot ./cmd/zot
-./zot --version
 ```
 
 `make` on its own prints the targets rather than assuming one, because `build`
-and `dev` produce binaries that differ in what they will read from disk. `make
-build` stamps the version in; `make test`, `make race`, `make cover`, `make vet`
-and `make cross GOOS=… GOARCH=…` are also available.
-
-## Development container
-
-The repository uses Microsoft's prebuilt
-[Dev Container](https://containers.dev/) `base:bookworm` image directly from
-[`.devcontainer/`](../.devcontainer/). There is no project-specific development
-Dockerfile to publish. Open the checkout in a compatible editor and choose
-**Reopen in Container**. Standard features add the pinned Go toolchain, Git LFS,
-and Docker-in-Docker (for `make image`); the base provides Git and curl. Go's
-build and module caches live in named volumes, so rebuilding the container does
-not throw them away.
-
-Once the container is ready:
-
-```bash
-make test
-make dev
-```
-
-To bake a configuration - model, provider, even the provider key - _into_ the
-binary so it needs nothing at the destination, build with `-tags portable`. The
-compiled-in config overrides the runtime file and environment, which is the
-point: nothing at the destination can redirect it. See
-[portable-config.md](portable-config.md) for the recipe and the trade-offs
-(chiefly: a baked key is extractable, so the artifact becomes the secret).
+and `dev` produce binaries that differ in what they will read from disk.
+`make test`, `make race`, `make cover`, `make vet` and
+`make cross GOOS=… GOARCH=…` are also available.
 
 ## Release vs developer builds
 
@@ -62,8 +36,7 @@ builds read credentials from the config file and the real environment, both of
 which you chose deliberately.
 
 The switch is a build tag (`-tags dev`) and defaults to off, so a build that
-forgets it loses a convenience rather than a boundary. `zot --version` prints
-which kind you have.
+forgets it loses a convenience rather than a boundary.
 
 ## Architecture
 
@@ -78,13 +51,11 @@ which kind you have.
 | `internal/catalogue/`  | what each model's context window and capabilities are                          |
 | `internal/tokenizer/`  | BPE token counting with embedded vocabularies                                  |
 | `internal/session/`    | JSONL run logs: write, read, list, resume                                      |
-| `internal/config/`     | layered config (defaults < file < env < compiled-in), XDG paths, env overrides |
+| `internal/config/`     | layered config (defaults < file < env), XDG paths, env overrides               |
 | `internal/buildinfo/`  | release vs developer build, and what that changes                              |
-| `internal/version/`    | build-time version stamping and GitHub update checks                           |
 | `tui/`                 | public Bubble Tea read-only viewer (themeable; embeddable over any `agent` run) |
 | `configs/`             | example configuration                                                          |
 
 Contributor conventions live in [AGENTS.md](../AGENTS.md) and
-[.agents/skills/](../.agents/skills/). Releasing is driven by the `VERSION` file
-and the GitHub workflows - see [RELEASES.md](../RELEASES.md) and
+[.agents/skills/](../.agents/skills/). Changes are noted in
 [CHANGELOG.md](../CHANGELOG.md).

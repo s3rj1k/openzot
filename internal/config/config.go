@@ -40,20 +40,6 @@ type Config struct {
 	// Providers are the named model-provider connections a run can target. None
 	// are built in; each is declared here with a base_url and an api_key.
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	// UpdateCheck controls the release check a run makes against GitHub. The
-	// zero value checks.
-	UpdateCheck UpdateCheck `yaml:"update_check"`
-}
-
-// UpdateCheck configures the one call a run makes that is not to the
-// configured provider: a lookup of the latest release on GitHub, so an
-// out-of-date binary can say so when the run ends. Nothing about the user or
-// the run travels with it, and every failure is dropped silently - but an
-// air-gapped host, a locked-down CI job, or anyone who would rather zot spoke
-// to nothing but the provider can turn it off.
-type UpdateCheck struct {
-	// Disabled makes no release lookup at all.
-	Disabled bool `yaml:"disabled"`
 }
 
 // ProviderConfig is a named model-provider connection zot can run against.
@@ -307,44 +293,9 @@ func Load(path string) (Config, error) {
 		return cfg, err
 	}
 
-	// A portable build carries a configuration compiled into the binary. It is
-	// applied last - after the file and the environment - so the values an
-	// operator baked in are authoritative: the whole point of a portable build
-	// is that the runtime environment cannot redirect it. Fields the overlay
-	// leaves unset fall through to the file, env and defaults, so a key can still
-	// come from the environment if it was deliberately not baked in.
-	if err := applyPortableOverlay(&cfg, portableConfig()); err != nil {
-		return cfg, err
-	}
-
 	resolveProviders(&cfg)
 
 	return cfg, nil
-}
-
-// applyPortableOverlay merges a compiled-in configuration layer onto cfg,
-// overriding only the fields the document actually sets - an omitted field
-// leaves whatever the file, env or defaults resolved. Empty data is a no-op, so
-// a standard build (which carries none) passes straight through.
-func applyPortableOverlay(cfg *Config, data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(cfg); err != nil {
-		return fmt.Errorf("parse compiled-in config: %w", err)
-	}
-
-	return nil
-}
-
-// Portable reports whether this binary carries a compiled-in configuration - a
-// portable build (see portableConfig). Surfaced on `zot --version` so "why is it
-// ignoring my config file" is answerable without reading the source.
-func Portable() bool {
-	return len(portableConfig()) > 0
 }
 
 // resolveProviders resolves every credential - the provider-level key and each

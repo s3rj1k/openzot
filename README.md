@@ -12,7 +12,7 @@
   <img width="3260" height="2160" alt="zot running a work order" src="https://github.com/user-attachments/assets/a3b74447-85a8-4a0e-be3d-6c88aeed8649" />
 </p>
 
-zot is an automated software factory in a single ~11 MiB binary. It takes a
+zot is an automated software factory in a single static binary. It takes a
 work order - an objective, the acceptance criteria that define done, the
 constraints to hold - and plans, edits, builds, tests and fixes until the work
 is done. No chat loop, no approving each edit, no hosted engine, no telemetry.
@@ -20,18 +20,15 @@ It talks straight to any OpenAI-compatible model provider with your own key.
 
 ## Install
 
+zot is built from source. With Go installed:
+
 ```bash
-curl -fsSL https://zot.im/install.sh | bash
+git clone https://github.com/openzot/openzot
+cd openzot
+make build
 ```
 
-That fetches the latest release for your platform (Linux or macOS, amd64 or
-arm64), verifies its checksum, and puts `zot` in `~/.local/bin`. Pin a version
-with `ZOT_VERSION=vX.Y.Z`, or change the directory with `ZOT_INSTALL_DIR`.
-
-Prefer to do it by hand? Grab a tarball from the
-[releases page](https://github.com/openzot/openzot/releases), pull the
-[container image](docs/docker.md) (`ghcr.io/openzot/openzot`), or
-[build from source](docs/development.md).
+See [docs/development.md](docs/development.md) for the details.
 
 ## Use
 
@@ -75,8 +72,7 @@ one standing order with no human in the loop.
 ## ⚠️ Safety
 
 zot has real file-write and shell access from `--dir`, and `--dir` is not a
-sandbox. Point it at a disposable checkout, or run the
-[container image](docs/docker.md). Read [safety](docs/safety.md) first.
+sandbox. Point it at a disposable checkout. Read [safety](docs/safety.md) first.
 
 ## Documentation
 
@@ -85,11 +81,9 @@ sandbox. Point it at a disposable checkout, or run the
 - [docs/configuration.md](docs/configuration.md) - config file, flags, controls, sessions, `AGENTS.md` & skills
 - [docs/how-it-works.md](docs/how-it-works.md) - the harness, what sits under it, sub-agents
 - [docs/safety.md](docs/safety.md) - what zot can touch and how to bound it
-- [docs/docker.md](docs/docker.md) - running the container image
 - [docs/development.md](docs/development.md) - building from source, the codebase map
-- [docs/portable-config.md](docs/portable-config.md) - baking the configuration into the binary
 - [docs/philosophy.md](docs/philosophy.md) - why zot exists, the arcade, status
-- [CHANGELOG.md](CHANGELOG.md) · [RELEASES.md](RELEASES.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## Factories
 

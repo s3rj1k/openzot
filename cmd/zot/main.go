@@ -49,7 +49,6 @@ import (
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/version"
 	"github.com/openzot/openzot/tui"
 )
 
@@ -106,23 +105,8 @@ func run() error {
 	recordsDir := pflag.String("records-dir", "", "where run records are written (default: <dir>/"+order.BookDir+"/records)")
 	rerun := pflag.Bool("rerun", false, "run orders even when the ledger already records a successful run of the same content")
 	fresh := pflag.Bool("fresh", false, "start orders from scratch even when an unfinished run of the same order exists")
-	showVersion := pflag.Bool("version", false, "print version and exit")
 	pflag.Usage = usage
 	pflag.Parse()
-
-	if *showVersion {
-		// the build kind is on the version line because it changes what the
-		// binary will read from disk, and "why is it not picking up my .env"
-		// should be answerable without reading the source
-		kind := buildinfo.Kind
-		if config.Portable() {
-			// a portable build carries its own config and overrides the runtime
-			// file/env, so "why is it ignoring my config" is answerable here too
-			kind += ", portable config"
-		}
-		fmt.Printf("zot %s (%s)\n", version.Version, kind)
-		return nil
-	}
 
 	// Load credentials from the directory the agent will work in. This must
 	// happen after --dir is parsed but before configuration resolves env-backed
@@ -279,11 +263,6 @@ func run() error {
 	if *noSession {
 		sessions = ""
 	}
-
-	// The release check runs alongside the whole batch and is reported only once
-	// the viewer has released the screen.
-	report := checkForUpdate(cfg.UpdateCheck.Disabled)
-	defer report(os.Stderr)
 
 	// A signal cancels the run rather than killing the process outright, so the
 	// engine records its aborted outcome - and, mid-failure, dumps the exchange -
@@ -768,47 +747,6 @@ func draftTools(maxOutput int) agent.Tools {
 	}
 
 	return tools
-}
-
-// checkForUpdate starts the GitHub release check and returns the function that
-// reports its outcome.
-//
-// The check is a convenience and never more than that: it runs concurrently with
-// the run so it costs no wall-clock time, and every failure - an unreachable
-// GitHub, a rate limit, a malformed body - is dropped rather than surfaced. zot
-// runs unattended, and there is nobody there to act on "the update check
-// failed". A development build makes no call at all (see version.Check), and the
-// notice goes to stderr so it cannot corrupt the transcript on stdout.
-//
-// It is also the one request a run makes that is not to the configured
-// provider, so `update_check.disabled` (or ZOT_UPDATE_CHECK_DISABLED) turns it
-// off entirely: no call is made and nothing is reported.
-//
-// Reporting waits on the lookup, which the HTTP client bounds to a few seconds -
-// by the time a real run ends the answer has long since arrived.
-func checkForUpdate(disabled bool) func(io.Writer) {
-	if disabled {
-		return func(io.Writer) {}
-	}
-
-	notice := make(chan string, 1)
-
-	go func() {
-		result, err := version.Check()
-		if err != nil {
-			notice <- ""
-
-			return
-		}
-
-		notice <- version.FormatUpdateNotice(result)
-	}()
-
-	return func(w io.Writer) {
-		if text := <-notice; text != "" {
-			fmt.Fprintln(w, text)
-		}
-	}
 }
 
 // listSessions prints previous runs, newest first.

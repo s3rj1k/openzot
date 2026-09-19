@@ -26,7 +26,6 @@ import (
 	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/version"
 	"github.com/openzot/openzot/tui"
 )
 
@@ -141,9 +140,6 @@ func withTask(instructions, task string) string {
 
 	return instructions + taskHeading + task
 }
-
-// Version reports the build version of the linked zot core.
-func Version() string { return version.Version }
 
 // NewClient resolves the configuration into a provider-backed client, for
 // engine work outside the main run path - the read-only survey that drafts a

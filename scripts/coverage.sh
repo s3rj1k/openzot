@@ -2,8 +2,7 @@
 #
 # Fail if total statement coverage falls below the threshold (default 90%).
 #
-# One script so `make cover-check` and CI enforce the same number - a gate that
-# only runs in CI is one everyone discovers late. Override with:
+# Override with:
 #   COVERAGE_THRESHOLD=95 scripts/coverage.sh
 set -euo pipefail
 

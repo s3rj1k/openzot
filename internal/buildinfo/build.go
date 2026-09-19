@@ -14,9 +14,7 @@
 // enough to load credentials out of it - a repository you cloned to review, a
 // shared checkout, anything with a stray `.env` a colleague committed.
 //
-// The switch is a build tag rather than a version string, and it defaults to
-// off. That direction is deliberate: a release built without the ldflags that
-// stamp a version would still look like a release, but a build that forgets
-// `-tags dev` merely loses a developer convenience. The failure mode of
-// forgetting has to be the safe one.
+// The switch is a build tag, and it defaults to off. That direction is
+// deliberate: a build that forgets `-tags dev` merely loses a developer
+// convenience. The failure mode of forgetting has to be the safe one.
 package buildinfo

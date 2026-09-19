@@ -248,35 +248,6 @@ still going and a killed run still leaves everything up to the kill. Use
 `--no-session` to record nothing, or `--session-dir` (or `ZOT_SESSION_DIR`) to
 put the logs somewhere else.
 
-## The update check
-
-A release build asks GitHub for the latest zot release while a run is going and,
-if the binary is behind, says so on stderr once the viewer has released the
-screen:
-
-```
-A new version of zot is available: v0.18.0 → v0.19.0
-Upgrade: curl -fsSL https://zot.im/install.sh | bash
-Release: https://github.com/openzot/openzot/releases/tag/v0.19.0
-```
-
-The installer replaces the binary in place, so that line is the whole upgrade
-(`ZOT_VERSION=vX.Y.Z` pins a specific release). The check is silent when the
-build is current, silent on any failure - an unreachable GitHub, a rate limit -
-and never made at all by a `dev` build.
-
-It is the only request a run makes that is not to your provider, and nothing
-about you or the run travels with it. To make no call at all - an air-gapped
-host, a locked-down CI job, or a preference that zot speaks to nothing but the
-provider - turn it off:
-
-```yaml
-update_check:
-  disabled: true
-```
-
-or `ZOT_UPDATE_CHECK_DISABLED=true`.
-
 ## Project context (`AGENTS.md` & skills)
 
 On startup zot folds in context from two places - the **config directory**

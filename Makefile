@@ -1,8 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-VERSION ?= v$(shell tr -d '[:space:]' < VERSION)
-LDFLAGS  = -s -w -X github.com/openzot/openzot/internal/version.Version=$(VERSION)
+LDFLAGS = -s -w
 
 # go.mod pins the minimum patched toolchain. Some official Go and development
 # images export GOTOOLCHAIN=local, which turns a stale patch release into a hard
@@ -18,7 +17,7 @@ CMDS = zot
 GOOS   ?= $(shell go env GOHOSTOS)
 GOARCH ?= $(shell go env GOHOSTARCH)
 
-.PHONY: help build dev image clean test race cover cover-check vet lint fmt cross
+.PHONY: help build dev clean test race cover cover-check vet lint fmt cross
 
 # Listing the targets rather than assuming one: zot has two build variants that
 # differ in what the binary may read from disk, and picking the wrong one
@@ -28,11 +27,10 @@ help:
 	@echo
 	@echo "  make build      Build zot for release ($(GOOS)/$(GOARCH))"
 	@echo "  make dev        Build zot for development - see below"
-	@echo "  make image      Build the lean zot runtime image"
 	@echo "  make test       Run the test suite"
 	@echo "  make race       Run the test suite under the race detector"
 	@echo "  make cover      Report per-package test coverage"
-	@echo "  make cover-check  Fail if total coverage is below 90% (CI gate)"
+	@echo "  make cover-check  Fail if total coverage is below 90% (coverage gate)"
 	@echo "  make vet        Run go vet over both build variants"
 	@echo "  make fmt        Format the tree"
 	@echo "  make lint       Alias for vet"
@@ -43,14 +41,13 @@ help:
 	@echo "  directory; a developer build does. zot runs unattended with a"
 	@echo "  provider key and a shell tool, so a released binary must not take"
 	@echo "  credentials from whatever directory it was pointed at. Both write"
-	@echo "  to ./zot - run './zot --version' to see which one you have."
+	@echo "  to ./zot."
 	@echo
-	@echo "Overrides: VERSION=$(VERSION)"
-	@echo "           GOOS=$(GOOS) GOARCH=$(GOARCH)"
+	@echo "Overrides: GOOS=$(GOOS) GOARCH=$(GOARCH)"
 
 build:
 	@set -e; for cmd in $(CMDS); do \
-		echo "Building $$cmd ($(VERSION), release)..."; \
+		echo "Building $$cmd (release)..."; \
 		CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $$cmd ./cmd/$$cmd; \
 	done
 
@@ -60,12 +57,9 @@ build:
 # around in it.
 dev:
 	@set -e; for cmd in $(CMDS); do \
-		echo "Building $$cmd ($(VERSION), dev - reads .env)..."; \
+		echo "Building $$cmd (dev - reads .env)..."; \
 		CGO_ENABLED=0 go build -tags dev -trimpath -ldflags "$(LDFLAGS)" -o $$cmd ./cmd/$$cmd; \
 	done
-
-image:
-	docker build --build-arg VERSION=$(VERSION) --tag openzot/zot:local .
 
 fmt:
 	go fmt ./...
@@ -79,7 +73,7 @@ race:
 cover:
 	@go test -cover ./... -count=1 | grep coverage | sed 's|github.com/openzot/openzot||'
 
-# The coverage gate, shared with CI so local and CI enforce the same number.
+# The coverage gate.
 # Override the bar with COVERAGE_THRESHOLD=95 make cover-check.
 cover-check:
 	@./scripts/coverage.sh
@@ -99,6 +93,6 @@ clean:
 # Cross-compile a specific platform: make cross GOOS=darwin GOARCH=arm64
 cross:
 	@set -e; for cmd in $(CMDS); do \
-		echo "Building $$cmd ($(VERSION)) for $(GOOS)/$(GOARCH)..."; \
+		echo "Building $$cmd for $(GOOS)/$(GOARCH)..."; \
 		CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $$cmd ./cmd/$$cmd; \
 	done

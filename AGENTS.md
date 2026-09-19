@@ -19,6 +19,6 @@ the `tui/` viewer.
   total coverage may not fall below 90%. Write tests that assert _behaviour_, not
   constants; a test that restates a value it reads is worse than none.
 - **Both build variants compile.** `make vet` runs `go vet` over the release and
-  `-tags dev` builds. CI also runs `govulncheck`.
+  `-tags dev` builds. Run `govulncheck ./...` when dependencies change.
 - **Match the surrounding code.** Same naming, comment density, and idioms.
 - See `.agents/skills/` for deeper conventions (start with `testing-and-coverage`).

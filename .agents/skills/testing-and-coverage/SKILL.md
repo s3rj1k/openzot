@@ -10,9 +10,8 @@ behaviour broke." Coverage is gated at 90% so that bar cannot quietly erode.
 
 ## The gate
 
-- `make cover-check` (locally) and the **Coverage gate** CI step run the same
-  script, `scripts/coverage.sh`. Total statement coverage across the module may
-  not fall below **90%**.
+- `make cover-check` runs `scripts/coverage.sh`. Total statement coverage across
+  the module may not fall below **90%**.
 - The script prints per-package coverage before the total, so a failure points at
   the package that dropped. Fix it by testing the code you added - not by lowering
   the threshold. `COVERAGE_THRESHOLD=95 make cover-check` raises the bar locally.
@@ -66,7 +65,7 @@ belongs in that list.
 
 ```bash
 make test          # the suite
-make race          # under the race detector (CI runs this)
+make race          # under the race detector
 make cover         # per-package coverage, no gate - just the numbers
 make cover-check   # the gate: fails below 90%
 make vet           # go vet over both the release and -tags dev builds
