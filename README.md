@@ -28,7 +28,8 @@ cd openzot
 make build
 ```
 
-See [docs/development.md](docs/development.md) for the details.
+It needs Go 1.27 or newer. `make` on its own lists the other targets: `make test`,
+`make race`, `make vet` and `make cross`.
 
 ## Use
 
@@ -57,15 +58,15 @@ zot
 editor; write the objective and the acceptance criteria, then a bare `zot` runs
 the orders in the folder, each from zero. `zot --watch` turns
 the folder into a drop box. Any OpenAI-compatible endpoint works - a hosted
-service, a gateway, a local server - declare it and pick it with `--provider`;
-see [providers](docs/providers.md).
+service, a gateway, a local server - declare it under `providers:` and pick it
+with `--provider`.
 
 ## Why Zot
 
-- **Orders, not prompts.** Files that queue, batch and stream. [→ work orders](docs/orders.md)
-- **Nothing in the way.** Your key, your provider, your machine. [→ philosophy](docs/philosophy.md)
-- **Built to run unattended.** Context trimming, loop detection, a full log of every run. [→ how it works](docs/how-it-works.md)
-- **Orchestration is content.** No sub-agent framework; skills decide. [→ sub-agents](docs/how-it-works.md#sub-agents-and-coordination)
+- **Orders, not prompts.** Files that queue, batch and stream.
+- **Nothing in the way.** Your key, your provider, your machine.
+- **Built to run unattended.** Context trimming, loop detection, a full log of every run.
+- **Orchestration is content.** No sub-agent framework; skills decide.
 
 Watch it work: [the factories](#factories) run in public, each shipping from
 one standing order with no human in the loop.
@@ -73,18 +74,13 @@ one standing order with no human in the loop.
 ## ⚠️ Safety
 
 zot has real file-write and shell access from `--dir`, and `--dir` is not a
-sandbox. Point it at a disposable checkout. Read [safety](docs/safety.md) first.
+sandbox. Point it at a disposable checkout.
 
-## Documentation
+## Reference
 
-- [docs/orders.md](docs/orders.md) - work orders, `zot new`, the book, standing orders, watch mode
-- [docs/providers.md](docs/providers.md) - providers, credentials, gateways, custom endpoints
-- [docs/configuration.md](docs/configuration.md) - config file, flags, controls, sessions, `AGENTS.md` & skills
-- [docs/how-it-works.md](docs/how-it-works.md) - the harness, what sits under it, sub-agents
-- [docs/safety.md](docs/safety.md) - what zot can touch and how to bound it
-- [docs/development.md](docs/development.md) - building from source, the codebase map
-- [docs/philosophy.md](docs/philosophy.md) - why zot exists, the arcade, status
-- [CHANGELOG.md](CHANGELOG.md)
+- `zot --help` lists the commands and flags.
+- [configs/zot.example.yaml](configs/zot.example.yaml) documents every config key.
+- [AGENTS.md](AGENTS.md) is the guide for working on zot itself.
 
 ## Factories
 
@@ -111,5 +107,5 @@ session ships to a public dataset.
 ## Status
 
 zot is **0.x** and in active use. Flags, config and behavior may change before
-1.0 - pin a version and skim the [changelog](CHANGELOG.md) before upgrading.
+1.0 - pin a commit before upgrading.
 Small, focused pull requests are welcome; anything large is worth an issue first.
