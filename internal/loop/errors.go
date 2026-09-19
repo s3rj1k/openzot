@@ -41,31 +41,33 @@ func IsProviderError(err error) bool {
 //
 // It goes by what the error is, never by what it says: gateways word the same
 // condition differently, and matching prose turns a wording nobody anticipated
-// into a run that ends on a blip. When the provider answered with a status it is
-// authoritative in both directions: a 5xx or a 408 retries, and any other status
-// does not, whatever the message says - a 4xx is caused by the request itself (a
-// bad key, a model the provider does not have) and retrying only burns the
-// budget. With no status, a failure fantasy itself marks transient (an in-band
-// error frame) retries, as does a transport failure: a stream that ended
-// mid-turn, a connection reset, or one that stalled.
+// into a run that ends on a blip. For an error the provider answered with, that is
+// fantasy's own rule (ProviderError.IsRetryable): a 5xx, 408 or 409, an in-band
+// error frame, a stream that ended mid-turn, an HTTP/2 reset, or a response that
+// says so with x-should-retry. Anything else - a 4xx caused by the request itself,
+// such as a bad key or a model the provider does not have - would only burn the
+// budget. What fantasy's errors do not cover are the failures that never became a
+// provider answer: a connection reset, a bare EOF, and zot's own stall.
 //
-// 429 is deliberately excluded. A rate limit needs Retry-After backoff, not a
-// tight retry loop, and retrying it aggressively makes the throttling worse.
+// 429 is deliberately excluded, though fantasy would retry it. A rate limit needs
+// Retry-After backoff, not a tight retry loop, and retrying it aggressively makes
+// the throttling worse; the caller checks IsRateLimited first.
 func IsRetriable(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	if found, ok := providerError(err); ok && found.StatusCode != 0 {
-		return found.StatusCode == http.StatusRequestTimeout || (found.StatusCode >= 500 && found.StatusCode <= 599)
+	if found, ok := providerError(err); ok {
+		if found.StatusCode == http.StatusTooManyRequests {
+			return false
+		}
+
+		if found.IsRetryable() {
+			return true
+		}
 	}
 
-	if found, ok := providerError(err); ok && found.IsRetryable() {
-		return true
-	}
-
-	return errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, io.EOF) ||
+	return errors.Is(err, io.EOF) ||
 		errors.Is(err, syscall.ECONNRESET) ||
 		errors.Is(err, errStreamStalled)
 }

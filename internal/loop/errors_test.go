@@ -22,6 +22,9 @@ func refused(status int, message string) error {
 }
 
 func TestIsRetriableUsesStatusOverProse(t *testing.T) {
+	saysRetry := &fantasy.ProviderError{StatusCode: 400, Message: "try again", ResponseHeaders: map[string]string{"X-Should-Retry": "true"}}
+	saysDont := &fantasy.ProviderError{StatusCode: 400, Message: "no", ResponseHeaders: map[string]string{"x-should-retry": "false"}}
+
 	tests := []struct {
 		name string
 		err  error
@@ -30,6 +33,9 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 		{"a 500 retries", refused(500, "boom"), true},
 		{"a 503 retries", refused(503, "unavailable"), true},
 		{"a 408 retries", refused(408, "timed out"), true},
+		{"a 409 retries, as fantasy has it", refused(409, "conflict"), true},
+		{"a provider saying so retries even a 400", saysRetry, true},
+		{"a provider saying not to does not", saysDont, false},
 		{"a 400 does not, whatever it says", refused(400, "internal server error"), false},
 		{"a 404 does not, even naming a gateway fault", refused(404, "bad gateway upstream"), false},
 		{"a 401 does not", refused(401, "bad key"), false},
