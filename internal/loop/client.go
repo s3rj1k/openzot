@@ -27,9 +27,9 @@ func NewClient(config ClientConfig) (*Client, error) {
 		openaicompat.WithBaseURL(resolved.BaseURL),
 		openaicompat.WithAPIKey(resolved.APIKey),
 		openaicompat.WithHTTPClient(newHTTPClient()),
-		openaicompat.WithSDKOptions(option.WithMiddleware(wire(resolved))),
+		openaicompat.WithSDKOptions(sdkOptions(resolved)...),
 		openaicompat.WithUserAgent("zot"),
-		openaicompat.WithLanguageModelOptions(openai.WithLanguageModelStreamUsageFunc(streamUsage)),
+		openaicompat.WithLanguageModelOptions(languageModelOptions(resolved)...),
 	}
 
 	provider, err := openaicompat.New(options...)
@@ -43,6 +43,21 @@ func NewClient(config ClientConfig) (*Client, error) {
 	}
 
 	return &Client{config: resolved, model: toolCallsModel{model}}, nil
+}
+
+// sdkOptions keep the SDK to the operator's credential.
+//
+// The SDK reads OPENAI_API_KEY, OPENAI_ORG_ID and OPENAI_PROJECT_ID from the
+// environment as defaults. The key is the operator's, scoped to the endpoint they
+// named, or there is none: an empty key here overrides the environment's, so no
+// Authorization header goes out, and the organization and project headers the
+// environment would add are removed.
+func sdkOptions(config ClientConfig) []option.RequestOption {
+	return []option.RequestOption{
+		option.WithAPIKey(config.APIKey),
+		option.WithHeaderDel("OpenAI-Organization"),
+		option.WithHeaderDel("OpenAI-Project"),
+	}
 }
 
 // Config returns the resolved configuration.
