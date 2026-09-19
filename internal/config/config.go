@@ -15,8 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/openzot/openzot/agent"
-	"github.com/openzot/openzot/tui"
+	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/tui"
 )
 
 // Config is the fully-resolved zot configuration.

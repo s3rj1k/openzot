@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 // maxOutputLines caps how much command output we echo into the log so a chatty

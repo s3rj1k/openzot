@@ -487,7 +487,7 @@ func ExecuteWithTools(
 			}
 
 			// The send stays synchronous - a slow consumer throttles the run -
-			// but must not outlive it: an embedder that cancels the run and
+			// but must not outlive it: a consumer that cancels the run and
 			// walks away from the channel would otherwise park this goroutine
 			// on a send nobody will ever receive, leaking it (and the run's
 			// resources) for the life of the process. Once ctx is done the run

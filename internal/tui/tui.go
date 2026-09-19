@@ -12,15 +12,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 // Meta is the header display information shown above the activity log.
 type Meta struct {
-	// AppName is the embedding application's name, shown in the title badge
-	// ("✦ rook"), the startup line, and the plain-mode header. Empty defaults to
-	// "zot", so a bare caller still reads correctly.
-	AppName string
 	// Task is the one-line instruction the agent is working on.
 	Task string
 
@@ -47,10 +43,6 @@ type Meta struct {
 	// Color controls ANSI styling for a non-interactive stream: auto, always, or
 	// never. It does not make the stream interactive or start the full-screen UI.
 	Color string
-
-	// Theme is the colour identity for the view. The zero value is zot's neutral
-	// DefaultTheme; an embedding application passes its own accent (see Theme).
-	Theme Theme
 
 	// MaxScrollback caps how many log lines the viewer keeps on screen. Zero uses
 	// DefaultMaxScrollback; a larger value keeps more history (at more memory).
@@ -84,16 +76,6 @@ type Meta struct {
 // Along with any error it returns the run's recorded Outcome, so a caller can
 // report how it ended without scraping the screen.
 func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
-	// Set the brand colours before anything renders. An empty Theme falls back to
-	// zot's neutral default (see applyTheme).
-	applyTheme(meta.Theme)
-
-	// A bare caller (or zot itself) leaves AppName empty; default it so the badge
-	// and headers still read correctly.
-	if meta.AppName == "" {
-		meta.AppName = "zot"
-	}
-
 	// --plain is an explicit request for an unstyled transcript. Without a
 	// terminal, stream too, but keep ANSI styling when the consumer declared
 	// that it supports color (a browser terminal is the main example).
@@ -105,7 +87,7 @@ func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.Execut
 		return runStream(ctx, client, meta, opts, streamColorEnabled(meta.Color))
 	}
 
-	m := newModel(meta.AppName, meta.Task, meta.Model, meta.Provider, meta.Workdir)
+	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
 	m.batchIndex = meta.BatchIndex
 	m.batchSize = meta.BatchSize
@@ -135,7 +117,7 @@ func runViewer(
 	programOptions ...tea.ProgramOption,
 ) (Outcome, error) {
 	// Quitting the viewer stops the agent rather than merely stopping watching
-	// it. The agent has shell and file-write access, so an embedding process
+	// it. The agent has shell and file-write access, so a process
 	// that returned from here with the run still going would leave something
 	// editing the working tree with nothing on screen reporting what it does.
 	ctx, cancel := context.WithCancel(ctx)

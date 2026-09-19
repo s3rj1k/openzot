@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 // DigestStatus maps a run's stop reason and exit code to the one human word a
-// digest shows: "done", "failed", or "cancelled". Shared so every embedding
-// tool classifies an ending the same way rather than each inventing its own.
+// digest shows: "done", "failed", or "cancelled". Shared so the viewer and the
+// streaming renderers classify an ending the same way.
 func DigestStatus(reason string, code int) string {
 	switch reason {
 	case agent.ReasonAborted:

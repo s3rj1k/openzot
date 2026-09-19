@@ -2,12 +2,11 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The brand colours (accent, secondary) default to a neutral identity and are
-// overridden per embedder by applyTheme (see theme.go); the rest are fixed
-// semantic and neutral colours for state and log text.
+// The brand colours (accent, secondary) are zot's neutral identity; the rest are
+// fixed semantic and neutral colours for state and log text.
 var (
-	colAccent    = lipgloss.Color("#6B7280") // neutral slate (brand accent; themed)
-	colSecondary = lipgloss.Color("#9CA3AF") // lighter slate  (brand secondary; themed)
+	colAccent    = lipgloss.Color("#6B7280") // neutral slate (brand accent)
+	colSecondary = lipgloss.Color("#9CA3AF") // lighter slate  (brand secondary)
 	colFg        = lipgloss.Color("#E6E6E6")
 	colDim       = lipgloss.Color("#7A7A7A")
 	colFaint     = lipgloss.Color("#4A4A4A")

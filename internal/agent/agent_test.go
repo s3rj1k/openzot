@@ -853,8 +853,8 @@ func endlessToolRounds(t *testing.T) (*httptest.Server, Tools) {
 	return server, tools
 }
 
-// The events channel is documented as streaming until the run ends - but an
-// embedder that cancels the run and walks away from the channel must not leave
+// The events channel is documented as streaming until the run ends - but a
+// consumer that cancels the run and walks away from the channel must not leave
 // the run goroutine parked forever on a send nobody will ever receive. The
 // goroutine ending is observable as errs closing, which it only does on return.
 func TestAnAbandonedConsumerDoesNotLeakTheRun(t *testing.T) {

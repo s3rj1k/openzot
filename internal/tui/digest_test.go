@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 func TestRenderDigestIsColumnarAndParsable(t *testing.T) {

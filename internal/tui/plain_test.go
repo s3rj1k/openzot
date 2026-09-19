@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -134,7 +134,7 @@ func TestRunPlainTranscript(t *testing.T) {
 		[]string{plainSuccess("tests pass")},
 	)
 
-	meta := Meta{AppName: "zot", Task: "run the tests", Model: "test-model", Provider: "openai", Workdir: "/tmp/work"}
+	meta := Meta{Task: "run the tests", Model: "test-model", Provider: "openai", Workdir: "/tmp/work"}
 
 	options := agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Tools: agent.Tools{

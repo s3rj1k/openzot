@@ -1,6 +1,6 @@
 package session
 
-import "github.com/openzot/openzot/agent"
+import "github.com/openzot/openzot/internal/agent"
 
 // Recorder adapts a session Writer to the agent's recorder interface.
 //

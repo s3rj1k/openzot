@@ -8,7 +8,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 // isInteractive reports whether stdout is a terminal capable of the full-screen
@@ -68,10 +68,10 @@ func runStream(ctx context.Context, client *agent.Client, meta Meta, opts agent.
 	// the fact - and a log that records only the label loses the brief that
 	// explains every line under it.
 	if meta.Title != "" {
-		fmt.Printf("%s: %s\n", palette.paint("1;94", meta.AppName), meta.Title)
+		fmt.Printf("%s: %s\n", palette.paint("1;94", "zot"), meta.Title)
 		fmt.Printf("%s\n", palette.paint("2", meta.Task))
 	} else {
-		fmt.Printf("%s: %s\n", palette.paint("1;94", meta.AppName), meta.Task)
+		fmt.Printf("%s: %s\n", palette.paint("1;94", "zot"), meta.Task)
 	}
 	fmt.Printf("%s %s · %s %s · %s %s\n",
 		palette.paint("2", "provider"), meta.Provider,

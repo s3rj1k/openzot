@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 // The model's reasoning is part of the record: the scratchpad is often the only

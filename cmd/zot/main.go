@@ -38,12 +38,12 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/openzot/openzot/agent"
 	"github.com/openzot/openzot/configs"
+	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/tui"
+	"github.com/openzot/openzot/internal/tui"
 )
 
 func main() {

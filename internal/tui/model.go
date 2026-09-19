@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/agent"
+	"github.com/openzot/openzot/internal/agent"
 )
 
 type status int
@@ -31,7 +31,6 @@ type tickMsg struct{}
 // watches, they do not type. Everything it shows is derived from the agent's
 // event stream plus a couple of counters.
 type model struct {
-	appName  string
 	task     string
 	title    string // shown instead of task when set - see tui.Meta.Title
 	model    string
@@ -94,13 +93,12 @@ type model struct {
 	elapsed   time.Duration
 }
 
-func newModel(appName, task, modelName, provider, workdir string) model {
+func newModel(task, modelName, provider, workdir string) model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(colYellow)
 
 	return model{
-		appName:    appName,
 		task:       task,
 		model:      modelName,
 		provider:   provider,
@@ -393,7 +391,7 @@ func (m *model) wrap(s string) string {
 
 func (m model) View() string {
 	if !m.ready {
-		return "starting " + m.appName + "…"
+		return "starting zot…"
 	}
 	return strings.Join([]string{
 		m.titleBar(),
@@ -405,7 +403,7 @@ func (m model) View() string {
 }
 
 func (m model) titleBar() string {
-	left := titleStyle.Render("✦ "+m.appName) + " " + m.badge()
+	left := titleStyle.Render("✦ zot") + " " + m.badge()
 	room := m.width - lipgloss.Width(left) - 2
 	if room < 8 {
 		return left
