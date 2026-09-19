@@ -433,29 +433,19 @@ func (m model) badge() string {
 	}
 }
 
-// trackProgress reads task progress out of the agent's reflective tools. A new
-// plan replaces the old one whole - a replanned run is a different task, and
-// carrying the previous step count over would show progress against a plan that
-// no longer exists - and it resets what is done, because the completed steps
-// were steps of the plan being abandoned.
-//
-// The completed list is a set of names, so its length is the count; a progress
-// call that lists more done than were planned means the model outgrew its own
-// plan, and the count follows it rather than pretending the plan was right.
+// trackProgress reads task progress out of the agent's tasks tool. Every call
+// carries the whole list, so the counts are simply read off the latest one: a
+// revised list is a different set of tasks, and there is nothing to carry over.
+// A call that does not parse is refused by the tool, so it leaves the counts
+// as they were.
 func (m *model) trackProgress(name string, args map[string]any) {
-	switch name {
-	case "plan":
-		if steps := strList(args, "steps"); len(steps) > 0 {
-			m.planSteps = len(steps)
-			m.stepsDone = 0
-		}
+	if name != "tasks" {
+		return
+	}
 
-	case "progress":
-		m.stepsDone = len(strList(args, "completed"))
-
-		if m.stepsDone > m.planSteps {
-			m.planSteps = m.stepsDone
-		}
+	if tasks, err := agent.ParseTasks(args); err == nil {
+		m.planSteps = len(tasks)
+		m.stepsDone = agent.CountDone(tasks)
 	}
 }
 

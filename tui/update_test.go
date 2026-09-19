@@ -773,77 +773,6 @@ func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
 	}
 }
 
-func TestRenderPlanShowsNumberedSteps(t *testing.T) {
-	out := stripANSI(renderToolStart("plan", map[string]interface{}{
-		"steps":     []interface{}{"read the handler", "add validation", "write a test"},
-		"rationale": "smallest safe change first",
-	}))
-
-	for _, want := range []string{"plan", "smallest safe change first", "1. read the handler", "2. add validation", "3. write a test"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("rendered plan missing %q:\n%s", want, out)
-		}
-	}
-}
-
-func TestRenderProgressShowsStatus(t *testing.T) {
-	out := stripANSI(renderToolStart("progress", map[string]interface{}{
-		"current":   "adding validation",
-		"completed": []interface{}{"read the handler"},
-		"blockers":  []interface{}{"missing a fixture"},
-		"nextSteps": []interface{}{"write a test"},
-	}))
-
-	for _, want := range []string{"adding validation", "done", "read the handler", "blocked", "missing a fixture", "next", "write a test"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("rendered progress missing %q:\n%s", want, out)
-		}
-	}
-}
-
-// A plan with no steps still renders its header rather than crashing, and a
-// model that emits a non-string step must not break the render.
-func TestPlanRenderingIsRobust(t *testing.T) {
-	if out := stripANSI(renderToolStart("plan", map[string]interface{}{})); !strings.Contains(out, "plan") {
-		t.Errorf("a stepless plan should still render a header: %q", out)
-	}
-
-	// strList drops the non-string entry rather than panicking
-	if got := strList(map[string]interface{}{"steps": []interface{}{"ok", 42, nil, "also ok"}}, "steps"); len(got) != 2 {
-		t.Errorf("strList should keep only the strings, got %v", got)
-	}
-
-	if got := strList(map[string]interface{}{"steps": "not an array"}, "steps"); got != nil {
-		t.Errorf("strList on a non-array should be nil, got %v", got)
-	}
-}
-
-// The plain (non-TTY) renderers surface the same structure for a piped run.
-func TestPlainPlanAndProgress(t *testing.T) {
-	plan := plainArg("plan", map[string]interface{}{
-		"steps":     []interface{}{"step one", "step two"},
-		"rationale": "because",
-	})
-	for _, want := range []string{"because", "1. step one", "2. step two"} {
-		if !strings.Contains(plan, want) {
-			t.Errorf("plain plan missing %q:\n%s", want, plan)
-		}
-	}
-
-	progress := plainArg("progress", map[string]interface{}{
-		"current":  "working",
-		"blockers": []interface{}{"a blocker"},
-	})
-	for _, want := range []string{"working", "blocked", "a blocker"} {
-		if !strings.Contains(progress, want) {
-			t.Errorf("plain progress missing %q:\n%s", want, progress)
-		}
-	}
-}
-
-// A long autonomous run can emit far more lines than anyone scrolls through, so
-// the viewer must bound its scrollback rather than grow memory without limit.
-// The full run stays in the session log.
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	// a not-yet-sized model: render() no-ops, so this exercises the scrollback cap
 	// without the per-append viewport cost (which is what a real, model-paced run
@@ -1302,7 +1231,7 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 			after:  func(m *model) { m.elapsed, m.iteration = 20*time.Second, 4 },
 		},
 		{
-			name:   "task progress within one plan",
+			name:   "task progress within one list",
 			stat:   "task",
 			before: func(m *model) { m.stepsDone, m.planSteps = 0, 12 },
 			after:  func(m *model) { m.stepsDone, m.planSteps = 10, 12 },
@@ -1371,39 +1300,143 @@ func TestRateStatsReportAbsenceRatherThanZero(t *testing.T) {
 	}
 }
 
-// Task progress is read off the agent's own plan and progress calls - the model
-// is the only thing that knows what "done" means for its plan.
-func TestTaskProgressFollowsThePlanAndProgressCalls(t *testing.T) {
+// tasksArgs is the arguments of a tasks call as the model sends them.
+func tasksArgs(tasks ...[3]string) map[string]any {
+	list := make([]any, 0, len(tasks))
+
+	for _, task := range tasks {
+		entry := map[string]any{"title": task[0], "status": task[1]}
+
+		if task[2] != "" {
+			entry["note"] = task[2]
+		}
+
+		list = append(list, entry)
+	}
+
+	return map[string]any{"tasks": list}
+}
+
+// The task list is the one piece of the run worth reading in full, so it renders
+// as a checklist: what is done, what is under way, what is left, what is stuck.
+func TestRenderTasksShowsTheChecklist(t *testing.T) {
+	out := stripANSI(renderToolStart("tasks", tasksArgs(
+		[3]string{"read the handler", "done", ""},
+		[3]string{"add validation", "in_progress", "the error path is missing"},
+		[3]string{"write a test", "pending", ""},
+		[3]string{"deploy", "blocked", "needs credentials"},
+	)))
+
+	for _, want := range []string{
+		"tasks", "1/4 done",
+		"✓ read the handler", "▶ add validation", "· write a test", "✗ deploy",
+		"the error path is missing", "needs credentials",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered tasks missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// A call the tool refuses - no tasks, an unknown status - still shows its header
+// rather than crashing the render, and draws nothing it cannot vouch for.
+func TestRenderTasksIsRobust(t *testing.T) {
+	for name, args := range map[string]map[string]interface{}{
+		"no arguments":  {},
+		"an empty list": {"tasks": []interface{}{}},
+		"a bad status":  tasksArgs([3]string{"a", "started", ""}),
+		"not a list":    {"tasks": "do it"},
+		"a non-object":  {"tasks": []interface{}{"do it"}},
+	} {
+		out := stripANSI(renderToolStart("tasks", args))
+
+		if !strings.Contains(out, "tasks") {
+			t.Errorf("%s: should still render a header: %q", name, out)
+		}
+
+		if strings.Contains(out, "done") {
+			t.Errorf("%s: a refused list must not report progress: %q", name, out)
+		}
+	}
+}
+
+// The plain (non-TTY) renderer surfaces the same checklist for a piped run.
+func TestPlainTasksShowsTheChecklist(t *testing.T) {
+	got := plainArg("tasks", tasksArgs(
+		[3]string{"step one", "done", ""},
+		[3]string{"step two", "in_progress", "halfway"},
+		[3]string{"step three", "pending", ""},
+		[3]string{"step four", "blocked", "waiting on a key"},
+	))
+
+	for _, want := range []string{
+		"1/4 done", "[x] step one", "[>] step two - halfway", "[ ] step three", "[!] step four - waiting on a key",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("plain tasks missing %q:\n%s", want, got)
+		}
+	}
+
+	if plainArg("tasks", map[string]interface{}{}) != "" {
+		t.Error("a refused list has nothing to show in a plain log")
+	}
+}
+
+// Task progress is read off the list the agent itself keeps - the model is the
+// only thing that knows what "done" means for its work. Every call carries the
+// whole list, so the count is whatever the latest call says.
+func TestTaskProgressFollowsTheTasksCalls(t *testing.T) {
 	m := sized(t, 400, 30)
 	m.stats = []string{"task"}
 
-	step := func(name string, args map[string]any) {
-		m.trackProgress(name, args)
-	}
+	call := func(args map[string]any) { m.trackProgress("tasks", args) }
 
-	step("plan", map[string]any{"steps": []any{"a", "b", "c", "d"}})
+	call(tasksArgs(
+		[3]string{"a", "in_progress", ""}, [3]string{"b", "pending", ""},
+		[3]string{"c", "pending", ""}, [3]string{"d", "pending", ""},
+	))
 
 	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/4") {
-		t.Errorf("a fresh plan is 0 of its steps: %q", got)
+		t.Errorf("a fresh list is 0 of its tasks: %q", got)
 	}
 
-	step("progress", map[string]any{"completed": []any{"a", "b"}})
+	call(tasksArgs(
+		[3]string{"a", "done", ""}, [3]string{"b", "done", ""},
+		[3]string{"c", "in_progress", ""}, [3]string{"d", "pending", ""},
+	))
 
 	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 2/4") {
-		t.Errorf("progress should count the completed steps: %q", got)
+		t.Errorf("progress should count the done tasks, and only those: %q", got)
 	}
 
-	// a model that outgrows its own plan is followed, not contradicted
-	step("progress", map[string]any{"completed": []any{"a", "b", "c", "d", "e"}})
+	// a task that is blocked or under way is not done
+	call(tasksArgs(
+		[3]string{"a", "done", ""}, [3]string{"b", "blocked", "stuck"},
+		[3]string{"c", "in_progress", ""}, [3]string{"d", "pending", ""},
+	))
 
-	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 5/5") {
-		t.Errorf("more done than planned means the plan grew: %q", got)
+	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 1/4") {
+		t.Errorf("a task that went back to blocked is no longer done: %q", got)
 	}
 
-	// replanning is a different task: the old count must not carry over
-	step("plan", map[string]any{"steps": []any{"x", "y"}})
+	// revising the list is a different set of tasks: nothing carries over
+	call(tasksArgs([3]string{"x", "pending", ""}, [3]string{"y", "pending", ""}))
 
 	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
-		t.Errorf("a new plan resets progress against it: %q", got)
+		t.Errorf("a new list stands alone: %q", got)
+	}
+
+	// a call the tool refuses leaves the counts where they were
+	call(tasksArgs([3]string{"x", "finished", ""}))
+
+	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
+		t.Errorf("a refused call must not change the count: %q", got)
+	}
+
+	// and other tools never touch them, even with an argument shaped like a list
+	m.trackProgress("shell", tasksArgs([3]string{"one", "done", ""}, [3]string{"two", "done", ""}, [3]string{"three", "done", ""}))
+
+	if got := stripANSI(m.metaBar()); !strings.Contains(got, "task 0/2") {
+		t.Errorf("a shell call changed the task count: %q", got)
 	}
 }

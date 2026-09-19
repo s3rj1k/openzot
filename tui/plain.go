@@ -158,44 +158,35 @@ func plainArg(name string, args map[string]interface{}) string {
 	switch name {
 	case "shell":
 		return truncate(str(args, "command"), 200)
-	case "plan":
-		return plainPlan(args)
-	case "progress":
-		return plainProgress(args)
+	case "tasks":
+		return plainTasks(args)
 	default:
 		return compactArgs(args)
 	}
 }
 
-// plainPlan renders the plan as a numbered list on its own lines, so a piped run
-// records the agent's strategy in full, not as a truncated key/value dump.
-func plainPlan(args map[string]interface{}) string {
-	steps := strList(args, "steps")
+// plainTasks renders the task list as a checklist on its own lines, so a piped
+// run records what the agent set out to do, and how far it got, in full rather
+// than as a truncated key/value dump.
+func plainTasks(args map[string]interface{}) string {
+	tasks, err := agent.ParseTasks(args)
+	if err != nil {
+		return ""
+	}
 
 	var b strings.Builder
-	if rationale := str(args, "rationale"); rationale != "" {
-		b.WriteString(rationale)
-	}
-	for i, step := range steps {
-		b.WriteString(fmt.Sprintf("\n      %d. %s", i+1, step))
-	}
-	return strings.TrimLeft(b.String(), "\n")
-}
 
-// plainProgress renders the current step plus done/blocked/next lines.
-func plainProgress(args map[string]interface{}) string {
-	var b strings.Builder
-	b.WriteString(str(args, "current"))
-	for _, section := range []struct{ label, key string }{
-		{"done", "completed"},
-		{"blocked", "blockers"},
-		{"next", "nextSteps"},
-	} {
-		for _, item := range strList(args, section.key) {
-			b.WriteString(fmt.Sprintf("\n      %-8s%s", section.label, item))
+	b.WriteString(fmt.Sprintf("%d/%d done", agent.CountDone(tasks), len(tasks)))
+
+	for _, task := range tasks {
+		b.WriteString("\n      " + agent.TaskMarker(task.Status) + " " + task.Title)
+
+		if task.Note != "" {
+			b.WriteString(" - " + task.Note)
 		}
 	}
-	return strings.TrimLeft(b.String(), "\n")
+
+	return b.String()
 }
 
 // plainToolEnd summarises a tool result for the unstyled log.

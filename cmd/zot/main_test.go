@@ -885,7 +885,7 @@ func TestExplicitMaxIterationsBeatsAPerModelCap(t *testing.T) {
 		step := requests.Add(1)
 
 		fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c%d","type":"function","function":{"name":"progress","arguments":"{\"current\":\"step %d\"}"}}]},"finish_reason":"tool_calls"}]}`,
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c%d","type":"function","function":{"name":"tasks","arguments":"{\"tasks\":[{\"title\":\"step %d\",\"status\":\"in_progress\"}]}"}}]},"finish_reason":"tool_calls"}]}`,
 			step, step))
 
 		fmt.Fprint(w, "data: [DONE]\n\n")
@@ -1253,6 +1253,69 @@ providers:
 	}
 
 	return configPath
+}
+
+// The tasks tool end to end: a model lists its work, keeps going, and settles.
+// The real tool handler answers each call, and the plain transcript - what a
+// piped run leaves behind - carries the checklist as the model sent it.
+func TestARunsTaskListReachesThePlainTranscript(t *testing.T) {
+	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
+
+	var requests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		call := `{"name":"success","arguments":"{\"summary\":\"complete\"}"}`
+
+		if requests.Add(1) == 1 {
+			call = `{"name":"tasks","arguments":"{\"tasks\":[` +
+				`{\"title\":\"read the parser\",\"status\":\"done\"},` +
+				`{\"title\":\"fix the lexer\",\"status\":\"in_progress\",\"note\":\"off by one\"},` +
+				`{\"title\":\"add a test\",\"status\":\"pending\"}]}"}`
+		}
+
+		fmt.Fprintf(w, "data: %s\n\n",
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":`+call+`}]},"finish_reason":"tool_calls"}]}`)
+
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
+agent:
+  model: test-model
+ui:
+  plain: true
+default_provider: local
+providers:
+  local:
+    driver: openai
+    base_url: %s
+    api_key: test-key
+`, server.URL)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	withArgs(t, "--config", configPath, "--dir", t.TempDir(), orderFile(t, "fix the lexer"))
+
+	transcript, err := captureStdout(t, run)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	for _, want := range []string{"1/3 done", "[x] read the parser", "[>] fix the lexer - off by one", "[ ] add a test"} {
+		if !strings.Contains(transcript, want) {
+			t.Errorf("the transcript is missing %q:\n%s", want, transcript)
+		}
+	}
+
+	if requests.Load() != 2 {
+		t.Errorf("the model was called %d times, want the tasks turn and the settling turn", requests.Load())
+	}
 }
 
 func TestAnOrdersTitleReachesTheViewer(t *testing.T) {

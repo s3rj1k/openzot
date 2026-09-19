@@ -56,7 +56,7 @@ survives.
 | Stat                  | Shows                                                          |
 | --------------------- | -------------------------------------------------------------- |
 | `provider` / `model`  | what the run is talking to                                     |
-| `task`                | plan steps done, from the agent's own `plan`/`progress` calls   |
+| `task`                | tasks done out of the agent's own `tasks` list, e.g. `3/7`     |
 | `order`               | position in a batch - `2/5` when running several orders         |
 | `iter`                | agentic rounds, against the cap when one is set                 |
 | `elapsed`             | wall time, against `max_time` when set                          |

@@ -6,6 +6,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/openzot/openzot/agent"
 )
 
 // maxOutputLines caps how much command output we echo into the log so a chatty
@@ -22,10 +24,8 @@ func renderToolStart(name string, args map[string]interface{}) string {
 	switch name {
 	case "shell":
 		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
-	case "plan":
-		return renderPlan(args)
-	case "progress":
-		return renderProgress(args)
+	case "tasks":
+		return renderTasks(args)
 	default:
 		return toolOtherStyle.Render("  "+pad(name, 6)+" ") + outputStyle.Render(compactArgs(args))
 	}
@@ -134,74 +134,61 @@ func commandOutput(m map[string]interface{}) string {
 
 // --- small helpers over the loosely-typed arg/result maps -------------------
 
-// renderPlan lays the plan out as a numbered list, because the plan is the one
-// piece of the run worth reading in full - it is the map the agent is following,
-// and seeing it is how the operator knows whether the approach is sound.
-func renderPlan(args map[string]interface{}) string {
-	head := toolOtherStyle.Render("  plan   ")
-	if rationale := str(args, "rationale"); rationale != "" {
-		head += thoughtStyle.Render(truncate(rationale, 200))
-	}
+// renderTasks lays the task list out as a checklist, one line per task, headed by
+// how much of it is done. The list is the one piece of the run worth reading in
+// full - it is the map the agent is following and how far along it is, and seeing
+// it is how the operator knows whether the approach is sound.
+func renderTasks(args map[string]interface{}) string {
+	head := toolOtherStyle.Render("  tasks  ")
 
-	steps := strList(args, "steps")
-	if len(steps) == 0 {
+	tasks, err := agent.ParseTasks(args)
+	if err != nil {
+		// the call itself is refused with the reason, so the log has nothing
+		// worth drawing beyond the header
 		return head
 	}
 
 	var b strings.Builder
-	b.WriteString(head)
-	for i, step := range steps {
-		b.WriteString("\n")
-		b.WriteString(outputStyle.Render(fmt.Sprintf("    %d. ", i+1)))
-		b.WriteString(taskStyle.Render(truncate(step, 200)))
+
+	b.WriteString(head + outputStyle.Render(fmt.Sprintf("%d/%d done", agent.CountDone(tasks), len(tasks))))
+
+	for _, task := range tasks {
+		b.WriteString("\n    " + taskMarker(task.Status) + " ")
+		b.WriteString(taskLineStyle(task.Status).Render(truncate(task.Title, 200)))
+
+		if task.Note != "" {
+			b.WriteString(outputStyle.Render(" - " + truncate(task.Note, 160)))
+		}
 	}
+
 	return b.String()
 }
 
-// renderProgress shows the current step, then what is done, blocked and next -
-// a live status the operator can glance at on a long run.
-func renderProgress(args map[string]interface{}) string {
-	head := toolOtherStyle.Render("  update ")
-	if current := str(args, "current"); current != "" {
-		head += taskStyle.Render(truncate(current, 200))
-	} else {
-		head += outputStyle.Render("progress")
+// taskMarker is the glyph drawn beside a task, coloured for its status.
+func taskMarker(status agent.TaskStatus) string {
+	switch status {
+	case agent.TaskDone:
+		return okStyle.Render("✓")
+	case agent.TaskInProgress:
+		return toolOtherStyle.Render("▶")
+	case agent.TaskBlocked:
+		return errStyle.Render("✗")
+	default:
+		return outputStyle.Render("·")
 	}
-
-	var b strings.Builder
-	b.WriteString(head)
-	for _, section := range []struct {
-		label string
-		key   string
-		style lipgloss.Style
-	}{
-		{"done", "completed", okStyle},
-		{"blocked", "blockers", errStyle},
-		{"next", "nextSteps", outputStyle},
-	} {
-		for _, item := range strList(args, section.key) {
-			b.WriteString("\n")
-			b.WriteString(outputStyle.Render("    " + pad(section.label, 8)))
-			b.WriteString(section.style.Render(truncate(item, 180)))
-		}
-	}
-	return b.String()
 }
 
-// strList reads a JSON string array from a tool's arguments, tolerating the
-// non-string entries a model occasionally emits.
-func strList(args map[string]interface{}, key string) []string {
-	raw, ok := args[key].([]interface{})
-	if !ok {
-		return nil
+// taskLineStyle dims what is finished and keeps the task being worked on bright,
+// so the eye lands on where the run is.
+func taskLineStyle(status agent.TaskStatus) lipgloss.Style {
+	switch status {
+	case agent.TaskDone:
+		return outputStyle
+	case agent.TaskBlocked:
+		return errStyle
+	default:
+		return taskStyle
 	}
-	out := make([]string, 0, len(raw))
-	for _, item := range raw {
-		if s, ok := item.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func compactArgs(args map[string]interface{}) string {

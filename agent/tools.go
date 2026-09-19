@@ -14,11 +14,11 @@ const DefaultMaxToolOutput = 100_000
 
 // DefaultTools returns the standard tool set, with the default output ceiling.
 //
-// The set is three tools. shell is the only one that touches the machine: the
+// The set is two tools. shell is the only one that touches the machine: the
 // model reads, lists, creates and changes files with ordinary commands, the way
 // anyone does at a terminal, so there is one place a run's effects come from and
-// one place to bound them. plan and progress change nothing on disk; they exist
-// so the run's strategy and state can be followed.
+// one place to bound them. tasks changes nothing on disk; it exists so the work
+// a run has set itself, and how far along it is, can be followed.
 //
 // shell runs with the privileges of the process. That is the point - an agent
 // that cannot touch the machine is not much use to a CLI - but it means the
@@ -54,70 +54,30 @@ func DefaultToolsWith(maxOutput int) Tools {
 			Handler: s.shell,
 		},
 
-		"plan": {
-			Description: "Lay out an ordered plan for the task. Call this at the start, and again whenever you change approach. The plan is recorded so your strategy is visible and you can hold yourself to it.",
+		"tasks": {
+			Description: "List the tasks the work needs and keep each one's status current. Call it at the start to lay the work out, then again as you go: set a task in_progress when you begin it, done when it is finished, blocked when it cannot go on. Every call carries the whole list and replaces the last, so also use it to revise the list when your approach changes. Use a task's note for what blocks it, what you found, or an assumption you made.",
 			Parameters: FunctionParameters{
 				"type": "object",
 				"properties": map[string]any{
-					"steps": map[string]any{
+					"tasks": map[string]any{
 						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "The steps, in the order you will do them",
+						"description": "Every task, in the order you will do them, each with its current status",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"title":  map[string]any{"type": "string", "description": "What the task is"},
+								"status": map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done", "blocked"}, "description": "Where the task stands"},
+								"note":   map[string]any{"type": "string", "description": "Optional: why it is blocked, what you found, or an assumption you made"},
+							},
+							"required": []string{"title", "status"},
+						},
 					},
-					"rationale": map[string]any{"type": "string", "description": "Why this approach"},
 				},
-				"required": []string{"steps"},
+				"required": []string{"tasks"},
 			},
-			Handler: planHandler,
-		},
-
-		"progress": {
-			Description: "Record progress on the task: what is done, what you are doing now, and anything blocking you. Call this as you complete steps so your state stays visible across a long run.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"completed": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Steps finished so far"},
-					"current":   map[string]any{"type": "string", "description": "What you are working on now"},
-					"blockers":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Anything preventing progress"},
-					"nextSteps": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "What comes next"},
-				},
-			},
-			Handler: progressHandler,
+			Handler: tasksHandler,
 		},
 	}
-}
-
-// planHandler records the model's plan.
-//
-// Plan and progress are reflective tools: they change nothing on disk. Their
-// value is that the model has to state its approach and its status in a
-// structured form, which both organises its own reasoning and makes the run
-// followable in the viewer and the session log. The step content lives in the
-// call's arguments; the result only has to acknowledge it.
-func planHandler(_ context.Context, args map[string]any) (any, error) {
-	steps, _ := args["steps"].([]any)
-
-	if len(steps) == 0 {
-		return nil, fmt.Errorf("a plan needs at least one step")
-	}
-
-	message := fmt.Sprintf("plan recorded: %d step(s)", len(steps))
-
-	if rationale, _ := args["rationale"].(string); rationale != "" {
-		message += " - " + rationale
-	}
-
-	return message, nil
-}
-
-// progressHandler records a progress checkpoint. Like plan, the content is in
-// the arguments and the result is an acknowledgement.
-func progressHandler(_ context.Context, args map[string]any) (any, error) {
-	if current, _ := args["current"].(string); current != "" {
-		return "progress recorded: " + current, nil
-	}
-
-	return "progress recorded", nil
 }
 
 // toolSet carries the configuration the tools share - currently just the output

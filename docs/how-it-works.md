@@ -12,7 +12,9 @@ The harness is zot's own, in the [`agent`](../agent) package:
   results, and goes again - until it records an outcome (`success` / `failure`)
   or a budget or guard stops it.
 - `agent.DefaultTools()` gives it the toolbox: `shell` for all of the work, plus
-  `plan` and `progress` to structure and narrate it. There are no file tools:
+  `tasks`, which lists what the work needs and keeps each task's status
+  (`pending`, `in_progress`, `done` or `blocked`, with an optional note). Every
+  `tasks` call carries the whole list and replaces the last. There are no file tools:
   the model reads, lists, creates and changes files with ordinary shell
   commands, so there is one place a run's effects come from and one place to
   bound them. zot talks to text models only.

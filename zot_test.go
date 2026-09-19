@@ -929,7 +929,7 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 
 		// only check things that look like tool names (a real tool, or the
 		// phantom ones we are guarding against)
-		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "read": true, "write": true, "list": true}
+		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "read": true, "write": true, "list": true, "plan": true, "progress": true}
 
 		if !real[name] && phantom[name] {
 			t.Errorf("the instructions names %q, which is not a real tool", name)
@@ -937,7 +937,7 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 	}
 
 	// and positively assert the tools the instructions promises are all present
-	for _, want := range []string{"plan", "progress", "shell", "success", "failure"} {
+	for _, want := range []string{"tasks", "shell", "success", "failure"} {
 		if !real[want] {
 			t.Errorf("the instructions relies on %q but it is not a real tool", want)
 		}
@@ -962,6 +962,17 @@ func TestDefaultInstructionsTeachShellAsTheOnlyWayToTouchTheMachine(t *testing.T
 	} {
 		if !strings.Contains(DefaultInstructions, want) {
 			t.Errorf("the instructions should mention %q so the model knows how to work through shell", want)
+		}
+	}
+}
+
+// The tasks tool only helps if the model keeps it current, and the prompt is the
+// only thing that says how: each status it may use, and that a blocker or an
+// assumption belongs in a note.
+func TestDefaultInstructionsTeachHowToKeepTheTasksCurrent(t *testing.T) {
+	for _, want := range []string{"in_progress", "done", "blocked", "note", "whole list"} {
+		if !strings.Contains(DefaultInstructions, want) {
+			t.Errorf("the instructions should mention %q so the model keeps its tasks current", want)
 		}
 	}
 }

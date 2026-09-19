@@ -34,7 +34,7 @@ func shellHandler(ctx context.Context, a map[string]any) (any, error) {
 func TestDefaultToolsAreWellFormed(t *testing.T) {
 	tools := DefaultTools()
 
-	for _, name := range []string{"shell", "plan", "progress"} {
+	for _, name := range []string{"shell", "tasks"} {
 		definition, ok := tools[name]
 
 		if !ok {
@@ -110,77 +110,6 @@ func TestShellRespectsCancellation(t *testing.T) {
 	}
 }
 
-// plan and progress are reflective tools - they change nothing on disk, so the
-// contract is entirely in their arguments and their acknowledgement. A plan
-// without steps is the mistake worth catching: an empty plan is not a plan.
-func TestPlanTool(t *testing.T) {
-	out, err := call(t, DefaultTools(), "plan", map[string]any{
-		"steps":     []any{"read the code", "make the change", "run the tests"},
-		"rationale": "smallest safe change first",
-	})
-	if err != nil {
-		t.Fatalf("plan: %v", err)
-	}
-
-	text, _ := out.(string)
-
-	if !strings.Contains(text, "3 step") {
-		t.Errorf("plan ack should state the step count: %q", text)
-	}
-
-	if !strings.Contains(text, "smallest safe change first") {
-		t.Errorf("plan ack should carry the rationale: %q", text)
-	}
-
-	// a plan with no steps is rejected, so the model is told to actually plan
-	if _, err := call(t, DefaultTools(), "plan", map[string]any{"steps": []any{}}); err == nil {
-		t.Error("an empty plan must be an error")
-	}
-
-	if _, err := call(t, DefaultTools(), "plan", map[string]any{}); err == nil {
-		t.Error("a plan with no steps field must be an error")
-	}
-}
-
-func TestProgressTool(t *testing.T) {
-	out, err := call(t, DefaultTools(), "progress", map[string]any{
-		"completed": []any{"read the code"},
-		"current":   "making the change",
-		"nextSteps": []any{"run the tests"},
-	})
-	if err != nil {
-		t.Fatalf("progress: %v", err)
-	}
-
-	if text, _ := out.(string); !strings.Contains(text, "making the change") {
-		t.Errorf("progress ack should name the current step: %q", text)
-	}
-
-	// progress with nothing is still valid - it is a checkpoint, not a command
-	if _, err := call(t, DefaultTools(), "progress", map[string]any{}); err != nil {
-		t.Errorf("an empty progress checkpoint should be allowed: %v", err)
-	}
-}
-
-// plan and progress must be in the toolbox both tools ship, or the instructions
-// that tells the agent to call them is lying.
-func TestPlanAndProgressAreInTheToolbox(t *testing.T) {
-	tools := DefaultTools()
-
-	for _, name := range []string{"plan", "progress"} {
-		if _, ok := tools[name]; !ok {
-			t.Errorf("DefaultTools is missing the %q tool", name)
-		}
-	}
-}
-
-// A command that leaves a process behind must not be able to wedge the run.
-//
-// The timeout kills the shell, but a grandchild that inherited the output pipe
-// keeps it open, and CombinedOutput blocks until the pipe closes - so the tool
-// call never returned. Nothing downstream could recover: the run's time budget
-// is only checked at an iteration boundary, and cancelling the run kills the
-// shell, not the process holding the pipe. `npm start &` was enough to do it.
 func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the shell idiom under test is POSIX")
@@ -208,10 +137,10 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 	}
 }
 
-// The toolbox is three tools, and shell is the one that touches the machine. A
+// The toolbox is two tools, and shell is the one that touches the machine. A
 // file tool that came back would be a second way to change the tree, and the
 // system prompt tells the model shell is the only way.
-func TestTheToolboxIsShellPlanAndProgress(t *testing.T) {
+func TestTheToolboxIsShellAndTasks(t *testing.T) {
 	tools := DefaultTools()
 
 	var names []string
@@ -222,8 +151,8 @@ func TestTheToolboxIsShellPlanAndProgress(t *testing.T) {
 
 	sort.Strings(names)
 
-	if got := strings.Join(names, ","); got != "plan,progress,shell" {
-		t.Errorf("tools = %s, want plan, progress and shell", got)
+	if got := strings.Join(names, ","); got != "shell,tasks" {
+		t.Errorf("tools = %s, want shell and tasks", got)
 	}
 }
 
