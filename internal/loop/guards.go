@@ -91,9 +91,8 @@ const (
 	// rarely recovers.
 	DefaultMaxEmpties = 3
 
-	// DefaultMaxSettles caps settle nudges. A positive MaxSettles enables settle
-	// mode, where a run is finished only when the model calls a terminal tool -
-	// never because its prose sounded final.
+	// DefaultMaxSettles caps settle nudges. A run is finished only when the
+	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
 
 	// MinInputTokens is reserved so the instructions and the tool schemas always
@@ -105,8 +104,8 @@ const (
 	RunawayGuardMinChars = 2_000
 )
 
-// Terminal tool names. In settle mode the model ends a run by calling one of
-// these, which is unambiguous in a way prose never is.
+// Terminal tool names. The model ends a run by calling one of these, which is
+// unambiguous in a way prose never is.
 const (
 	SuccessTool = "success"
 	FailureTool = "failure"
@@ -116,17 +115,13 @@ const (
 type StopReason string
 
 const (
-	// StopSettled - the model called the success tool. The only clean ending in
-	// settle mode.
+	// StopSettled - the model called the success tool. The only clean ending.
 	StopSettled StopReason = "settled"
 
 	// StopFailed - the model called the failure tool: it reached a conclusion,
 	// and the conclusion is that the task cannot be done. A settled ending, but
 	// not a successful one, so it must never be reported as StopSettled is.
 	StopFailed StopReason = "failed"
-
-	// StopStop - the model finished talking and settle mode is off.
-	StopStop StopReason = "stop"
 
 	// StopIterations - the round budget ran out.
 	StopIterations StopReason = "iterations"
@@ -147,7 +142,7 @@ const (
 	// StopEmpty - too many turns produced nothing at all.
 	StopEmpty StopReason = "empty"
 
-	// StopUnsettled - settle mode exhausted its nudges without a terminal call.
+	// StopUnsettled - the run exhausted its settle nudges without a terminal call.
 	StopUnsettled StopReason = "unsettled"
 
 	// StopAborted - the caller cancelled.

@@ -76,6 +76,11 @@ func usageFrame(prompt, completion int) string {
 	)
 }
 
+// settle is a turn that ends the run: the model calls the success tool.
+func settle(summary string) string {
+	return tool("done", SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
+}
+
 func tool(id, name, arguments string) string {
 	return fmt.Sprintf(
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}]}`,
@@ -154,9 +159,10 @@ func TestNewAppliesDefaults(t *testing.T) {
 		t.Errorf("maxDuration = %v, want unbounded by default", engine.maxDuration)
 	}
 
-	// settle mode is opt-in
-	if engine.settleMode() {
-		t.Error("settle mode must be off unless MaxSettles is positive")
+	// Settlement cannot be switched off: an unattended run needs an unambiguous
+	// ending, so an unset budget is the default budget, never "no settling".
+	if engine.maxSettles != DefaultMaxSettles {
+		t.Errorf("maxSettles = %d, want the default %d - there is no way to opt out", engine.maxSettles, DefaultMaxSettles)
 	}
 
 	if engine.inputBudget < MinInputTokens {
@@ -233,12 +239,12 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("half an answ"), truncated()},
-			[]string{text("er, continued"), stop()},
+			[]string{settle("er, continued")},
 		),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("reason = %q, want stop", result.Reason)
 	}
 
@@ -375,18 +381,6 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 	}
 }
 
-// Outside settle mode a plain stop is a legitimate ending.
-func TestPlainStopEndsWithoutSettleMode(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{text("here you go"), stop()}),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
-	})
-
-	if result.Reason != StopStop {
-		t.Errorf("reason = %q, want stop", result.Reason)
-	}
-}
-
 func TestCancellationStopsTheRun(t *testing.T) {
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("hi"), stop()}),
@@ -411,12 +405,12 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "missing", `{}`)},
-			[]string{text("recovered"), stop()},
+			[]string{settle("recovered")},
 		),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("reason = %q, want the run to recover and stop normally", result.Reason)
 	}
 
@@ -441,7 +435,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "boom", `{}`)},
-			[]string{text("noted"), stop()},
+			[]string{settle("noted")},
 		),
 		Tools:    tools,
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
@@ -462,7 +456,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 
 func TestEventsAreEmitted(t *testing.T) {
 	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{text("hello"), stop()}),
+		Client:   stub(t, []string{text("hello"), tool("c1", SuccessTool, `{"summary":"done"}`)}),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
 	if err != nil {
@@ -513,25 +507,12 @@ func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
 	}
 }
 
-func TestInstructionsOmitsSettleInstructionWhenOff(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Instructions: "plain"})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	if strings.Contains(engine.instructions(), SuccessTool) {
-		t.Error("the settle instruction must not appear when settle mode is off")
-	}
-}
-
-func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
-	options := Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{stop()}),
-		Tools:      []fantasy.AgentTool{namedTool("echo", nil)},
-		MaxSettles: 5,
-	}
-
-	engine, err := New(options)
+// The terminal tools are always offered: the model cannot settle without them.
+func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
+	engine, err := New(Options{ContextWindow: testWindow,
+		Client: stub(t, []string{stop()}),
+		Tools:  []fantasy.AgentTool{namedTool("echo", nil)},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -545,16 +526,6 @@ func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
 	for _, want := range []string{"echo", SuccessTool, FailureTool} {
 		if !names[want] {
 			t.Errorf("tool %q missing from the definitions", want)
-		}
-	}
-
-	options.MaxSettles = 0
-
-	engine, _ = New(options)
-
-	for _, tool := range engine.toolDefinitions() {
-		if tool.GetName() == SuccessTool {
-			t.Error("terminal tools must not be offered outside settle mode")
 		}
 	}
 }
@@ -581,7 +552,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 			names = append(names, tool.GetName())
 		}
 
-		if want := "edit,list,read,shell,write"; strings.Join(names, ",") != want {
+		if want := "edit,failure,list,read,shell,success,write"; strings.Join(names, ",") != want {
 			t.Fatalf("tool order = %v, want %s", names, want)
 		}
 	}
@@ -790,7 +761,7 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 				text("looking"),
 				tool("c1", "echo", "{}"),
 			},
-			[]string{text("done"), stop()},
+			[]string{settle("done")},
 		),
 		Tools:          tools,
 		ContextWindow:  testWindow,

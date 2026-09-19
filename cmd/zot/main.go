@@ -795,14 +795,6 @@ func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 	// it as unbounded rather than failing a run that already passed validation.
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
-	// there is no switch to turn settlement off: zot exists to run unattended, and
-	// an unattended run needs an unambiguous ending - a terminal tool call, not
-	// prose that happens to sound final
-	settles := cfg.Agent.MaxSettles
-	if settles <= 0 {
-		settles = loop.DefaultMaxSettles
-	}
-
 	opts := loop.Options{
 		Tools: tools.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
 
@@ -811,7 +803,7 @@ func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 		Unrepaired: []string{tools.ShellTool},
 
 		MaxIterations:    maxIterations,
-		MaxSettles:       settles,
+		MaxSettles:       cfg.Agent.MaxSettles,
 		MaxCalls:         cfg.Agent.MaxCalls,
 		MaxContinuations: cfg.Agent.MaxContinuations,
 		MaxRecoveries:    cfg.Agent.MaxRecoveries,

@@ -38,8 +38,7 @@ func contextLimitOnce(t *testing.T) (*Client, *int) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"recovered"}}]}`+"\n\n")
-		fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"recovered\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
@@ -94,7 +93,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 
 	result := engine.Run(context.Background(), nil)
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q, want the run to recover and stop normally", result.Reason)
 	}
 
@@ -248,8 +247,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"second time lucky"}}]}`+"\n\n")
-		fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"second time lucky\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
@@ -282,7 +280,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		}
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("reason = %q, want the retry to succeed", result.Reason)
 	}
 
@@ -354,8 +352,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"fits now"}}]}`+"\n\n")
-		fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"fits now\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
@@ -384,7 +381,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 	result := engine.Run(context.Background(), nil)
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q, want the run to recover", result.Reason)
 	}
 
@@ -414,8 +411,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`+"\n\n")
-		fmt.Fprint(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"ok\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
@@ -435,7 +431,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 
 	engine.inputBudget = 40_000
 
-	if result := engine.Run(context.Background(), nil); result.Reason != StopStop {
+	if result := engine.Run(context.Background(), nil); result.Reason != StopSettled {
 		t.Errorf("reason = %q, want the run to recover", result.Reason)
 	}
 }

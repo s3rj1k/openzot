@@ -82,9 +82,11 @@ type Options struct {
 	// driving an outage should ask for.
 	RetryBackoff time.Duration
 
-	// MaxSettles enables settle mode when positive: the run finishes only when
-	// the model calls a terminal tool. This is what replaces deciding a task is
-	// done because the answer contained the word "completed".
+	// MaxSettles bounds how many times the model is nudged to record an outcome
+	// before the run is surfaced as unsettled. Zero uses the default. There is no
+	// way to turn settling off: a run finishes only when the model calls a
+	// terminal tool, which is what replaces deciding a task is done because the
+	// answer contained the word "completed".
 	MaxSettles int
 
 	// MaxTokens bounds a single response.
@@ -169,7 +171,7 @@ type Result struct {
 // parsing prose.
 func (r Result) ExitCode() int {
 	switch r.Reason {
-	case StopSettled, StopStop:
+	case StopSettled:
 		return 0
 	default:
 		return 1
@@ -260,7 +262,7 @@ func New(options Options) (*Engine, error) {
 		maxRecoveries:    pick(options.MaxRecoveries, DefaultMaxRecoveries),
 		maxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
 		maxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
-		maxSettles:       options.MaxSettles,
+		maxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
 		checkpoints:      normalizeCheckpoints(options.LimitCheckpoints),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
@@ -420,11 +422,6 @@ func (e *Engine) noteApproachingLimits(messages []Message, budget *Budget, elaps
 	}
 
 	return messages
-}
-
-// settleMode reports whether the run ends only on a terminal tool call.
-func (e *Engine) settleMode() bool {
-	return e.maxSettles > 0
 }
 
 // Run drives the conversation to a conclusion, emitting events as it goes.
@@ -665,10 +662,10 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		}
 
 		// A genuinely empty turn - no text, no reasoning, no tool call - is a stuck
-		// model, bounded tightly by the empty budget in either mode: a run producing
-		// nothing must not burn the whole (much larger) settle budget on silence. In
-		// settle mode the nudge still points at the terminal tools, though - a plain
-		// "say you are finished" would not record the outcome settle mode requires.
+		// model, bounded tightly by the empty budget: a run producing nothing must
+		// not burn the whole (much larger) settle budget on silence. The nudge still
+		// points at the terminal tools, though - a plain "say you are finished"
+		// would not record the outcome a run requires.
 
 		if turn.Text == "" && turn.Reasoning == "" {
 			if budget.Empties >= e.maxEmpties {
@@ -685,46 +682,31 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				"the model returned an empty turn; nudging it to continue (%d/%d)",
 				budget.Empties, e.maxEmpties)})
 
-			nudge := emptyNotice()
-			if e.settleMode() {
-				nudge = settleNotice()
-			}
-
-			messages = append(messages, Message{Type: TypeUser, Text: nudge})
-
-			continue
-		}
-
-		// The model produced content but did not act. In settle mode that is not an
-		// ending: nudge it toward success / failure, up to maxSettles.
-
-		if e.settleMode() {
-			if budget.Settles >= e.maxSettles {
-				return e.finish(messages, budget, StopUnsettled,
-					"the model stopped without recording an outcome", nil)
-			}
-
-			budget.Settles++
-
-			emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-				"the model stopped without recording an outcome; nudging it to settle (%d/%d)",
-				budget.Settles, e.maxSettles)})
-
 			messages = append(messages, Message{Type: TypeUser, Text: settleNotice()})
 
 			continue
 		}
 
-		return e.finish(messages, budget, StopStop, turn.Text, nil)
+		// The model produced content but did not act. That is not an ending: nudge
+		// it toward success / failure, up to maxSettles.
+
+		if budget.Settles >= e.maxSettles {
+			return e.finish(messages, budget, StopUnsettled,
+				"the model stopped without recording an outcome", nil)
+		}
+
+		budget.Settles++
+
+		emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+			"the model stopped without recording an outcome; nudging it to settle (%d/%d)",
+			budget.Settles, e.maxSettles)})
+
+		messages = append(messages, Message{Type: TypeUser, Text: settleNotice()})
 	}
 }
 
 // terminalCall reports whether the model ended the run with a terminal tool.
 func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
-	if !e.settleMode() {
-		return "", "", false
-	}
-
 	for _, call := range calls {
 		switch call.ToolName {
 		case SuccessTool:
@@ -957,27 +939,21 @@ func (e *Engine) instructions() string {
 
 	builder.WriteString(e.options.Instructions)
 
-	if e.settleMode() {
-		fmt.Fprintf(&builder,
-			"\n\nWhen the objective is met, call %s. If it cannot be met, call %s. "+
-				"The run is not finished until you call one of them.",
-			SuccessTool, FailureTool,
-		)
-	}
+	fmt.Fprintf(&builder,
+		"\n\nWhen the objective is met, call %s. If it cannot be met, call %s. "+
+			"The run is not finished until you call one of them.",
+		SuccessTool, FailureTool,
+	)
 
 	return builder.String()
 }
 
-// toolDefinitions renders the tool schemas, adding the terminal tools in settle
-// mode.
+// toolDefinitions renders the tool schemas, with the terminal tools.
 func (e *Engine) toolDefinitions() []fantasy.Tool {
 	var offered []fantasy.AgentTool
 
 	offered = append(offered, e.options.Tools...)
-
-	if e.settleMode() {
-		offered = append(offered, terminalTools()...)
-	}
+	offered = append(offered, terminalTools()...)
 
 	// map order was random once and a tool list that reshuffles between requests
 	// defeats any server-side prompt cache keyed on the prefix, so the order is

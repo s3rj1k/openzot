@@ -40,13 +40,7 @@ func cycleNotice(detail string) string {
 	)
 }
 
-// emptyNotice answers a turn that produced nothing.
-func emptyNotice() string {
-	return noticePrefix + " your last turn produced no answer and no tool call. " +
-		"Either take a concrete next step, or state plainly that you are finished and why."
-}
-
-// settleNotice is the nudge in settle mode: the model stopped talking without
+// settleNotice is the nudge to settle: the model stopped talking without
 // declaring an outcome, which is not an ending.
 func settleNotice() string {
 	return fmt.Sprintf(
@@ -140,7 +134,7 @@ func truncationNotice() string {
 		"Continue from exactly where it stopped, without repeating what you already wrote."
 }
 
-// terminalTools are the tool definitions injected in settle mode.
+// terminalTools are the tool definitions injected into every run.
 //
 // They are given to the model as ordinary tools because that is the mechanism it
 // already understands. The loop intercepts them rather than dispatching to a

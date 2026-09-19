@@ -51,7 +51,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 // With no time cap, a run is never stopped for time - the default is unbounded.
 func TestTimeIsUnboundedByDefault(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
-		Client:        stub(t, []string{text("done"), stop()}),
+		Client:        stub(t, []string{settle("done")}),
 		MaxIterations: 5,
 	})
 
@@ -68,7 +68,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
 			[]string{tool("call_2", "echo", "{}")},
-			[]string{text("done"), stop()},
+			[]string{settle("done")},
 		),
 		Tools:            echoTool(&calls),
 		MaxIterations:    10,
@@ -83,7 +83,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 		t.Errorf("Calls = %d, want 2", result.Budget.Calls)
 	}
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("Reason = %q, want the run to finish normally", result.Reason)
 	}
 }
@@ -94,7 +94,7 @@ func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("half an ans"), truncated()},
-			[]string{text("wer"), stop()},
+			[]string{settle("wer")},
 		),
 		MaxIterations: 10,
 	})
@@ -289,7 +289,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", `not json at all`)},
-			[]string{text("let me try that again"), stop()},
+			[]string{settle("let me try that again")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -303,7 +303,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 		t.Error("the decode failure must be fed back so the model can correct it")
 	}
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("Reason = %q, want the run to carry on", result.Reason)
 	}
 }
@@ -323,7 +323,7 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", `{"value": "abc`)},
-			[]string{text("done"), stop()},
+			[]string{settle("done")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -337,7 +337,7 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 		t.Error("a call that could be repaired must not be reported as a failure")
 	}
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("Reason = %q", result.Reason)
 	}
 }
@@ -352,13 +352,13 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
-			[]string{text("understood"), stop()},
+			[]string{settle("understood")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Errorf("Reason = %q, want the run to survive a failing tool", result.Reason)
 	}
 
@@ -377,7 +377,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
-			[]string{text("done"), stop()},
+			[]string{settle("done")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -394,15 +394,20 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 // providers actually send - must not derail the run.
 func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
-		Client: stub(t, []string{
-			text("I cannot help with that"),
-			`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`,
-		}),
+		Client: stub(t,
+			[]string{
+				text("I cannot help with that"),
+				`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`,
+			},
+			[]string{settle("stopped")},
+		),
 		MaxIterations: 5,
 	})
 
-	if result.Reason != StopStop {
-		t.Errorf("Reason = %q, want the turn treated as an ending", result.Reason)
+	// the filtered turn is answered like any turn that stops without acting: a
+	// nudge to settle, and the run carries on
+	if result.Reason != StopSettled || result.Budget.Settles != 1 {
+		t.Errorf("Reason = %q after %d nudges, want the run to carry on and settle after one", result.Reason, result.Budget.Settles)
 	}
 
 	if result.Err != nil {
@@ -1018,8 +1023,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 		default:
 			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", text("done"))
-			fmt.Fprintf(w, "data: %s\n\n", stop())
+			fmt.Fprintf(w, "data: %s\n\n", settle("done"))
 			fmt.Fprint(w, "data: [DONE]\n\n")
 		}
 	}))
@@ -1050,7 +1054,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q (%v), want the run to finish", result.Reason, result.Err)
 	}
 
@@ -1077,7 +1081,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{stop()},
-			[]string{text("recovered"), stop()},
+			[]string{settle("recovered")},
 		),
 		MaxIterations: 5,
 		MaxEmpties:    3,
@@ -1095,7 +1099,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 		}
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q (%s)", result.Reason, result.Message)
 	}
 

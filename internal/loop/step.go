@@ -95,13 +95,10 @@ func (s *step) reset(messages *[]Message, budget *Budget, emit func(Event)) {
 }
 
 // newAgent builds the agent a run uses: the instructions, and every tool - the
-// terminal ones in settle mode - wrapped so the engine sees each call.
+// terminal ones too - wrapped so the engine sees each call.
 func (e *Engine) newAgent(state *step) fantasy.Agent {
 	offered := append([]fantasy.AgentTool(nil), e.options.Tools...)
-
-	if e.settleMode() {
-		offered = append(offered, terminalTools()...)
-	}
+	offered = append(offered, terminalTools()...)
 
 	wrapped := make([]fantasy.AgentTool, len(offered))
 
@@ -268,7 +265,7 @@ func (s *step) onToolCall(call fantasy.ToolCallContent) error {
 
 	s.turn.ToolCalls = append(s.turn.ToolCalls, call)
 
-	if s.engine.settleMode() && isTerminal(call.ToolName) {
+	if isTerminal(call.ToolName) {
 		s.terminalSeen = true
 	}
 
@@ -420,7 +417,7 @@ func (g guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	return response, nil
 }
 
-// isTerminal reports whether a tool name is one of the settle-mode terminal tools.
+// isTerminal reports whether a tool name is one of the terminal tools.
 func isTerminal(name string) bool {
 	return name == SuccessTool || name == FailureTool
 }

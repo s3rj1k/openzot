@@ -98,12 +98,12 @@ func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
 	}
 }
 
-// An empty turn in settle mode stays bounded by the tight empty budget (a model
+// An empty turn stays bounded by the tight empty budget (a model
 // producing nothing is stuck and must not burn the whole settle budget on
 // silence), but its nudge points at the terminal tools so the model is told what
 // settling actually requires - not the plain "say you are finished".
 func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
-	// every turn is empty (no content, finish=stop); settle mode is on, and the
+	// every turn is empty (no content, finish=stop) and the
 	// empty budget is tighter than the settle budget
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
@@ -130,7 +130,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	}
 
 	if !sawTerminalGuidance {
-		t.Error("in settle mode an empty turn's nudge must point at success/failure, not the plain empty notice")
+		t.Error("an empty turn's nudge must point at success/failure, not the plain empty notice")
 	}
 }
 
@@ -138,7 +138,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 // so a viewer or the session summary can show real usage. Each call bills its
 // whole prompt, so per-turn counts sum.
 func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
-	client := stub(t, []string{text("all done"), usageFrame(100, 40)})
+	client := stub(t, []string{settle("all done"), usageFrame(100, 40)})
 
 	result := run(t, Options{ContextWindow: testWindow, Client: client})
 
@@ -160,15 +160,15 @@ func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 			[]string{tool("call_1", "echo", "{}")}, // productive - resets
 			[]string{stop()},                       // empty: 1/3 again
 			[]string{tool("call_2", "echo", "{}")}, // productive - resets
-			[]string{text("done"), stop()},         // a real answer ends the run
+			[]string{settle("done")},               // settling ends the run
 		),
 		Tools:      echoTool(new(int)),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxEmpties: 3,
 	})
 
-	if result.Reason != StopStop {
-		t.Errorf("reason = %q, want %q - scattered empties must not stop the run", result.Reason, StopStop)
+	if result.Reason != StopSettled {
+		t.Errorf("reason = %q, want %q - scattered empties must not stop the run", result.Reason, StopSettled)
 	}
 
 	if result.Budget.Empties != 0 {

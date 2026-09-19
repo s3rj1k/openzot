@@ -78,7 +78,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	})
 
 	recorder.Result(loop.Result{
-		Reason:   loop.StopStop,
+		Reason:   loop.StopSettled,
 		Message:  "finished",
 		Messages: conversation,
 		Budget:   loop.Budget{Iterations: 3, Calls: 2, Cycles: 1, Settles: 1, InputTokens: 1200, OutputTokens: 340},
@@ -111,7 +111,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 
 	result := records[4].Result
 
-	if result.Reason != "stop" || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
+	if result.Reason != "settled" || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
 		t.Errorf("result = %+v", result)
 	}
 }
@@ -217,7 +217,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	recorder.Conversation(conversation)
 
-	recorder.Result(loop.Result{Reason: loop.StopStop, Messages: conversation})
+	recorder.Result(loop.Result{Reason: loop.StopSettled, Messages: conversation})
 
 	var got []string
 

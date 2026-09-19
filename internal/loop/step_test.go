@@ -101,7 +101,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 		result := run(t, Options{ContextWindow: testWindow,
 			Client: stub(t,
 				[]string{toolCalls(finish, [3]string{"c1", "echo", `{}`})},
-				[]string{text("done"), stop()},
+				[]string{settle("done")},
 			),
 			Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
 			Messages:      []Message{{Type: TypeUser, Text: "go"}},
@@ -112,7 +112,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 			t.Errorf("finish %q: the tool ran %d times, want 1", finish, ran)
 		}
 
-		if result.Reason != StopStop {
+		if result.Reason != StopSettled {
 			t.Errorf("finish %q: reason = %q, want the run to carry on and stop normally", finish, result.Reason)
 		}
 	}
@@ -126,7 +126,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("length", [3]string{"c1", "echo", `{}`})},
-			[]string{text("done"), stop()},
+			[]string{settle("done")},
 		),
 		Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
@@ -147,14 +147,14 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 // to continue from rather than failing the run.
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
-		Client: stub(t, []string{text("carrying on"), stop()}),
+		Client: stub(t, []string{settle("carrying on")}),
 		Messages: []Message{
 			{Type: TypeUser, Text: "go"},
 			{Type: TypeBot, Text: "I began"},
 		},
 	})
 
-	if result.Reason != StopStop {
+	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q, err = %v, want the run to go ahead", result.Reason, result.Err)
 	}
 }
@@ -166,7 +166,7 @@ func TestACallThatNeverReachedATool(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
-			[]string{text("noted"), stop()},
+			[]string{settle("noted")},
 		),
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
 		MaxIterations: 5,
@@ -205,7 +205,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 			result := run(t, Options{ContextWindow: testWindow,
 				Client: stub(t,
 					[]string{toolCalls("tool_calls", [3]string{"c1", "echo", unfinished})},
-					[]string{text("done"), stop()},
+					[]string{settle("done")},
 				),
 				Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
 				Unrepaired:    test.unrepaired,
@@ -291,7 +291,7 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	var sunk, watched []EventKind
 
 	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{text("hi"), stop()}),
+		Client:   stub(t, []string{settle("hi")}),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 		OnEvent:  func(event Event) { sunk = append(sunk, event.Kind) },
 	})

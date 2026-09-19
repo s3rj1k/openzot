@@ -2715,7 +2715,7 @@ func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 	prompt := defaultPrompt(t)
 
 	real := map[string]bool{
-		// the terminal tools the loop injects in settle mode
+		// the terminal tools the loop injects
 		"success": true,
 		"failure": true,
 	}
@@ -2977,8 +2977,8 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 		t.Errorf("MaxDuration = %v, want 30m", timed.MaxDuration)
 	}
 
-	// Settlement cannot be switched off: an unattended run needs an unambiguous
-	// ending, so zero means the default budget, never "no settling".
+	// zero passes through as zero: the engine, not the config, owns the default,
+	// and it never means "no settling"
 	cfg.Agent.MaxSettles = 0
 
 	_, opts, err = resolve(cfg)
@@ -2986,8 +2986,8 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if opts.MaxSettles != loop.DefaultMaxSettles {
-		t.Errorf("MaxSettles = %d, want the default %d - there is no way to opt out", opts.MaxSettles, loop.DefaultMaxSettles)
+	if opts.MaxSettles != 0 {
+		t.Errorf("MaxSettles = %d, want the unset value left for the engine to default", opts.MaxSettles)
 	}
 }
 

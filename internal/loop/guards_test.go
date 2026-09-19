@@ -40,7 +40,6 @@ func TestNormalizeCheckpoints(t *testing.T) {
 func TestNoticesCarryThePrefix(t *testing.T) {
 	notices := map[string]string{
 		"cycle":      cycleNotice("you keep calling the same tool"),
-		"empty":      emptyNotice(),
 		"settle":     settleNotice(),
 		"checkpoint": limitCheckpointNotice(iterationLimit, 80, "8 of 10"),
 		"truncation": truncationNotice(),
@@ -215,11 +214,10 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 }
 
 // A caller scripting against zot tells success from everything else by the exit
-// code: only a run that settled, or finished talking, is a success.
+// code: only a run that settled is a success.
 func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
 	for reason, want := range map[StopReason]int{
 		StopSettled:       0,
-		StopStop:          0,
 		StopFailed:        1,
 		StopUnsettled:     1,
 		StopIterations:    1,
