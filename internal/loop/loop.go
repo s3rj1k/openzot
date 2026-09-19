@@ -10,20 +10,10 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"charm.land/fantasy/schema"
 
 	"github.com/openzot/openzot/internal/thread"
 )
-
-// ToolHandler executes a tool call.
-type ToolHandler func(ctx context.Context, arguments map[string]any) (any, error)
-
-// ToolDefinition is a tool offered to the model.
-type ToolDefinition struct {
-	Name        string
-	Description string
-	Parameters  map[string]any
-	Handler     ToolHandler
-}
 
 // Options configures a run.
 type Options struct {
@@ -36,8 +26,8 @@ type Options struct {
 	// Messages seeds the conversation.
 	Messages []Message
 
-	// Tools the model may call, keyed by name.
-	Tools map[string]ToolDefinition
+	// Tools the model may call.
+	Tools []fantasy.AgentTool
 
 	// OnConversation, when set, is called at each iteration boundary, and again
 	// just before each tool handler runs, with the conversation as it then
@@ -178,6 +168,9 @@ type Engine struct {
 	// toolTokens caches the cost of the tool schemas, which are identical on
 	// every request of a run and would otherwise be re-counted each round.
 	toolTokens int
+
+	// tools is Options.Tools by name, for dispatch.
+	tools map[string]fantasy.AgentTool
 }
 
 // toolSchemaTokens is what the tool definitions cost on the wire.
@@ -227,8 +220,15 @@ func New(options Options) (*Engine, error) {
 		budget = MinInputTokens
 	}
 
+	tools := make(map[string]fantasy.AgentTool, len(options.Tools))
+
+	for _, tool := range options.Tools {
+		tools[tool.Info().Name] = tool
+	}
+
 	return &Engine{
 		options:       options,
+		tools:         tools,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value
@@ -851,7 +851,7 @@ func (e *Engine) dispatch(
 
 		messages = append(messages, activityMessage(ActivityRequest, call, nil, ""))
 
-		definition, known := e.options.Tools[name]
+		tool, known := e.tools[name]
 
 		// decode before announcing, so the event carries usable arguments
 		arguments, decodeErr := decodeArguments(call)
@@ -881,7 +881,13 @@ func (e *Engine) dispatch(
 		// one must still leave what the model thought and asked for
 		e.handOver(messages)
 
-		output, err := definition.Handler(ctx, arguments)
+		response, err := tool.Run(ctx, fantasy.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Input})
+
+		// a tool that ran and reported a problem is answered the same way as
+		// one that could not run: the model reads the failure and acts on it
+		if err == nil && response.IsError {
+			err = errors.New(response.Content)
+		}
 
 		if err != nil {
 			emit(Event{Kind: EventToolCallError, Tool: name, Text: err.Error()})
@@ -891,9 +897,9 @@ func (e *Engine) dispatch(
 			continue
 		}
 
-		emit(Event{Kind: EventToolCallEnd, Tool: name, Result: output})
+		emit(Event{Kind: EventToolCallEnd, Tool: name, Result: response.Content})
 
-		messages = append(messages, activityMessage(ActivityResponse, call, output, ""))
+		messages = append(messages, activityMessage(ActivityResponse, call, response.Content, ""))
 	}
 
 	return messages, nil
@@ -1119,28 +1125,38 @@ func (e *Engine) instructions() string {
 // toolDefinitions renders the tool schemas, adding the terminal tools in settle
 // mode.
 func (e *Engine) toolDefinitions() []fantasy.Tool {
-	var definitions []ToolDefinition
+	var offered []fantasy.AgentTool
 
-	for name, definition := range e.options.Tools {
-		definition.Name = name
-		definitions = append(definitions, definition)
-	}
-
-	// map order is random, and a tool list that reshuffles between requests
-	// defeats any server-side prompt cache keyed on the prefix
-	slices.SortFunc(definitions, func(a, b ToolDefinition) int { return strings.Compare(a.Name, b.Name) })
+	offered = append(offered, e.options.Tools...)
 
 	if e.settleMode() {
-		definitions = append(definitions, terminalTools()...)
+		offered = append(offered, terminalTools()...)
 	}
 
-	tools := make([]fantasy.Tool, 0, len(definitions))
+	// map order was random once and a tool list that reshuffles between requests
+	// defeats any server-side prompt cache keyed on the prefix, so the order is
+	// fixed: by name
+	slices.SortFunc(offered, func(a, b fantasy.AgentTool) int {
+		return strings.Compare(a.Info().Name, b.Info().Name)
+	})
 
-	for _, definition := range definitions {
+	tools := make([]fantasy.Tool, 0, len(offered))
+
+	for _, tool := range offered {
+		info := tool.Info()
+
+		inputSchema := map[string]any{
+			"type":       "object",
+			"properties": info.Parameters,
+			"required":   info.Required,
+		}
+
+		schema.Normalize(inputSchema)
+
 		tools = append(tools, fantasy.FunctionTool{
-			Name:        definition.Name,
-			Description: definition.Description,
-			InputSchema: definition.Parameters,
+			Name:        info.Name,
+			Description: info.Description,
+			InputSchema: inputSchema,
 		})
 	}
 

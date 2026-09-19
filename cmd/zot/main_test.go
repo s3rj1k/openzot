@@ -2570,8 +2570,8 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 		"failure": true,
 	}
 
-	for name := range agent.DefaultTools() {
-		real[name] = true
+	for _, tool := range agent.DefaultTools() {
+		real[tool.Info().Name] = true
 	}
 
 	// pull every "quoted" token out of the instructions and check the tool-looking

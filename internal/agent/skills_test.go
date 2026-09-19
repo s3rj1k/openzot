@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,12 +143,7 @@ func TestParseSkillStripsQuotes(t *testing.T) {
 func skillsCall(t *testing.T, skills []Skill, args map[string]any) (any, error) {
 	t.Helper()
 
-	tool, ok := DefaultToolsWith(0, skills)["skills"]
-	if !ok {
-		t.Fatal("no skills tool")
-	}
-
-	return tool.Handler(context.Background(), args)
+	return call(t, DefaultToolsWith(0, skills), "skills", args)
 }
 
 var testSkills = []Skill{
@@ -225,9 +219,7 @@ func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
 func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 	big := []Skill{{Name: "big", Content: strings.Repeat("x", 500)}}
 
-	tool := DefaultToolsWith(100, big)["skills"]
-
-	out, err := tool.Handler(context.Background(), map[string]any{"name": "big"})
+	out, err := call(t, DefaultToolsWith(100, big), "skills", map[string]any{"name": "big"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,11 +232,11 @@ func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 // A run with no skills has no skills tool: nothing to list is not worth a tool
 // in every request.
 func TestTheSkillsToolExistsOnlyWhenThereAreSkills(t *testing.T) {
-	if _, ok := DefaultToolsWith(0, nil)["skills"]; ok {
+	if _, ok := findTool(DefaultToolsWith(0, nil), "skills"); ok {
 		t.Error("no skills tool without skills")
 	}
 
-	if _, ok := DefaultToolsWith(0, testSkills)["skills"]; !ok {
+	if _, ok := findTool(DefaultToolsWith(0, testSkills), "skills"); !ok {
 		t.Error("skills tool expected when skills are loaded")
 	}
 }

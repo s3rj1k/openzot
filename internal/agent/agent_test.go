@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -191,17 +193,11 @@ func TestExecuteWithToolsRunsATool(t *testing.T) {
 
 	var seen map[string]any
 
-	tools := Tools{
-		"echo": {
-			Description: "echo a value",
-			Parameters:  FunctionParameters{"type": "object"},
-			Handler: func(_ context.Context, args map[string]any) (any, error) {
-				seen = args
+	tools := []fantasy.AgentTool{toolWith("echo", func(_ context.Context, args map[string]any) (any, error) {
+		seen = args
 
-				return map[string]any{"echoed": args["value"]}, nil
-			},
-		},
-	}
+		return map[string]any{"echoed": args["value"]}, nil
+	})}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
 		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"echo ping"}, Tools: tools})
@@ -307,15 +303,9 @@ func TestRepeatedToolResultsStopTheRun(t *testing.T) {
 
 	defer server.Close()
 
-	tools := Tools{
-		"search": {
-			Description: "search",
-			Parameters:  FunctionParameters{"type": "object"},
-			Handler: func(_ context.Context, _ map[string]any) (any, error) {
-				return map[string]any{"records": []any{}}, nil
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{toolWith("search", func(_ context.Context, args map[string]any) (any, error) {
+		return map[string]any{"records": []any{}}, nil
+	})}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
 		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"search"}, Tools: tools, MaxIterations: 30})
@@ -339,7 +329,7 @@ func TestUnknownToolIsReportedNotFatal(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: Tools{}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: nil})
 
 	all, exit := collect(t, events, errs)
 
@@ -394,17 +384,11 @@ func TestToolArgumentsSurviveFragmentation(t *testing.T) {
 
 	var seen map[string]any
 
-	tools := Tools{
-		"echo": {
-			Description: "echo",
-			Parameters:  FunctionParameters{"type": "object"},
-			Handler: func(_ context.Context, args map[string]any) (any, error) {
-				seen = args
+	tools := []fantasy.AgentTool{toolWith("echo", func(_ context.Context, args map[string]any) (any, error) {
+		seen = args
 
-				return "ok", nil
-			},
-		},
-	}
+		return "ok", nil
+	})}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
 		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: tools})
@@ -577,15 +561,9 @@ func TestRecorderSeesTheRun(t *testing.T) {
 
 	defer server.Close()
 
-	tools := Tools{
-		"echo": {
-			Description: "echo a value",
-			Parameters:  FunctionParameters{"type": "object"},
-			Handler: func(_ context.Context, args map[string]any) (any, error) {
-				return map[string]any{"echoed": args["value"]}, nil
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{toolWith("echo", func(_ context.Context, args map[string]any) (any, error) {
+		return map[string]any{"echoed": args["value"]}, nil
+	})}
 
 	recorder := &recordingRecorder{}
 
@@ -768,21 +746,15 @@ func TestTheConversationIsRecordedAsTheRunGoes(t *testing.T) {
 
 	round := 0
 
-	tools := map[string]ToolDefinition{
-		"echo": {
-			Description: "echo",
-			Parameters:  map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				round++
+	tools := []fantasy.AgentTool{toolWith("echo", func(_ context.Context, args map[string]any) (any, error) {
+		round++
 
-				if round == 2 {
-					midRun = recorder.snapshot()
-				}
+		if round == 2 {
+			midRun = recorder.snapshot()
+		}
 
-				return "ok", nil
-			},
-		},
-	}
+		return "ok", nil
+	})}
 
 	server := sseServer(t,
 		[]string{toolFrame("call_1", "echo", `{"value":"one"}`)},
@@ -822,20 +794,14 @@ func TestTheConversationIsRecordedAsTheRunGoes(t *testing.T) {
 // endlessToolRounds is a run that never finishes on its own: the (repeated)
 // last scripted turn keeps requesting the same tool, so the run is still going
 // whenever a cancellation test needs it to be.
-func endlessToolRounds(t *testing.T) (*httptest.Server, Tools) {
+func endlessToolRounds(t *testing.T) (*httptest.Server, []fantasy.AgentTool) {
 	t.Helper()
 
 	server := sseServer(t, []string{toolFrame("call_1", "echo", `{}`)})
 
-	tools := Tools{
-		"echo": {
-			Description: "echo",
-			Parameters:  map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				return "ok", nil
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{toolWith("echo", func(_ context.Context, args map[string]any) (any, error) {
+		return "ok", nil
+	})}
 
 	return server, tools
 }

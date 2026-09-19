@@ -3,6 +3,8 @@ package loop
 import (
 	"strings"
 	"testing"
+
+	"charm.land/fantasy"
 )
 
 func TestNormalizeCheckpoints(t *testing.T) {
@@ -164,10 +166,10 @@ func TestTerminalToolsAreWellFormed(t *testing.T) {
 		t.Fatalf("got %d terminal tools, want 2", len(tools))
 	}
 
-	byName := map[string]ToolDefinition{}
+	byName := map[string]fantasy.AgentTool{}
 
 	for _, tool := range tools {
-		byName[tool.Name] = tool
+		byName[tool.Info().Name] = tool
 	}
 
 	for name, required := range map[string]string{SuccessTool: "summary", FailureTool: "reason"} {
@@ -177,25 +179,18 @@ func TestTerminalToolsAreWellFormed(t *testing.T) {
 			t.Fatalf("terminal tool %q missing", name)
 		}
 
-		if tool.Description == "" {
+		info := tool.Info()
+
+		if info.Description == "" {
 			t.Errorf("%s has no description; the model needs to know when to call it", name)
 		}
 
-		properties, _ := tool.Parameters["properties"].(map[string]any)
-
-		if _, ok := properties[required]; !ok {
+		if _, ok := info.Parameters[required]; !ok {
 			t.Errorf("%s must accept a %q argument", name, required)
 		}
 
-		fields, _ := tool.Parameters["required"].([]string)
-
-		if len(fields) != 1 || fields[0] != required {
-			t.Errorf("%s must require %q, got %v", name, required, fields)
-		}
-
-		// the loop intercepts these rather than dispatching them
-		if tool.Handler != nil {
-			t.Errorf("%s must not carry a handler", name)
+		if len(info.Required) != 1 || info.Required[0] != required {
+			t.Errorf("%s must require %q, got %v", name, required, info.Required)
 		}
 	}
 }

@@ -1,6 +1,11 @@
 package loop
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+
+	"charm.land/fantasy"
+)
 
 // The notices the loop injects into the conversation when it detects a problem.
 //
@@ -140,35 +145,28 @@ func truncationNotice() string {
 // They are given to the model as ordinary tools because that is the mechanism it
 // already understands. The loop intercepts them rather than dispatching to a
 // handler.
-func terminalTools() []ToolDefinition {
-	return []ToolDefinition{
-		{
-			Name:        SuccessTool,
-			Description: "Record that the objective has been met, and end the run. Call this exactly once, when the task is genuinely complete.",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"summary": map[string]any{
-						"type":        "string",
-						"description": "What was accomplished.",
-					},
-				},
-				"required": []string{"summary"},
-			},
-		},
-		{
-			Name:        FailureTool,
-			Description: "Record that the objective cannot be met, and end the run. Call this when you are blocked and further attempts would not help.",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"reason": map[string]any{
-						"type":        "string",
-						"description": "What is blocking completion.",
-					},
-				},
-				"required": []string{"reason"},
-			},
-		},
+func terminalTools() []fantasy.AgentTool {
+	return []fantasy.AgentTool{
+		fantasy.NewAgentTool(SuccessTool,
+			"Record that the objective has been met, and end the run. Call this exactly once, when the task is genuinely complete.",
+			terminalHandler[successInput]),
+		fantasy.NewAgentTool(FailureTool,
+			"Record that the objective cannot be met, and end the run. Call this when you are blocked and further attempts would not help.",
+			terminalHandler[failureInput]),
 	}
+}
+
+// successInput and failureInput are the terminal tools' schemas.
+type successInput struct {
+	Summary string `json:"summary" description:"What was accomplished."`
+}
+
+type failureInput struct {
+	Reason string `json:"reason" description:"What is blocking completion."`
+}
+
+// terminalHandler is never what ends a run: the loop reads the call itself. It
+// exists so the tool is an ordinary one to the model.
+func terminalHandler[T any](context.Context, T, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return fantasy.NewTextResponse("recorded"), nil
 }

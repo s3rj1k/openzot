@@ -172,16 +172,18 @@ func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
 // schema names the statuses, so a status the schema offers but the parser
 // refuses would be a trap.
 func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
-	parameters := DefaultTools()["tasks"].Parameters
+	tasks, _ := findTool(DefaultTools(), "tasks")
 
-	items := parameters["properties"].(map[string]any)["tasks"].(map[string]any)["items"].(map[string]any)
-	statuses := items["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]string)
+	items := tasks.Info().Parameters["tasks"].(map[string]any)["items"].(map[string]any)
+	statuses := items["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
 
 	if len(statuses) != 4 {
 		t.Fatalf("schema offers %v, want the four statuses", statuses)
 	}
 
-	for _, status := range statuses {
+	for _, offered := range statuses {
+		status := offered.(string)
+
 		if _, err := ParseTasks(taskCall(task("a task", status))); err != nil {
 			t.Errorf("the schema offers %q but the parser refuses it: %v", status, err)
 		}

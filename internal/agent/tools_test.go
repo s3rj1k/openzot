@@ -2,22 +2,74 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"charm.land/fantasy"
 )
 
-func call(t *testing.T, tools Tools, name string, args map[string]any) (any, error) {
+// toolWith is a tool for agent tests: it takes any JSON object and answers with
+// what the handler returns - a string as it is, anything else as JSON. A handler
+// error is an error response, as the real tools report a failure.
+func toolWith(name string, handler func(context.Context, map[string]any) (any, error)) fantasy.AgentTool {
+	return fantasy.NewAgentTool(name, name,
+		func(ctx context.Context, args map[string]any, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			output, err := handler(ctx, args)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+
+			if text, ok := output.(string); ok {
+				return fantasy.NewTextResponse(text), nil
+			}
+
+			encoded, _ := json.Marshal(output)
+
+			return fantasy.NewTextResponse(string(encoded)), nil
+		})
+}
+
+// findTool picks a tool out of a set by name.
+func findTool(tools []fantasy.AgentTool, name string) (fantasy.AgentTool, bool) {
+	for _, tool := range tools {
+		if tool.Info().Name == name {
+			return tool, true
+		}
+	}
+
+	return nil, false
+}
+
+// call runs a tool with the given arguments the way the engine does: as a JSON
+// input. A response the tool flags as an error comes back as an error.
+func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]any) (any, error) {
 	t.Helper()
 
-	definition, ok := tools[name]
+	tool, ok := findTool(tools, name)
 	if !ok {
 		t.Fatalf("no tool named %q", name)
 	}
 
-	return definition.Handler(context.Background(), args)
+	input, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "c", Name: name, Input: string(input)})
+	if err != nil {
+		return nil, err
+	}
+
+	if response.IsError {
+		return nil, errors.New(response.Content)
+	}
+
+	return response.Content, nil
 }
 
 // The handlers are methods on a toolSet now; these shims let the existing
@@ -27,29 +79,38 @@ const maxToolOutput = DefaultMaxToolOutput
 var defaultSet = toolSet{maxOutput: DefaultMaxToolOutput}
 
 func shellHandler(ctx context.Context, a map[string]any) (any, error) {
-	return defaultSet.shell(ctx, a)
+	command, _ := a["command"].(string)
+	if command == "" {
+		return nil, errors.New(`missing required argument "command"`)
+	}
+
+	timeout, _ := a["timeout"].(int)
+
+	return defaultSet.shell(ctx, command, timeout), nil
 }
 
 func TestDefaultToolsAreWellFormed(t *testing.T) {
 	tools := DefaultTools()
 
 	for _, name := range []string{"shell", "tasks"} {
-		definition, ok := tools[name]
+		tool, ok := findTool(tools, name)
 
 		if !ok {
 			t.Fatalf("tool %q is missing", name)
 		}
 
-		if definition.Description == "" {
+		info := tool.Info()
+
+		if info.Description == "" {
 			t.Errorf("%s has no description", name)
 		}
 
-		if definition.Handler == nil {
-			t.Errorf("%s has no handler", name)
+		if len(info.Parameters) == 0 {
+			t.Errorf("%s has no parameter schema", name)
 		}
 
-		if _, ok := definition.Parameters["properties"]; !ok {
-			t.Errorf("%s has no parameter schema", name)
+		if len(info.Required) == 0 {
+			t.Errorf("%s requires nothing; the schema should name what a call needs", name)
 		}
 	}
 }
@@ -140,8 +201,8 @@ func TestTheToolboxIsShellAndTasks(t *testing.T) {
 
 	var names []string
 
-	for name := range tools {
-		names = append(names, name)
+	for _, tool := range tools {
+		names = append(names, tool.Info().Name)
 	}
 
 	sort.Strings(names)

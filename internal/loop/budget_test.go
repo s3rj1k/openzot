@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"charm.land/fantasy"
 )
 
 // Budget semantics, ported from the TypeScript engine's maxIterations and
@@ -147,7 +149,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 	tests := []struct {
 		name  string
 		turns [][]string
-		tools map[string]ToolDefinition
+		tools []fantasy.AgentTool
 	}{
 		{
 			name:  "tool rounds",
@@ -277,17 +279,11 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 	invoked := 0
 
-	tools := map[string]ToolDefinition{
-		"echo": {
-			Name:       "echo",
-			Parameters: map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				invoked++
+	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		invoked++
 
-				return "ok", nil
-			},
-		},
-	}
+		return "ok", nil
+	})}
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
@@ -314,15 +310,9 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 // A tool that fails is information, not an outage. The run continues with the
 // error in hand.
 func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
-	tools := map[string]ToolDefinition{
-		"echo": {
-			Name:       "echo",
-			Parameters: map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				return nil, errors.New("permission denied")
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		return nil, errors.New("permission denied")
+	})}
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
@@ -345,15 +335,9 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 // A handler that returns nothing still has to produce a result message, or the
 // call is left unanswered and the next request is invalid.
 func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
-	tools := map[string]ToolDefinition{
-		"echo": {
-			Name:       "echo",
-			Parameters: map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				return nil, nil
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		return nil, nil
+	})}
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,

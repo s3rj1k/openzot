@@ -101,19 +101,34 @@ func run(t *testing.T, options Options) Result {
 	return engine.Run(context.Background(), nil)
 }
 
-func echoTool(calls *int) map[string]ToolDefinition {
-	return map[string]ToolDefinition{
-		"echo": {
-			Name:        "echo",
-			Description: "echo",
-			Parameters:  map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				*calls++
+// noInput is the argument struct of the engine tests' tools, which take none.
+type noInput struct{}
 
-				return "ok", nil
-			},
-		},
-	}
+// namedTool is a tool for engine tests: it takes no arguments and answers with
+// what the handler returns. A handler error is reported the way the real tools
+// report a failure - as an error response, not a critical error.
+func namedTool(name string, handler func(context.Context) (any, error)) fantasy.AgentTool {
+	return fantasy.NewAgentTool(name, name,
+		func(ctx context.Context, _ noInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			output, err := handler(ctx)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+
+			if output == nil {
+				return fantasy.NewTextResponse(""), nil
+			}
+
+			return fantasy.NewTextResponse(fmt.Sprint(output)), nil
+		})
+}
+
+func echoTool(calls *int) []fantasy.AgentTool {
+	return []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		*calls++
+
+		return "ok", nil
+	})}
 }
 
 func TestNewAppliesDefaults(t *testing.T) {
@@ -419,15 +434,9 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 }
 
 func TestToolErrorIsFedBackNotFatal(t *testing.T) {
-	tools := map[string]ToolDefinition{
-		"boom": {
-			Name:       "boom",
-			Parameters: map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				return nil, fmt.Errorf("disk on fire")
-			},
-		},
-	}
+	tools := []fantasy.AgentTool{namedTool("boom", func(context.Context) (any, error) {
+		return nil, fmt.Errorf("disk on fire")
+	})}
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
@@ -518,7 +527,7 @@ func TestInstructionsOmitsSettleInstructionWhenOff(t *testing.T) {
 func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
 	options := Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
-		Tools:      map[string]ToolDefinition{"echo": {Name: "echo"}},
+		Tools:      []fantasy.AgentTool{namedTool("echo", nil)},
 		MaxSettles: 5,
 	}
 
@@ -550,14 +559,14 @@ func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
 	}
 }
 
-// The tool list is built from a map, and Go randomises map order. A list that
+// The tool list must not depend on the order tools were handed in. A list that
 // reshuffles between requests defeats a server-side prompt cache keyed on the
 // prefix, so the order must be fixed.
 func TestToolDefinitionsAreOrderedByName(t *testing.T) {
-	tools := map[string]ToolDefinition{}
+	var tools []fantasy.AgentTool
 
 	for _, name := range []string{"write", "read", "shell", "list", "edit"} {
-		tools[name] = ToolDefinition{Name: name}
+		tools = append(tools, namedTool(name, nil))
 	}
 
 	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Tools: tools})
@@ -766,18 +775,11 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 
 	var seenByHandler []Message
 
-	tools := map[string]ToolDefinition{
-		"echo": {
-			Name:        "echo",
-			Description: "echo",
-			Parameters:  map[string]any{"type": "object"},
-			Handler: func(context.Context, map[string]any) (any, error) {
-				seenByHandler = handed[len(handed)-1]
+	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		seenByHandler = handed[len(handed)-1]
 
-				return "ok", nil
-			},
-		},
-	}
+		return "ok", nil
+	})}
 
 	run(t, Options{
 		Client: stub(t,

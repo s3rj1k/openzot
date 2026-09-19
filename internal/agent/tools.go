@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
+
+	"charm.land/fantasy"
 )
 
 // DefaultMaxToolOutput is the byte ceiling on a single tool result when the
@@ -25,7 +27,7 @@ const DefaultMaxToolOutput = 100_000
 // that cannot touch the machine is not much use to a CLI - but it means the
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
-func DefaultTools() Tools {
+func DefaultTools() []fantasy.AgentTool {
 	return DefaultToolsWith(DefaultMaxToolOutput, nil)
 }
 
@@ -36,57 +38,40 @@ func DefaultTools() Tools {
 // from a message it cannot even send. Zero or negative uses the default.
 //
 // skills, when there are any, adds the skills tool over them.
-func DefaultToolsWith(maxOutput int, skills []Skill) Tools {
+func DefaultToolsWith(maxOutput int, skills []Skill) []fantasy.AgentTool {
 	if maxOutput <= 0 {
 		maxOutput = DefaultMaxToolOutput
 	}
 
 	s := toolSet{maxOutput: maxOutput}
 
-	tools := Tools{
-		"shell": {
-			Description: "Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"command": map[string]any{"type": "string", "description": "The command to run"},
-					"timeout": map[string]any{"type": "integer", "description": "Timeout in seconds, default 120"},
-				},
-				"required": []string{"command"},
-			},
-			Handler: s.shell,
-		},
-
-		"tasks": {
-			Description: "List the tasks the work needs and keep each one's status current. Call it at the start to lay the work out, then again as you go: set a task in_progress when you begin it, done when it is finished, blocked when it cannot go on. Every call carries the whole list and replaces the last, so also use it to revise the list when your approach changes. Use a task's note for what blocks it, what you found, or an assumption you made.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"tasks": map[string]any{
-						"type":        "array",
-						"description": "Every task, in the order you will do them, each with its current status",
-						"items": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"title":  map[string]any{"type": "string", "description": "What the task is"},
-								"status": map[string]any{"type": "string", "enum": []string{"pending", "in_progress", "done", "blocked"}, "description": "Where the task stands"},
-								"note":   map[string]any{"type": "string", "description": "Optional: why it is blocked, what you found, or an assumption you made"},
-							},
-							"required": []string{"title", "status"},
-						},
-					},
-				},
-				"required": []string{"tasks"},
-			},
-			Handler: tasksHandler,
-		},
-	}
+	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
 
 	if len(skills) > 0 {
-		tools["skills"] = s.skillsTool(skills)
+		tools = append(tools, s.skillsTool(skills))
 	}
 
 	return tools
+}
+
+// shellInput is what the shell tool is called with. The struct is the schema:
+// fantasy generates the tool's parameters from its tags, and a field is required
+// unless it is omitempty.
+type shellInput struct {
+	Command string `json:"command" description:"The command to run"`
+	Timeout int    `json:"timeout,omitempty" description:"Timeout in seconds, default 120"`
+}
+
+func (s toolSet) shellTool() fantasy.AgentTool {
+	return fantasy.NewAgentTool("shell",
+		"Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
+		func(ctx context.Context, in shellInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if in.Command == "" {
+				return fantasy.NewTextErrorResponse(`missing required argument "command"`), nil
+			}
+
+			return fantasy.NewTextResponse(s.shell(ctx, in.Command, in.Timeout)), nil
+		})
 }
 
 // toolSet carries the configuration the tools share - currently just the output
@@ -112,36 +97,14 @@ func (s toolSet) truncate(text string) string {
 	return text[:s.maxOutput] + fmt.Sprintf("\n\n[truncated: %d bytes total]", len(text))
 }
 
-func stringArg(args map[string]any, key string) (string, error) {
-	value, ok := args[key].(string)
-	if !ok || value == "" {
-		return "", fmt.Errorf("missing required argument %q", key)
-	}
-
-	return value, nil
-}
-
-func intArg(args map[string]any, key string) (int, bool) {
-	switch value := args[key].(type) {
-	case float64:
-		return int(value), true
-	case int:
-		return value, true
-	default:
-		return 0, false
-	}
-}
-
-func (s toolSet) shell(ctx context.Context, args map[string]any) (any, error) {
-	command, err := stringArg(args, "command")
-	if err != nil {
-		return nil, err
-	}
-
+// shell runs a command and returns its combined output. Every outcome is output,
+// including a failed or timed-out command: none of them is an error the model
+// could not act on.
+func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) string {
 	timeout := 120 * time.Second
 
-	if seconds, ok := intArg(args, "timeout"); ok && seconds > 0 {
-		timeout = time.Duration(seconds) * time.Second
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -168,12 +131,12 @@ func (s toolSet) shell(ctx context.Context, args map[string]any) (any, error) {
 	// error. A failing command is information - a compiler error, a failing test -
 	// and the model is usually the thing best placed to act on it.
 	if err != nil && ctx.Err() == nil {
-		return s.truncate(fmt.Sprintf("%s\n[exit: %v]", output, err)), nil
+		return s.truncate(fmt.Sprintf("%s\n[exit: %v]", output, err))
 	}
 
 	if ctx.Err() != nil {
-		return s.truncate(fmt.Sprintf("%s\n[timed out after %s]", output, timeout)), nil
+		return s.truncate(fmt.Sprintf("%s\n[timed out after %s]", output, timeout))
 	}
 
-	return s.truncate(string(output)), nil
+	return s.truncate(string(output))
 }

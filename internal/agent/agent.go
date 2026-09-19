@@ -32,6 +32,8 @@ import (
 	"fmt"
 	"time"
 
+	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -202,24 +204,6 @@ const (
 	ActivityTrigger = loop.ActivityTrigger
 )
 
-// FunctionParameters is a JSON Schema describing a tool's arguments.
-type FunctionParameters = map[string]any
-
-// ToolHandler executes a tool call and returns its result.
-//
-// The result is usually a string, or anything JSON-encodable.
-type ToolHandler func(ctx context.Context, args map[string]any) (any, error)
-
-// ToolDefinition describes a tool the model may call.
-type ToolDefinition struct {
-	Description string
-	Parameters  FunctionParameters
-	Handler     ToolHandler
-}
-
-// Tools is a set of tools keyed by name.
-type Tools map[string]ToolDefinition
-
 // ExecuteWithToolsOptions configures a run.
 type ExecuteWithToolsOptions struct {
 	// Instructions is the system prompt.
@@ -229,7 +213,7 @@ type ExecuteWithToolsOptions struct {
 	Text []string
 
 	// Tools the model may call.
-	Tools Tools
+	Tools []fantasy.AgentTool
 
 	// Recorder, when set, is handed every message and event as the run goes.
 	//
@@ -356,7 +340,7 @@ func ExecuteWithTools(
 			Client:           client,
 			Instructions:     options.Instructions,
 			Messages:         toLoopMessages(options),
-			Tools:            toLoopTools(options.Tools),
+			Tools:            options.Tools,
 			MaxIterations:    options.MaxIterations,
 			MaxCalls:         options.MaxCalls,
 			MaxContinuations: options.MaxContinuations,
@@ -541,29 +525,6 @@ func fromLoopMessages(messages []loop.Message) []Message {
 			Text:     message.Text,
 			Activity: message.Activity,
 		})
-	}
-
-	return converted
-}
-
-func toLoopTools(tools Tools) map[string]loop.ToolDefinition {
-	converted := make(map[string]loop.ToolDefinition, len(tools))
-
-	for name, definition := range tools {
-		handler := definition.Handler
-
-		converted[name] = loop.ToolDefinition{
-			Name:        name,
-			Description: definition.Description,
-			Parameters:  definition.Parameters,
-			Handler: func(ctx context.Context, args map[string]any) (any, error) {
-				if handler == nil {
-					return nil, fmt.Errorf("tool %q has no handler", name)
-				}
-
-				return handler(ctx, args)
-			},
-		}
 	}
 
 	return converted

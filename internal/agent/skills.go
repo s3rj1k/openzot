@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"charm.land/fantasy"
 )
 
 // maxListedDescription bounds one skill's description in the listing the skills
@@ -136,31 +138,27 @@ func parseSkill(directoryName, dir, content string) Skill {
 // skillsTool is the model's way to the skills: called with no name it lists them
 // with their short descriptions, called with one it returns that skill's full
 // instructions. Everything is already in memory, so a call reads no file.
-func (s toolSet) skillsTool(skills []Skill) ToolDefinition {
-	return ToolDefinition{
-		Description: "Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
-		Parameters: FunctionParameters{
-			"type": "object",
-			"properties": map[string]any{
-				"name": map[string]any{"type": "string", "description": "The skill to read in full. Omit to list the available skills."},
-			},
-		},
-		Handler: func(_ context.Context, args map[string]any) (any, error) {
-			name, _ := args["name"].(string)
-
-			if strings.TrimSpace(name) == "" {
-				return listSkills(skills), nil
+func (s toolSet) skillsTool(skills []Skill) fantasy.AgentTool {
+	return fantasy.NewAgentTool("skills",
+		"Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
+		func(_ context.Context, in skillsInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if strings.TrimSpace(in.Name) == "" {
+				return fantasy.NewTextResponse(listSkills(skills)), nil
 			}
 
 			for _, skill := range skills {
-				if skill.Name == name {
-					return s.truncate(fmt.Sprintf("Skill directory: %s\n\n%s", skill.Dir, skill.Content)), nil
+				if skill.Name == in.Name {
+					return fantasy.NewTextResponse(s.truncate(fmt.Sprintf("Skill directory: %s\n\n%s", skill.Dir, skill.Content))), nil
 				}
 			}
 
-			return nil, fmt.Errorf("no skill named %q (available: %s)", name, skillNames(skills))
-		},
-	}
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("no skill named %q (available: %s)", in.Name, skillNames(skills))), nil
+		})
+}
+
+// skillsInput is what the skills tool is called with; the struct is the schema.
+type skillsInput struct {
+	Name string `json:"name,omitempty" description:"The skill to read in full. Omit to list the available skills."`
 }
 
 // listSkills renders the listing: one line per skill, name then description.
