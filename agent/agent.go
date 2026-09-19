@@ -313,12 +313,6 @@ type ExecuteWithToolsOptions struct {
 	// iteration from whatever the function returns. Use StaticSkills for a
 	// fixed set, or (*SkillLoader).Skills for one that follows directories on
 	// disk. Nil means no skills.
-	//
-	// The `skill` tool that serves embedded skills is built from the set as it
-	// stands when the run starts - an embedded skill is compiled into the
-	// binary, so the embedded subset cannot grow mid-run anyway. Skills that
-	// appear later are directory skills, read with the `read` tool, which
-	// needs no registration.
 	Skills func() []SkillDefinition
 
 	// Recorder, when set, is handed every message and event as the run goes.

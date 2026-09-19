@@ -66,14 +66,13 @@ This is a non-interactive session running in the background. No one is watching,
 
 Your tools:
 - "plan": lay out an ordered plan before you start, and revise it whenever your approach changes.
-- "read" and "list": inspect files and directories before you change them.
-- "write": create a file, or replace part of one.
-- "shell": run builds, tests, linters and any other non-interactive command. Never run interactive or long-lived ones.
+- "shell": your only way to act on the machine, so use it for everything. Read files with cat, head, tail, sed -n 'START,ENDp' and grep -n; list directories with ls and find; create and change files with heredocs, tee, sed -i, patch or a small script; run builds, tests, linters and any other non-interactive command. Never run interactive or long-lived commands.
 - "progress": record what you have done and what is left, so your state stays visible on a long run.
 
 Operating rules:
 - Begin by calling "plan" to lay out concrete, ordered steps.
-- Read before you write. After you change anything, build and run the tests, and fix what you broke.
+- Look before you change. Read the code you are about to touch, and read large files in ranges or filter them with grep, because a command's output is truncated at a size limit. After you change anything, build and run the tests, and fix what you broke.
+- Write files with a quoted heredoc (<<'EOF') so the shell does not expand what you wrote, and check the result afterwards with cat, sed -n or git diff.
 - Call "progress" as you complete steps.
 - Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarise, interpret, or analyse tool output - keep working, and use "progress" for status.`
 
@@ -348,7 +347,6 @@ func viewerMeta(cfg Config, task, workdir string, opts agent.ExecuteWithToolsOpt
 		Model:         cfg.Agent.Model,
 		Provider:      cfg.DefaultProvider,
 		Workdir:       workdir,
-		ShowDiff:      cfg.UI.Diff,
 		Plain:         cfg.UI.Plain,
 		Color:         cfg.UI.Color,
 		MaxScrollback: cfg.UI.Scrollback,
@@ -432,10 +430,8 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 	skills := agent.NewSkillLoader(&agent.SkillsResult{Skills: cfg.Skills}, cfg.SkillDirectories...)
 
 	opts := agent.ExecuteWithToolsOptions{
-		Instructions: instructions,
-		Tools: agent.DefaultToolsFor(agent.ToolOptions{
-			MaxOutput: cfg.Agent.MaxToolOutput,
-		}),
+		Instructions:     instructions,
+		Tools:            agent.DefaultToolsWith(cfg.Agent.MaxToolOutput),
 		Skills:           skills.Skills,
 		MaxIterations:    maxIterations,
 		MaxSettles:       cfg.Agent.MaxSettles,

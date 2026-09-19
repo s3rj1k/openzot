@@ -39,7 +39,6 @@ var (
 	metaProvider = lipgloss.NewStyle().Foreground(colBlue)
 	metaCount    = lipgloss.NewStyle().Foreground(colFg)
 	metaTools    = lipgloss.NewStyle().Foreground(colGreen)
-	metaEdits    = lipgloss.NewStyle().Foreground(colYellow)
 
 	// Footer / hints.
 	footerStyle = lipgloss.NewStyle().Foreground(colDim)
@@ -60,18 +59,8 @@ var (
 	errStyle     = lipgloss.NewStyle().Foreground(colRed)
 
 	// Per-tool accents so the eye can scan the stream.
-	toolReadStyle  = lipgloss.NewStyle().Foreground(colCyan)
-	toolWriteStyle = lipgloss.NewStyle().Foreground(colGreen)
 	toolExecStyle  = lipgloss.NewStyle().Foreground(colBlue)
 	toolPlanStyle  = lipgloss.NewStyle().Bold(true).Foreground(colSecondary)
 	toolProgStyle  = lipgloss.NewStyle().Foreground(colSecondary)
 	toolOtherStyle = lipgloss.NewStyle().Foreground(colAccent)
-
-	// Diff panel (opt-in via --diff / ui.diff).
-	diffPanelStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colFaint).Padding(0, 1)
-	diffTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colFg)
-	diffAddGutter     = lipgloss.NewStyle().Foreground(colGreen)
-	diffDelGutter     = lipgloss.NewStyle().Foreground(colRed)
-	diffContextGutter = lipgloss.NewStyle().Foreground(colFaint)
-	diffGapStyle      = lipgloss.NewStyle().Foreground(colFaint)
 )

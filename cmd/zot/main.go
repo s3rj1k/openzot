@@ -90,7 +90,6 @@ func run() error {
 	model := pflag.String("model", "", "override the model name (default: agent.model from the config)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
 	maxIter := pflag.Int("max-iterations", 0, "override the safety cap on agent iterations")
-	diffFlag := pflag.Bool("diff", false, "show a syntax-highlighted diff panel under each edit/write")
 	plainFlag := pflag.Bool("plain", false, "stream unstyled output instead of the full-screen UI (auto-enabled when not a TTY)")
 	colorFlag := pflag.String("color", "", "colorize non-interactive output: auto, always, or never")
 	sessionDir := pflag.String("session-dir", "", "where session logs are written (default: "+config.DefaultSessionDir()+")")
@@ -180,7 +179,6 @@ func run() error {
 		Provider:      *provider,
 		Model:         *model,
 		MaxIterations: *maxIter,
-		Diff:          *diffFlag,
 		Plain:         *plainFlag,
 		Color:         *colorFlag,
 		Passed:        passed,
@@ -644,13 +642,12 @@ type overrides struct {
 	Provider      string
 	Model         string
 	MaxIterations int
-	Diff          bool
 	Plain         bool
 	Color         string
 
 	// Passed names the flags actually given, so a boolean can tell "false
 	// because it was passed" from "false because it was never set". Without it
-	// an unset --diff would silently turn off a diff the config had enabled.
+	// an unset --plain would silently turn off a mode the config had enabled.
 	Passed map[string]bool
 }
 
@@ -675,10 +672,6 @@ func applyOverrides(cfg *zot.Config, o overrides) {
 	// so the model's own cap goes.
 	if o.Passed["max-iterations"] {
 		clearModelIterations(cfg)
-	}
-
-	if o.Passed["diff"] {
-		cfg.UI.Diff = o.Diff
 	}
 
 	if o.Passed["plain"] {

@@ -41,8 +41,6 @@ type Meta struct {
 	Provider string
 	// Workdir is the directory the agent's tools operate in.
 	Workdir string
-	// ShowDiff renders a syntax-highlighted diff panel under each edit/write.
-	ShowDiff bool
 	// Plain forces the unstyled streaming renderer even in a terminal. Without a
 	// TTY Zot also streams, with styling controlled independently by Color.
 	Plain bool
@@ -107,7 +105,7 @@ func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.Execut
 		return runStream(ctx, client, meta, opts, streamColorEnabled(meta.Color))
 	}
 
-	m := newModel(meta.AppName, meta.Task, meta.Model, meta.Provider, meta.Workdir, meta.ShowDiff)
+	m := newModel(meta.AppName, meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
 	m.batchIndex = meta.BatchIndex
 	m.batchSize = meta.BatchSize

@@ -11,9 +11,11 @@ The harness is zot's own, in the [`agent`](../agent) package:
 - `agent.ExecuteWithTools` runs the model in a loop - it calls tools, sees the
   results, and goes again - until it records an outcome (`success` / `failure`)
   or a budget or guard stops it.
-- `agent.DefaultTools()` gives it the toolbox: `read`, `write`, `list` and
-  `shell` for the work, plus `plan` and `progress` to structure and narrate it.
-  zot talks to text models only: nothing in a run can show a model an image.
+- `agent.DefaultTools()` gives it the toolbox: `shell` for all of the work, plus
+  `plan` and `progress` to structure and narrate it. There are no file tools:
+  the model reads, lists, creates and changes files with ordinary shell
+  commands, so there is one place a run's effects come from and one place to
+  bound them. zot talks to text models only.
 
 That package is importable, so the same engine drives more than coding:
 [Rook](https://github.com/pdparchitect/rook), an AI bug-hunting and security-audit

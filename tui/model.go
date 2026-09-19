@@ -37,7 +37,6 @@ type model struct {
 	model    string
 	provider string
 	workdir  string
-	showDiff bool
 
 	spinner spinner.Model
 	vp      viewport.Model
@@ -72,7 +71,6 @@ type model struct {
 	status     status
 	iteration  int
 	toolCount  int
-	fileEdits  int
 	exitCode   int
 	exitReason string
 	exitMsg    string
@@ -96,7 +94,7 @@ type model struct {
 	elapsed   time.Duration
 }
 
-func newModel(appName, task, modelName, provider, workdir string, showDiff bool) model {
+func newModel(appName, task, modelName, provider, workdir string) model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(colYellow)
@@ -107,7 +105,6 @@ func newModel(appName, task, modelName, provider, workdir string, showDiff bool)
 		model:      modelName,
 		provider:   provider,
 		workdir:    workdir,
-		showDiff:   showDiff,
 		spinner:    sp,
 		status:     statusRunning,
 		follow:     true,
@@ -244,17 +241,8 @@ func (m *model) handleEvent(ev agent.AgentEvent) {
 	case agent.ToolCallStartEvent:
 		m.flushPending()
 		m.toolCount++
-		if e.Name == "write" || e.Name == "edit" {
-			m.fileEdits++
-		}
-
 		m.trackProgress(e.Name, e.Args)
 		m.appendEntry(renderToolStart(e.Name, e.Args))
-		if m.showDiff {
-			if d := diffForTool(e.Name, e.Args, m.vp.Width); d != "" {
-				m.appendEntry(d)
-			}
-		}
 
 	case agent.ToolCallEndEvent:
 		if s := renderToolEnd(e.Name, e.Result); s != "" {
@@ -499,7 +487,7 @@ func (m model) perIteration() time.Duration {
 // (Meta.Stats / ui.stats) is validated against it, and new stats are added here
 // as they arrive.
 var KnownStats = []string{
-	"provider", "model", "dir", "iter", "tools", "edits", "elapsed", "tokens",
+	"provider", "model", "dir", "iter", "tools", "elapsed", "tokens",
 	"tps", "pace", "task", "order",
 }
 
@@ -517,7 +505,7 @@ var KnownStats = []string{
 // terminal. "dir" is last despite being useful because it never changes: a
 // static path is not worth the live stats it would push off the end.
 var DefaultStats = []string{
-	"provider", "model", "task", "order", "iter", "edits", "elapsed", "tps", "pace", "tokens", "dir",
+	"provider", "model", "task", "order", "iter", "elapsed", "tps", "pace", "tokens", "dir",
 }
 
 // IsKnownStat reports whether name is a renderable meta-bar field.
@@ -575,7 +563,6 @@ func (m model) metaBar() string {
 		"dir":      seg("dir", shortPath(m.workdir, 28), metaStyle),
 		"iter":     seg("iter", cell(counted(m.iteration, m.maxIterations), countedWidth(m.maxIterations)), metaCount),
 		"tools":    seg("tools", cell(counted(m.toolCount, m.maxCalls), countedWidth(m.maxCalls)), metaTools),
-		"edits":    seg("edits", cell(fmt.Sprintf("%d", m.fileEdits), 3), metaEdits),
 		"elapsed":  seg("elapsed", elapsed, metaStyle),
 		"tokens":   seg("tokens", fmt.Sprintf("↑%s ↓%s", cell(fmtTokens(m.inputTokens), 6), cell(fmtTokens(m.outputTokens), 6)), metaModel),
 		"tps":      seg("tps", cell(fmtRate(m.tokensPerSecond()), 6), metaModel),

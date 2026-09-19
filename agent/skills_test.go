@@ -1,12 +1,10 @@
 package agent
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"testing/fstest"
 )
 
 func writeSkill(t *testing.T, root, name, content string) {
@@ -119,28 +117,6 @@ func TestLoadSkillsToleratesAMissingDirectory(t *testing.T) {
 	}
 }
 
-func TestLoadSkillsFromFS(t *testing.T) {
-	fsys := fstest.MapFS{
-		"deploy/SKILL.md": &fstest.MapFile{
-			Data: []byte("---\nname: deploy\ndescription: ship it\n---\n"),
-		},
-		"other/README.md": &fstest.MapFile{Data: []byte("not a skill")},
-	}
-
-	result, err := LoadSkillsFromFS(fsys)
-	if err != nil {
-		t.Fatalf("LoadSkillsFromFS: %v", err)
-	}
-
-	if len(result.Skills) != 1 {
-		t.Fatalf("got %d skills, want 1", len(result.Skills))
-	}
-
-	if result.Skills[0].Description != "ship it" {
-		t.Errorf("description = %q", result.Skills[0].Description)
-	}
-}
-
 func TestParseSkillStripsQuotes(t *testing.T) {
 	skill := parseSkill("dir", "p", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
 
@@ -153,128 +129,16 @@ func TestParseSkillStripsQuotes(t *testing.T) {
 	}
 }
 
-func TestEmbeddedSkillsCarryTheirContents(t *testing.T) {
-	fsys := fstest.MapFS{
-		"deploy/SKILL.md": &fstest.MapFile{
-			Data: []byte("---\nname: deploy\ndescription: ship it\n---\n\nStep one: build.\n"),
-		},
-		"nested/category/review/SKILL.md": &fstest.MapFile{
-			Data: []byte("---\nname: review\ndescription: review a change\n---\n"),
-		},
-	}
+func TestSkillHintPointsAShellCommandAtThePath(t *testing.T) {
+	skill := SkillDefinition{Name: "d", Path: "/skills/d/SKILL.md"}
 
-	result, err := LoadSkillsFromFS(fsys)
-	if err != nil {
-		t.Fatalf("LoadSkillsFromFS: %v", err)
-	}
+	hint := skill.Hint()
 
-	if len(result.Skills) != 2 {
-		t.Fatalf("got %d skills, want 2 - a nested tree must be walked", len(result.Skills))
-	}
-
-	for _, skill := range result.Skills {
-		if skill.Source != SkillSourceEmbedded {
-			t.Errorf("%s: source = %q, want embedded", skill.Name, skill.Source)
-		}
+	if !strings.Contains(hint, "cat /skills/d/SKILL.md") || !strings.Contains(hint, "shell") {
+		t.Errorf("a skill must point the shell at its path: %q", hint)
 	}
 }
 
-// Both sources are read with the `read` tool; only the path differs - a
-// filesystem path for a disk skill, an embedded-skill:// URL for an embedded one.
-func TestSkillHintsPointAtReadForBothSources(t *testing.T) {
-	directory := SkillDefinition{Name: "d", Path: "/skills/d/SKILL.md", Source: SkillSourceDirectory}
-
-	if hint := directory.Hint(); !strings.Contains(hint, "/skills/d/SKILL.md") || !strings.Contains(hint, "read") {
-		t.Errorf("a directory skill must point `read` at its path: %q", hint)
-	}
-
-	embedded := SkillDefinition{Name: "e", Path: SkillURL("e"), Source: SkillSourceEmbedded}
-
-	hint := embedded.Hint()
-
-	if !strings.Contains(hint, "read") || !strings.Contains(hint, "embedded-skill:///e") {
-		t.Errorf("an embedded skill must point `read` at its embedded-skill:// URL: %q", hint)
-	}
-}
-
-func TestSkillNameFromURL(t *testing.T) {
-	cases := map[string]struct {
-		name string
-		ok   bool
-	}{
-		"embedded-skill:///recon": {"recon", true},
-		"embedded-skill://recon":  {"recon", true},
-		"embedded-skill:///":      {"", false},
-		"skill:///recon":          {"", false},
-		"/skills/x.md":            {"", false},
-		"recon":                   {"", false},
-	}
-
-	for input, want := range cases {
-		got, ok := SkillNameFromURL(input)
-		if got != want.name || ok != want.ok {
-			t.Errorf("SkillNameFromURL(%q) = (%q, %v), want (%q, %v)", input, got, ok, want.name, want.ok)
-		}
-	}
-}
-
-// An embedded skill is addressed by an embedded-skill:// URL and served by the `read`
-// tool from the embedded registry - the same tool, and the same bounded-range
-// output, as a skill on disk.
-func TestReadServesEmbeddedSkillByURL(t *testing.T) {
-	fsys := fstest.MapFS{
-		"deploy/SKILL.md": &fstest.MapFile{
-			Data: []byte("---\nname: deploy\n---\n\nThe deploy instructions.\n"),
-		},
-	}
-
-	result, _ := LoadSkillsFromFS(fsys)
-
-	if got := result.Skills[0].Path; got != SkillURL("deploy") {
-		t.Fatalf("embedded skill Path = %q, want %q", got, SkillURL("deploy"))
-	}
-
-	tools := DefaultToolsFor(ToolOptions{EmbeddedSkills: result.EmbeddedContents()})
-
-	out, err := tools["read"].Handler(context.Background(), map[string]any{
-		"path":      SkillURL("deploy"),
-		"startLine": 1,
-		"endLine":   10,
-	})
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-
-	if !strings.Contains(out.(string), "The deploy instructions.") {
-		t.Errorf("read must serve the embedded body: %q", out)
-	}
-
-	// The line-numbered, range-bounded framing is identical to a file read.
-	if !strings.Contains(out.(string), "embedded-skill:///deploy lines 1-") {
-		t.Errorf("read must frame an embedded skill like any file: %q", out)
-	}
-
-	// An unknown skill is reported like a missing file.
-	if _, err := tools["read"].Handler(context.Background(), map[string]any{
-		"path": SkillURL("nope"), "startLine": 1, "endLine": 5,
-	}); err == nil {
-		t.Error("an unknown embedded skill must be reported")
-	}
-}
-
-// Without an embedded registry, an embedded-skill:// URL is just an unresolvable path -
-// no skill tool exists to fall back to, and none should.
-func TestReadRejectsSkillURLWithoutRegistry(t *testing.T) {
-	tools := DefaultToolsFor(ToolOptions{})
-
-	if _, err := tools["read"].Handler(context.Background(), map[string]any{
-		"path": SkillURL("deploy"), "startLine": 1, "endLine": 5,
-	}); err == nil {
-		t.Error("an embedded-skill:// URL must fail when no embedded skills ship")
-	}
-}
-
-// A project skill must be able to override a shipped one of the same name.
 func TestMergePrefersEarlierSets(t *testing.T) {
 	project := &SkillsResult{Skills: []SkillDefinition{
 		{Name: "deploy", Description: "the project's own"},
@@ -303,15 +167,15 @@ func TestSkillLoaderRescansDirectory(t *testing.T) {
 
 	writeSkill(t, root, "recon", "---\nname: recon\ndescription: map the target\n---\nbody")
 
-	embedded := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "catalog", Description: "where the skills live", Source: SkillSourceEmbedded},
+	static := &SkillsResult{Skills: []SkillDefinition{
+		{Name: "catalog", Description: "where the skills live"},
 	}}
 
-	loader := NewSkillLoader(embedded, root)
+	loader := NewSkillLoader(static, root)
 
 	first := loader.Skills()
 	if len(first) != 2 {
-		t.Fatalf("first scan: got %d skills, want 2 (embedded + one on disk)", len(first))
+		t.Fatalf("first scan: got %d skills, want 2 (static + one on disk)", len(first))
 	}
 
 	// A skill cloned in after the run started.
@@ -331,16 +195,16 @@ func TestSkillLoaderRescansDirectory(t *testing.T) {
 
 // A directory skill must win over an embedded one of the same name, so a
 // downloaded skill can override a shipped default.
-func TestSkillLoaderDirectoryOverridesEmbedded(t *testing.T) {
+func TestSkillLoaderDirectoryOverridesTheStaticSet(t *testing.T) {
 	root := t.TempDir()
 
 	writeSkill(t, root, "recon", "---\nname: recon\ndescription: the downloaded one\n---\nbody")
 
-	embedded := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "recon", Description: "the shipped one", Source: SkillSourceEmbedded},
+	static := &SkillsResult{Skills: []SkillDefinition{
+		{Name: "recon", Description: "the shipped one"},
 	}}
 
-	skills := NewSkillLoader(embedded, root).Skills()
+	skills := NewSkillLoader(static, root).Skills()
 
 	if len(skills) != 1 {
 		t.Fatalf("got %d skills, want 1", len(skills))

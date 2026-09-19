@@ -1145,7 +1145,7 @@ func (e *Engine) instructions() string {
 			access := skill.Hint
 
 			if access == "" {
-				access = fmt.Sprintf("Read it with the `read` tool at %s.", skill.Path)
+				access = fmt.Sprintf("Read it with a shell command, such as `cat %s`.", skill.Path)
 			}
 
 			fmt.Fprintf(&builder,

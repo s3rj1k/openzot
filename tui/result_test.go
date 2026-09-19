@@ -9,7 +9,7 @@ import (
 )
 
 func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
-	m := newModel("zot", "task", "model", "openai", "/tmp", false)
+	m := newModel("zot", "task", "model", "openai", "/tmp")
 	m.handleEvent(agent.AgentExitEvent{Code: 7, Message: "verification failed"})
 
 	err := m.runError()
@@ -28,7 +28,7 @@ func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 
 func TestModelRunErrorReportsStreamError(t *testing.T) {
 	want := errors.New("provider unavailable")
-	m := newModel("zot", "task", "model", "openai", "/tmp", false)
+	m := newModel("zot", "task", "model", "openai", "/tmp")
 	m.err = want
 
 	if got := m.runError(); !errors.Is(got, want) {
@@ -37,7 +37,7 @@ func TestModelRunErrorReportsStreamError(t *testing.T) {
 }
 
 func TestModelRunErrorRejectsEarlyViewerExit(t *testing.T) {
-	m := newModel("zot", "task", "model", "openai", "/tmp", false)
+	m := newModel("zot", "task", "model", "openai", "/tmp")
 
 	if err := m.runError(); err == nil {
 		t.Fatal("runError() = nil while the agent is still running")

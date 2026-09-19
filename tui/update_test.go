@@ -17,7 +17,7 @@ import (
 func sized(t *testing.T, width, height int) model {
 	t.Helper()
 
-	m := newModel("zot", "do the thing", "gpt-5.4-mini", "openai", "/tmp/work", false)
+	m := newModel("zot", "do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 
@@ -33,7 +33,7 @@ func sized(t *testing.T, width, height int) model {
 // and the elapsed clock never advances - a screen that looks hung on a run that
 // is working fine.
 func TestInitStartsTheSpinnerAndClock(t *testing.T) {
-	m := newModel("zot", "task", "m", "b", "/w", false)
+	m := newModel("zot", "task", "m", "b", "/w")
 
 	cmd := m.Init()
 
@@ -188,21 +188,6 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 	}
 }
 
-// A file-editing tool bumps the edit counter, which is what tells the operator
-// the run actually changed something.
-func TestFileEditsAreCounted(t *testing.T) {
-	m := sized(t, 100, 30)
-
-	m.handleEvent(agent.ToolCallStartEvent{
-		Name: "write",
-		Args: map[string]any{"path": "main.go", "content": "package main"},
-	})
-
-	if m.fileEdits != 1 {
-		t.Errorf("fileEdits = %d, want 1", m.fileEdits)
-	}
-}
-
 func TestToolErrorsAreShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
@@ -285,7 +270,7 @@ func TestViewRendersWithoutPanicking(t *testing.T) {
 // Before the first size message there is nothing sensible to draw, and drawing
 // anyway used to produce a garbled frame.
 func TestViewBeforeReady(t *testing.T) {
-	m := newModel("zot", "task", "m", "b", "/w", false)
+	m := newModel("zot", "task", "m", "b", "/w")
 
 	if view := m.View(); strings.Contains(view, "\x1b[") && m.ready {
 		t.Error("an unready model should not draw a full frame")
@@ -358,85 +343,6 @@ func TestRewrapOnResize(t *testing.T) {
 	}
 }
 
-// The diff preview is what makes a write reviewable at a glance, so it has to
-// render for the tools that change files and stay out of the way for the rest.
-func TestDiffForTool(t *testing.T) {
-	tests := []struct {
-		name    string
-		tool    string
-		args    map[string]any
-		wantAny bool
-	}{
-		{
-			name:    "a whole-file write",
-			tool:    "write",
-			args:    map[string]any{"path": "main.go", "content": "package main\n\nfunc main() {}\n"},
-			wantAny: true,
-		},
-		{
-			name:    "a read is not a change",
-			tool:    "read",
-			args:    map[string]any{"path": "main.go"},
-			wantAny: false,
-		},
-		{
-			name:    "a shell command is not a change",
-			tool:    "shell",
-			args:    map[string]any{"command": "ls"},
-			wantAny: false,
-		},
-		{
-			name:    "a write with no content",
-			tool:    "write",
-			args:    map[string]any{"path": "main.go"},
-			wantAny: false,
-		},
-		{
-			// the preview is of the content, so a missing path does not stop it -
-			// the operator still sees what would be written
-			name:    "a write with no path still previews the content",
-			tool:    "write",
-			args:    map[string]any{"content": "x"},
-			wantAny: true,
-		},
-		{
-			name:    "no arguments at all",
-			tool:    "write",
-			args:    nil,
-			wantAny: false,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := diffForTool(test.tool, test.args, 80)
-
-			if test.wantAny && got == "" {
-				t.Error("expected a rendered diff")
-			}
-
-			if !test.wantAny && got != "" {
-				t.Errorf("expected no diff, got %q", got)
-			}
-		})
-	}
-}
-
-// A narrow terminal must still produce something rather than wrapping into
-// nonsense.
-func TestDiffClipsToWidth(t *testing.T) {
-	long := strings.Repeat("a very long line of content ", 20)
-
-	got := diffForTool("write", map[string]any{"path": "f.txt", "content": long}, 40)
-
-	for _, line := range strings.Split(got, "\n") {
-		if len([]rune(stripANSI(line))) > 60 {
-			t.Errorf("line exceeds the width budget: %q", line)
-		}
-	}
-}
-
-// stripANSI removes escape sequences so a width assertion measures glyphs.
 func stripANSI(s string) string {
 	var (
 		builder strings.Builder
@@ -500,7 +406,6 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 
 	m.iteration = 3
 	m.toolCount = 7
-	m.fileEdits = 2
 
 	footer := m.footer()
 
@@ -565,18 +470,7 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"read", map[string]any{"path": "main.go"}, "main.go"},
-		{"read", map[string]any{"path": "main.go", "startLine": 10.0, "endLine": 20.0}, ":10-20"},
-		{"read", map[string]any{"path": "main.go", "startLine": 10.0}, ":10"},
-		{"write", map[string]any{"path": "out.txt"}, "out.txt"},
-		{"list", map[string]any{"path": "./internal"}, "internal"},
 		{"shell", map[string]any{"command": "go test ./..."}, "go test"},
-		{"skill", map[string]any{"name": "deploy"}, "deploy"},
-
-		// edit has a diff panel (see diffForTool) but had no header of its own,
-		// so it fell through to the generic branch and dumped both versions of
-		// the file inline, directly above the diff that renders them properly
-		{"edit", map[string]any{"path": "main.go", "oldString": "before", "newString": "after"}, "main.go"},
 
 		// a caller's own tool still renders, just generically
 		{"custom", map[string]any{"thing": "value"}, "thing=value"},
@@ -588,15 +482,6 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 		if !strings.Contains(got, test.want) {
 			t.Errorf("renderToolStart(%q) = %q, want it to contain %q", test.tool, got, test.want)
 		}
-	}
-
-	// the file's contents belong in the diff panel, not in the header line
-	header := stripANSI(renderToolStart("edit", map[string]any{
-		"path": "main.go", "oldString": "the whole previous file", "newString": "the whole new file",
-	}))
-
-	if strings.Contains(header, "the whole previous file") || strings.Contains(header, "the whole new file") {
-		t.Errorf("the edit header dumped the file contents: %q", header)
 	}
 }
 
@@ -612,9 +497,6 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 	}{
 		{"shell echoes its output", "shell", "hello\nworld", true, "hello"},
 		{"a silent command still confirms", "shell", "", true, "done"},
-		{"read is summarised by size", "read", "a\nb\nc", true, "3 lines"},
-		{"list is summarised by size", "list", "a\nb", true, "2 lines"},
-		{"write confirms", "write", "wrote 12 bytes", true, "saved"},
 		{"an unknown tool echoes", "custom", "some output", true, "some output"},
 		{"an unknown tool with nothing to say", "custom", "", false, ""},
 		{"a non-string, non-map result", "shell", 42, false, ""},
@@ -676,32 +558,13 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 	}
 }
 
-func TestIntishCoercion(t *testing.T) {
-	for _, value := range []any{float64(7), 7, int64(7)} {
-		if n, ok := intish(value); !ok || n != 7 {
-			t.Errorf("intish(%T) = %d/%v, want 7/true", value, n, ok)
-		}
-	}
-
-	if _, ok := intish("7"); ok {
-		t.Error("a string is not a number here")
-	}
-}
-
-// The plain renderer is what pipes, logs and CI transcripts see, so its tool
-// names have to match too - the same mismatch printed "shell command=go test"
-// instead of the command.
 func TestPlainArgCoversTheBuiltInTools(t *testing.T) {
 	tests := []struct {
 		tool string
 		args map[string]any
 		want string
 	}{
-		{"read", map[string]any{"path": "main.go"}, "main.go"},
-		{"write", map[string]any{"path": "out.txt"}, "out.txt"},
-		{"list", map[string]any{"path": "./internal"}, "./internal"},
 		{"shell", map[string]any{"command": "go test ./..."}, "go test ./..."},
-		{"skill", map[string]any{"name": "deploy"}, "deploy"},
 		{"custom", map[string]any{"thing": "value"}, "thing=value"},
 	}
 
@@ -722,9 +585,6 @@ func TestPlainToolEnd(t *testing.T) {
 	}{
 		{"shell output is echoed", "shell", "hello\nworld", true, "hello"},
 		{"a silent command says nothing", "shell", "", false, ""},
-		{"read is summarised", "read", "a\nb\nc", true, "3 lines"},
-		{"list is summarised", "list", "a", true, "1 lines"},
-		{"a write needs no summary", "write", "wrote 3 bytes", false, ""},
 		{"a structured failure surfaces", "shell", map[string]any{"success": false, "error": "exit 1"}, true, "exit 1"},
 		{"structured output surfaces", "shell", map[string]any{"stdout": "captured"}, true, "captured"},
 		{"an unsupported result type", "shell", 42, false, ""},
@@ -913,32 +773,6 @@ func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// An edit that changes nothing must render nothing, or the log fills with empty
-// diff boxes on every no-op write.
-func TestPlainDiffIgnoresNonEdits(t *testing.T) {
-	if got := plainDiff("shell", map[string]any{"command": "ls"}); got != "" {
-		t.Errorf("a shell call produced a diff: %q", got)
-	}
-
-	if got := plainDiff("edit", map[string]any{
-		"path":      "a.go",
-		"oldString": "same",
-		"newString": "same",
-	}); got != "" {
-		t.Errorf("an edit that changes nothing produced a diff: %q", got)
-	}
-
-	got := plainDiff("write", map[string]any{"path": "a.go", "content": "package main\n"})
-
-	if !strings.Contains(got, "package main") {
-		t.Errorf("a write produced no diff: %q", got)
-	}
-}
-
-// The plan and progress renderers are the reason these tools exist in the
-// viewer: an operator watching a long run reads the plan to judge the approach
-// and the progress to see where it is. These pin that the structure survives
-// into the rendered lines, not just the tool name.
 func TestRenderPlanShowsNumberedSteps(t *testing.T) {
 	out := stripANSI(renderToolStart("plan", map[string]interface{}{
 		"steps":     []interface{}{"read the handler", "add validation", "write a test"},
@@ -1014,7 +848,7 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	// a not-yet-sized model: render() no-ops, so this exercises the scrollback cap
 	// without the per-append viewport cost (which is what a real, model-paced run
 	// pays anyway, now bounded to the cap)
-	m := newModel("zot", "do the thing", "m", "b", "d", false)
+	m := newModel("zot", "do the thing", "m", "b", "d")
 
 	limit := m.maxEntries          // DefaultMaxScrollback
 	total := limit + limit/4 + 200 // enough to force a trim past the cap + slack
@@ -1058,7 +892,7 @@ func TestTrimmedLogShowsAMarker(t *testing.T) {
 // The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback): a
 // caller can keep fewer or more lines than the default.
 func TestScrollbackCapIsConfigurable(t *testing.T) {
-	m := newModel("zot", "t", "m", "b", "d", false)
+	m := newModel("zot", "t", "m", "b", "d")
 	m.maxEntries = 50 // what Run sets from Meta.MaxScrollback
 
 	for i := 0; i < 300; i++ {
@@ -1448,12 +1282,6 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 			stat:   "tools",
 			before: func(m *model) { m.toolCount = 99 },
 			after:  func(m *model) { m.toolCount = 100 },
-		},
-		{
-			name:   "edits gaining a digit",
-			stat:   "edits",
-			before: func(m *model) { m.fileEdits = 9 },
-			after:  func(m *model) { m.fileEdits = 10 },
 		},
 		{
 			name:   "tokens crossing into thousands",

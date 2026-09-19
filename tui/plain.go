@@ -103,11 +103,6 @@ func runStream(ctx context.Context, client *agent.Client, meta Meta, opts agent.
 		case agent.ToolCallStartEvent:
 			flush()
 			fmt.Printf("  %s %s\n", palette.paint("36", e.Name), plainArg(e.Name, e.Args))
-			if meta.ShowDiff {
-				if d := plainDiff(e.Name, e.Args); d != "" {
-					fmt.Print(d)
-				}
-			}
 		case agent.ToolCallEndEvent:
 			if s := plainToolEnd(e.Name, e.Result); s != "" {
 				fmt.Println(palette.paint("2", s))
@@ -161,12 +156,8 @@ func runStream(ctx context.Context, client *agent.Client, meta Meta, opts agent.
 // "shell command=go test" instead of just the command.
 func plainArg(name string, args map[string]interface{}) string {
 	switch name {
-	case "read", "write", "list", "edit":
-		return str(args, "path")
 	case "shell":
 		return truncate(str(args, "command"), 200)
-	case "skill":
-		return str(args, "name")
 	case "plan":
 		return plainPlan(args)
 	case "progress":
@@ -222,18 +213,6 @@ func plainToolEnd(name string, result interface{}) string {
 			}
 
 			return plainOutput(trimmed)
-
-		case "read", "list":
-			lines := 0
-
-			if trimmed != "" {
-				lines = strings.Count(trimmed, "\n") + 1
-			}
-
-			return fmt.Sprintf("    %d lines", lines)
-
-		case "write":
-			return ""
 
 		default:
 			if trimmed == "" {
@@ -294,47 +273,5 @@ func plainOutput(text string) string {
 		b.WriteString("\n    | ...")
 	}
 
-	return b.String()
-}
-
-// plainDiff renders an unstyled unified diff (no colour, no box) for log output.
-func plainDiff(name string, args map[string]interface{}) string {
-	var path, oldText, newText string
-	switch name {
-	case "edit":
-		path, oldText, newText = str(args, "path"), str(args, "oldString"), str(args, "newString")
-	case "write":
-		path, oldText, newText = str(args, "path"), "", str(args, "content")
-	default:
-		return ""
-	}
-	if oldText == newText {
-		return ""
-	}
-
-	oldLines, newLines := splitLines(oldText), splitLines(newText)
-	ops := collapseContext(lineDiff(oldLines, newLines), diffContext)
-
-	var b strings.Builder
-	b.WriteString("    --- " + path + "\n")
-	shown := 0
-	for _, op := range ops {
-		if shown >= maxDiffLines {
-			break
-		}
-		switch op.kind {
-		case diffGap:
-			b.WriteString("      ⋯\n")
-		case diffEqual:
-			b.WriteString("      " + lineAt(newLines, op.newIdx) + "\n")
-			shown++
-		case diffDelete:
-			b.WriteString("    - " + lineAt(oldLines, op.oldIdx) + "\n")
-			shown++
-		case diffInsert:
-			b.WriteString("    + " + lineAt(newLines, op.newIdx) + "\n")
-			shown++
-		}
-	}
 	return b.String()
 }

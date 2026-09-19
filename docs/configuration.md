@@ -32,7 +32,6 @@ written in the config or references a variable you export (`api_key:
 | `--session-dir` / `--no-session`              | see [Sessions](#sessions)                                          |
 | `--watch`                                     | keep running and watch a folder or glob for new orders - see [Watch mode](#watch-mode) |
 | `--orders-dir`                                | where this project's orders live: what a bare `zot` runs, what a bare `--watch` watches, and where `zot new` files one. Defaults to `<dir>/.zot/orders` |
-| `--diff`                                      | show a syntax-highlighted diff under each write                    |
 | `--plain`                                     | stream unstyled output; auto-enabled when stdout is not a terminal |
 | `--config`                                    | use a specific config file                                         |
 
@@ -60,7 +59,6 @@ survives.
 | `task`                | plan steps done, from the agent's own `plan`/`progress` calls   |
 | `order`               | position in a batch - `2/5` when running several orders         |
 | `iter`                | agentic rounds, against the cap when one is set                 |
-| `edits`               | files written or edited                                        |
 | `elapsed`             | wall time, against `max_time` when set                          |
 | `tps`                 | output tokens per second - is the provider keeping up           |
 | `pace`                | average wall time per iteration - what predicts the finish      |
@@ -227,7 +225,7 @@ On startup zot folds in context from two places - the **config directory**
   conventions the agent should always follow.
 - **skills** - each `<name>/SKILL.md` (with `name` / `description` YAML front
   matter) is described to the agent in its instructions, and the agent reads a
-  skill's full file on demand when it's relevant. Both
+  skill's full file on demand, with a shell command, when it's relevant. Both
   **`.skills/`** (typical at a project root) and **`skills/`** are searched.
 
 ```

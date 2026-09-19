@@ -929,7 +929,7 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 
 		// only check things that look like tool names (a real tool, or the
 		// phantom ones we are guarding against)
-		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "plan": true, "progress": true}
+		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "read": true, "write": true, "list": true}
 
 		if !real[name] && phantom[name] {
 			t.Errorf("the instructions names %q, which is not a real tool", name)
@@ -937,13 +937,31 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 	}
 
 	// and positively assert the tools the instructions promises are all present
-	for _, want := range []string{"plan", "progress", "read", "write", "list", "shell", "success", "failure"} {
+	for _, want := range []string{"plan", "progress", "shell", "success", "failure"} {
 		if !real[want] {
 			t.Errorf("the instructions relies on %q but it is not a real tool", want)
 		}
 
 		if !strings.Contains(DefaultInstructions, `"`+want+`"`) {
 			t.Errorf("the instructions should name the %q tool so the model knows to use it", want)
+		}
+	}
+}
+
+// With shell the only tool that touches the machine, the model has to be told so
+// and shown how to read, list and write with it. A prompt that only said "shell"
+// would leave a model reaching for file tools it does not have.
+func TestDefaultInstructionsTeachShellAsTheOnlyWayToTouchTheMachine(t *testing.T) {
+	for _, want := range []string{
+		"only way to act on the machine",
+		"cat", "sed -n", "grep -n", "ls", "heredoc",
+
+		// writing a file through the shell is where an unquoted heredoc mangles
+		// what was written, so the rule that prevents it is part of the prompt
+		"quoted heredoc",
+	} {
+		if !strings.Contains(DefaultInstructions, want) {
+			t.Errorf("the instructions should mention %q so the model knows how to work through shell", want)
 		}
 	}
 }

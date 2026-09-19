@@ -1,15 +1,10 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"sort"
-	"strings"
 	"time"
 )
 
@@ -17,10 +12,15 @@ import (
 // caller does not set its own. See toolSet.truncate for why a bound exists.
 const DefaultMaxToolOutput = 100_000
 
-// DefaultTools returns the standard filesystem and shell tool set, with the
-// default output ceiling.
+// DefaultTools returns the standard tool set, with the default output ceiling.
 //
-// These run with the privileges of the process. That is the point - an agent
+// The set is three tools. shell is the only one that touches the machine: the
+// model reads, lists, creates and changes files with ordinary commands, the way
+// anyone does at a terminal, so there is one place a run's effects come from and
+// one place to bound them. plan and progress change nothing on disk; they exist
+// so the run's strategy and state can be followed.
+//
+// shell runs with the privileges of the process. That is the point - an agent
 // that cannot touch the machine is not much use to a CLI - but it means the
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
@@ -34,77 +34,15 @@ func DefaultTools() Tools {
 // that overflows the window is rejected wholesale, and the run cannot recover
 // from a message it cannot even send. Zero or negative uses the default.
 func DefaultToolsWith(maxOutput int) Tools {
-	return DefaultToolsFor(ToolOptions{MaxOutput: maxOutput})
-}
-
-// ToolOptions configures the standard tool set.
-type ToolOptions struct {
-	// MaxOutput is the ceiling on a single tool result. Zero uses the default.
-	MaxOutput int
-
-	// EmbeddedSkills are skill bodies compiled into the binary, keyed by name,
-	// that the `read` tool serves when handed an embedded-skill:// URL. A caller that
-	// ships embedded skills passes their contents (SkillsResult.EmbeddedContents)
-	// so those skills are read exactly like on-disk ones - same tool, same
-	// bounded-range mechanism, the URL the only thing that differs. Nil for a
-	// tool set with no embedded skills.
-	EmbeddedSkills map[string]string
-}
-
-// DefaultToolsFor returns the standard tool set for a set of options.
-func DefaultToolsFor(options ToolOptions) Tools {
-	maxOutput := options.MaxOutput
-
 	if maxOutput <= 0 {
 		maxOutput = DefaultMaxToolOutput
 	}
 
-	s := toolSet{maxOutput: maxOutput, embeddedSkills: options.EmbeddedSkills}
+	s := toolSet{maxOutput: maxOutput}
 
-	tools := Tools{
-		"read": {
-			Description: "Read a range of lines from a file. startLine and endLine are required: read a bounded section, not the whole file, so a large file cannot flood the context. The result is line-numbered and reports the file's total length, so you can read a further range to see more.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"path":      map[string]any{"type": "string", "description": "The file path to read"},
-					"startLine": map[string]any{"type": "integer", "description": "First line to read, 1-indexed"},
-					"endLine":   map[string]any{"type": "integer", "description": "Last line to read, inclusive, 1-indexed"},
-				},
-				"required": []string{"path", "startLine", "endLine"},
-			},
-			Handler: s.read,
-		},
-
-		"write": {
-			Description: "Write content to a file. Without line parameters the whole file is replaced. With startLine only, content is inserted before that line. With both, the range is replaced.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"path":      map[string]any{"type": "string", "description": "The file path to write"},
-					"content":   map[string]any{"type": "string", "description": "The content to write"},
-					"startLine": map[string]any{"type": "integer", "description": "First line to write at, 1-indexed"},
-					"endLine":   map[string]any{"type": "integer", "description": "Last line to replace, inclusive, 1-indexed"},
-				},
-				"required": []string{"path", "content"},
-			},
-			Handler: s.write,
-		},
-
-		"list": {
-			Description: "List the entries of a directory.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]any{"type": "string", "description": "The directory to list"},
-				},
-				"required": []string{"path"},
-			},
-			Handler: s.list,
-		},
-
+	return Tools{
 		"shell": {
-			Description: "Run a shell command and return its combined output.",
+			Description: "Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
 			Parameters: FunctionParameters{
 				"type": "object",
 				"properties": map[string]any{
@@ -147,8 +85,6 @@ func DefaultToolsFor(options ToolOptions) Tools {
 			Handler: progressHandler,
 		},
 	}
-
-	return tools
 }
 
 // planHandler records the model's plan.
@@ -184,21 +120,17 @@ func progressHandler(_ context.Context, args map[string]any) (any, error) {
 	return "progress recorded", nil
 }
 
-// toolSet carries the configuration the filesystem and shell tools share -
-// currently just the output ceiling. The handlers are its methods so the
-// ceiling is captured per tool set rather than read from a package global,
-// which a per-run or per-model override could not vary.
+// toolSet carries the configuration the tools share - currently just the output
+// ceiling. The handlers are its methods so the ceiling is captured per tool set
+// rather than read from a package global, which a per-run or per-model override
+// could not vary.
 type toolSet struct {
 	maxOutput int
-
-	// embeddedSkills are skill bodies compiled into the binary, keyed by name,
-	// that read serves when the path is an embedded-skill:// URL. Nil when none ship.
-	embeddedSkills map[string]string
 }
 
 // truncate bounds what a tool may return.
 //
-// An unbounded result is a context-window hazard: one read of a large file can
+// An unbounded result is a context-window hazard: one cat of a large file can
 // consume the whole budget and evict the conversation that explains why it was
 // read - or, on an endpoint with a small window, be rejected wholesale so the
 // run cannot even send it. Truncation is visible so the model knows it is
@@ -229,194 +161,6 @@ func intArg(args map[string]any, key string) (int, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// readContent resolves a read path to bytes: an embedded skill for an embedded-skill://
-// URL, an ordinary file otherwise. The two share every downstream step, so read
-// treats what comes back the same way regardless of where it came from.
-func (s toolSet) readContent(path string) ([]byte, error) {
-	if name, ok := SkillNameFromURL(path); ok {
-		body, found := s.embeddedSkills[name]
-		if !found {
-			names := make([]string, 0, len(s.embeddedSkills))
-			for n := range s.embeddedSkills {
-				names = append(names, n)
-			}
-			sort.Strings(names)
-
-			return nil, fmt.Errorf("no built-in skill named %q; available: %s",
-				name, strings.Join(names, ", "))
-		}
-
-		return []byte(body), nil
-	}
-
-	return os.ReadFile(path)
-}
-
-func (s toolSet) read(_ context.Context, args map[string]any) (any, error) {
-	path, err := stringArg(args, "path")
-	if err != nil {
-		return nil, err
-	}
-
-	// The range is required, not optional. An optional range invites the model
-	// to read whole files by default, and one large file can overflow a small
-	// context window and be rejected wholesale. Forcing a bounded range makes
-	// the model state what it wants to see and keeps each read small.
-	start, hasStart := intArg(args, "startLine")
-	end, hasEnd := intArg(args, "endLine")
-
-	if !hasStart || !hasEnd {
-		return nil, fmt.Errorf("read requires startLine and endLine: read a bounded range, not the whole file")
-	}
-
-	// An embedded-skill:// URL addresses a skill compiled into the binary, which
-	// has no filesystem path. Resolve it against the embedded set; everything after -
-	// the range, the line numbering, the truncation - is identical to a file,
-	// which is the point: the model reads an embedded skill exactly as it reads
-	// one on disk.
-	content, err := s.readContent(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// A binary file split on newlines is mojibake: thousands of replacement
-	// characters that cost the same context as real content and tell the model
-	// nothing. Say what the file is instead.
-	if looksBinary(content) {
-		return fmt.Sprintf("%s is a binary file, %d bytes; inspect it with a command instead if you need to know what it contains.",
-			path, len(content)), nil
-	}
-
-	lines := strings.Split(string(content), "\n")
-	total := len(lines)
-
-	if start < 1 {
-		start = 1
-	}
-
-	if end > total {
-		end = total
-	}
-
-	if start > total || end < start {
-		return fmt.Sprintf("[%s has %d lines; requested range is empty]", path, total), nil
-	}
-
-	// Line-numbered so the model can target a precise next range, with a header
-	// stating the whole file's length so it knows how much it has not seen.
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "[%s lines %d-%d of %d]\n", path, start, end, total)
-
-	for i := start; i <= end; i++ {
-		fmt.Fprintf(&b, "%d\t%s\n", i, lines[i-1])
-	}
-
-	return s.truncate(b.String()), nil
-}
-
-// binarySniffBytes is how much of a file read looks at to decide it is binary.
-const binarySniffBytes = 8000
-
-// looksBinary reports whether content is a binary file rather than text. A NUL
-// byte in the opening of a file does not occur in text in any encoding read is
-// asked to show, and is present in every common binary format.
-func looksBinary(content []byte) bool {
-	if len(content) > binarySniffBytes {
-		content = content[:binarySniffBytes]
-	}
-
-	return bytes.IndexByte(content, 0) >= 0
-}
-
-func (s toolSet) write(_ context.Context, args map[string]any) (any, error) {
-	path, err := stringArg(args, "path")
-	if err != nil {
-		return nil, err
-	}
-
-	content, ok := args["content"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing required argument %q", "content")
-	}
-
-	start, hasStart := intArg(args, "startLine")
-
-	if !hasStart {
-		if directory := filepath.Dir(path); directory != "" {
-			if err := os.MkdirAll(directory, 0o755); err != nil {
-				return nil, err
-			}
-		}
-
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			return nil, err
-		}
-
-		return fmt.Sprintf("wrote %d bytes to %s", len(content), path), nil
-	}
-
-	existing, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(existing), "\n")
-
-	if start < 1 {
-		start = 1
-	}
-
-	if start > len(lines)+1 {
-		start = len(lines) + 1
-	}
-
-	end, hasEnd := intArg(args, "endLine")
-
-	if !hasEnd || end < start {
-		end = start - 1
-	}
-
-	if end > len(lines) {
-		end = len(lines)
-	}
-
-	updated := make([]string, 0, len(lines)+1)
-	updated = append(updated, lines[:start-1]...)
-	updated = append(updated, strings.Split(content, "\n")...)
-	updated = append(updated, lines[end:]...)
-
-	if err := os.WriteFile(path, []byte(strings.Join(updated, "\n")), 0o644); err != nil {
-		return nil, err
-	}
-
-	return fmt.Sprintf("updated %s", path), nil
-}
-
-func (s toolSet) list(_ context.Context, args map[string]any) (any, error) {
-	path, err := stringArg(args, "path")
-	if err != nil {
-		return nil, err
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var builder strings.Builder
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			fmt.Fprintf(&builder, "%s/\n", entry.Name())
-		} else {
-			fmt.Fprintf(&builder, "%s\n", entry.Name())
-		}
-	}
-
-	return s.truncate(builder.String()), nil
 }
 
 func (s toolSet) shell(ctx context.Context, args map[string]any) (any, error) {

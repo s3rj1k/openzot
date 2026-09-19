@@ -91,11 +91,8 @@ agent:
   # outcome - is appended to it: a run has no input channel to ask through.
   # instructions: ''
 
-# Presentation. Diff, plain, and color are also command-line flags.
+# Presentation. Plain and color are also command-line flags.
 ui:
-  # Show a syntax-highlighted before/after diff under each write.
-  # diff: false
-
   # Force unstyled output instead of the full-screen viewer. Without a terminal
   # Zot streams automatically, so an ordinary pipeline needs no flag.
   # plain: false
@@ -111,7 +108,7 @@ ui:
   # scrollback: 5000
 
   # Which fields the header stats bar shows, and in what order. Valid fields:
-  # model, provider, dir, iter, tools, edits, elapsed, tokens (default: all).
+  # model, provider, dir, iter, tools, elapsed, tokens (default: all).
   # `tokens` shows the provider's own reported usage; iter/tools/elapsed show
   # progress against a limit (e.g. 5/1000) when one is set.
   # stats: [model, provider, iter, tools, elapsed, tokens]

@@ -2,32 +2,10 @@ package agent
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
-)
-
-// SkillSource says where a skill's instructions live, and therefore how the
-// model should read them.
-//
-// It exists because the two cases resolve to different paths. A skill on disk
-// is read at its filesystem path; an embedded skill is compiled into the binary
-// and has no such path, so it is addressed by an embedded-skill:// URL that the
-// `read` tool resolves against the embedded set. Both are read with the same
-// tool - the source only decides which kind of path the skill advertises.
-type SkillSource string
-
-const (
-	// SkillSourceDirectory is a skill on the filesystem, read at its path.
-	SkillSourceDirectory SkillSource = "directory"
-
-	// SkillSourceEmbedded is a skill compiled into the binary, read at its
-	// embedded-skill:// URL.
-	SkillSourceEmbedded SkillSource = "embedded"
 )
 
 // SkillDefinition is a capability advertised to the model.
@@ -36,74 +14,15 @@ const (
 // it only when it decides the skill is relevant, which keeps a large library
 // cheap: until then, just the name and description occupy context.
 type SkillDefinition struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Path        string      `json:"path"`
-	Source      SkillSource `json:"source,omitempty"`
-
-	// contents is the embedded body, held so the `read` tool can serve it from
-	// memory when resolving the skill's embedded-skill:// URL.
-	contents string
-}
-
-// SkillURLScheme is the scheme under which an embedded skill is addressed.
-//
-// An embedded skill is compiled into the binary and has no path on disk, so it
-// cannot be named the way a file is. It is given a URL instead -
-// embedded-skill:///name - which the `read` tool resolves against the embedded
-// set rather than the filesystem. The scheme is deliberately self-describing:
-// the model infers that this skill lives in the binary from the protocol alone,
-// with no sentence in the prompt having to say so. Embedded and on-disk skills
-// are otherwise reached the same way - one tool, one verb, the path the only
-// difference.
-const SkillURLScheme = "embedded-skill://"
-
-// SkillURL is the address of an embedded skill, by name.
-func SkillURL(name string) string {
-	return SkillURLScheme + "/" + name
-}
-
-// SkillNameFromURL extracts the skill name from an embedded-skill:// URL,
-// reporting whether the path was one. Tolerant of the slash count so
-// embedded-skill://name and embedded-skill:///name both resolve.
-func SkillNameFromURL(path string) (string, bool) {
-	if !strings.HasPrefix(path, SkillURLScheme) {
-		return "", false
-	}
-
-	name := strings.TrimLeft(strings.TrimPrefix(path, SkillURLScheme), "/")
-
-	return name, name != ""
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
 }
 
 // Hint is the instruction appended to a skill's description telling the model
-// how to reach its instructions.
-//
-// Every skill is read with the `read` tool; only the path differs - a
-// filesystem path for a disk skill, an embedded-skill:// URL for an embedded one.
-// Generated rather than authored, so a skill's own description never has to
-// know which it is - the same SKILL.md works either way.
+// how to reach its instructions: with a shell command, at the skill's path.
 func (s SkillDefinition) Hint() string {
-	return fmt.Sprintf("Read it with the `read` tool at %s.", s.Path)
-}
-
-// EmbeddedContents returns the bodies of the embedded skills in this set, keyed
-// by name, for the `read` tool to serve against embedded-skill:// URLs. Nil when the set
-// has none - a set that is entirely on-disk needs no registry.
-func (r *SkillsResult) EmbeddedContents() map[string]string {
-	contents := map[string]string{}
-
-	for _, skill := range r.Skills {
-		if skill.Source == SkillSourceEmbedded {
-			contents[skill.Name] = skill.contents
-		}
-	}
-
-	if len(contents) == 0 {
-		return nil
-	}
-
-	return contents
+	return fmt.Sprintf("Read it with a shell command, such as `cat %s`.", s.Path)
 }
 
 // SkillsResult is a loaded skill set.
@@ -172,73 +91,9 @@ func LoadSkills(directories []string) (*SkillsResult, error) {
 				continue
 			}
 
-			skill := parseSkill(entry.Name(), file, string(content))
-
-			skill.Source = SkillSourceDirectory
-
-			result.Skills = append(result.Skills, skill)
+			result.Skills = append(result.Skills, parseSkill(entry.Name(), file, string(content)))
 		}
 	}
-
-	return result, nil
-}
-
-// LoadSkillsFromFS discovers skills in a filesystem, for skills compiled into
-// the binary with go:embed.
-//
-// The body is retained rather than only the path, because an embedded file has
-// no path on disk - the `read` tool serves it from this set when handed the
-// skill's embedded-skill:// URL. Nest as deeply as you like: any directory
-// containing a SKILL.md is a skill, so an embedded tree can be organised by
-// category.
-func LoadSkillsFromFS(fsys fs.FS) (*SkillsResult, error) {
-	result := &SkillsResult{}
-
-	err := fs.WalkDir(fsys, ".", func(name string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if entry.IsDir() || path.Base(name) != "SKILL.md" {
-			return nil
-		}
-
-		content, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			// a skill that cannot be read is skipped, not fatal: one broken
-			// entry must not cost the caller its whole library
-			return nil
-		}
-
-		directory := path.Base(path.Dir(name))
-
-		if directory == "." || directory == "" {
-			directory = strings.TrimSuffix(path.Base(name), ".md")
-		}
-
-		skill := parseSkill(directory, name, string(content))
-
-		skill.Source = SkillSourceEmbedded
-		skill.contents = string(content)
-
-		// An embedded skill has no filesystem path; it is addressed by an
-		// embedded-skill:// URL the `read` tool resolves against the set. Set
-		// after parseSkill so the URL uses the resolved name (front matter may
-		// override the directory name), which is also the registry key.
-		skill.Path = SkillURL(skill.Name)
-
-		result.Skills = append(result.Skills, skill)
-
-		return nil
-	})
-
-	if err != nil {
-		return result, nil
-	}
-
-	sort.Slice(result.Skills, func(i, j int) bool {
-		return result.Skills[i].Name < result.Skills[j].Name
-	})
 
 	return result, nil
 }
@@ -265,7 +120,7 @@ type SkillLoader struct {
 }
 
 // NewSkillLoader builds a loader over the given directories, layered on top of
-// a static set - embedded skills, typically - that is never rescanned. Either
+// a static set - programmatic skills, typically - that is never rescanned. Either
 // part may be empty or nil. On a name clash a directory skill wins, so a skill
 // on disk can override a shipped default rather than being stuck with it.
 func NewSkillLoader(static *SkillsResult, directories ...string) *SkillLoader {

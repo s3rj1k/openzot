@@ -68,7 +68,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() model) {
 	seen := &collector{}
 
 	program := tea.NewProgram(
-		&recordingModel{collector: seen, inner: newModel("zot", "do the thing", "test-model", "custom", "/tmp/work", false)},
+		&recordingModel{collector: seen, inner: newModel("zot", "do the thing", "test-model", "custom", "/tmp/work")},
 		tea.WithInput(nil),
 		tea.WithOutput(io.Discard),
 		tea.WithoutSignalHandler(),
@@ -305,7 +305,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	m := newModel("zot", "do the thing", "test-model", "custom", t.TempDir(), false)
+	m := newModel("zot", "do the thing", "test-model", "custom", t.TempDir())
 
 	// start stands in for the user pressing q: it returns as soon as the agent
 	// is under way, exactly as (*tea.Program).Run does on tea.Quit
@@ -387,7 +387,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	recorder := &abortRecorder{}
 
-	m := newModel("zot", "do the thing", "test-model", "custom", t.TempDir(), false)
+	m := newModel("zot", "do the thing", "test-model", "custom", t.TempDir())
 
 	// the program runs headlessly so the event pump is genuinely consuming;
 	// quitting once the stream is under way is the user pressing q mid-run

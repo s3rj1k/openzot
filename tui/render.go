@@ -20,21 +20,8 @@ const maxOutputLines = 8
 // renders the agent's most-used tool as an anonymous key/value dump.
 func renderToolStart(name string, args map[string]interface{}) string {
 	switch name {
-	case "read":
-		return toolReadStyle.Render("  read   ") + dimPath(args, "path") + lineRange(args)
-	case "write":
-		return toolWriteStyle.Render("  write  ") + dimPath(args, "path") + lineRange(args)
-	case "edit":
-		// the before/after text is what diffForTool renders; naming the file is
-		// all this line has to do, and the generic branch would print both whole
-		// versions of it here instead
-		return toolWriteStyle.Render("  edit   ") + dimPath(args, "path")
-	case "list":
-		return toolReadStyle.Render("  list   ") + dimPath(args, "path")
 	case "shell":
 		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
-	case "skill":
-		return toolOtherStyle.Render("  skill  ") + taskStyle.Render(str(args, "name"))
 	case "plan":
 		return renderPlan(args)
 	case "progress":
@@ -91,18 +78,6 @@ func renderTextResult(name string, text string) string {
 		}
 
 		return okStyle.Render("    ✓ done") + "\n" + renderOutputLines(trimmed)
-
-	case "read", "list":
-		lines := 0
-
-		if trimmed != "" {
-			lines = strings.Count(trimmed, "\n") + 1
-		}
-
-		return outputStyle.Render(fmt.Sprintf("    ✓ %d lines", lines))
-
-	case "write":
-		return okStyle.Render("    ✓ saved")
 
 	default:
 		if trimmed == "" {
@@ -229,23 +204,6 @@ func strList(args map[string]interface{}, key string) []string {
 	return out
 }
 
-func dimPath(args map[string]interface{}, key string) string {
-	return taskStyle.Render(str(args, key))
-}
-
-func lineRange(args map[string]interface{}) string {
-	start, hasStart := intish(args["startLine"])
-	end, hasEnd := intish(args["endLine"])
-	switch {
-	case hasStart && hasEnd:
-		return outputStyle.Render(fmt.Sprintf(" :%d-%d", start, end))
-	case hasStart:
-		return outputStyle.Render(fmt.Sprintf(" :%d", start))
-	default:
-		return ""
-	}
-}
-
 func compactArgs(args map[string]interface{}) string {
 	parts := make([]string, 0, len(args))
 	for k, v := range args {
@@ -259,20 +217,6 @@ func str(m map[string]interface{}, key string) string {
 		return v
 	}
 	return ""
-}
-
-// intish coerces JSON numbers (float64) and ints into an int.
-func intish(v interface{}) (int, bool) {
-	switch n := v.(type) {
-	case float64:
-		return int(n), true
-	case int:
-		return n, true
-	case int64:
-		return int(n), true
-	default:
-		return 0, false
-	}
 }
 
 // truncate flattens a string to one line and caps it at max characters.

@@ -119,9 +119,6 @@ func ProviderModels(provider ProviderConfig) []string {
 
 // UI holds presentation options for the read-only viewer.
 type UI struct {
-	// Diff, when true, renders a framed, syntax-highlighted before/after diff
-	// panel beneath every edit/write the agent makes.
-	Diff bool `yaml:"diff"`
 	// Plain forces the unstyled streaming renderer (no full-screen TUI). Without
 	// a terminal Zot also streams, with styling decided separately by Color.
 	Plain bool `yaml:"plain"`

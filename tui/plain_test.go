@@ -12,25 +12,6 @@ import (
 	"testing"
 )
 
-func TestPlainDiffNoANSI(t *testing.T) {
-	out := plainDiff("edit", map[string]interface{}{
-		"path":      "x.go",
-		"oldString": "a := 1\n",
-		"newString": "a := 2\n",
-	})
-	if out == "" {
-		t.Fatal("expected plain diff output")
-	}
-	if strings.Contains(out, "\x1b[") {
-		t.Error("plain diff must not contain ANSI escape codes")
-	}
-	for _, want := range []string{"--- x.go", "- a := 1", "+ a := 2"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("plain diff missing %q in:\n%s", want, out)
-		}
-	}
-}
-
 func TestIsInteractiveUnderTest(t *testing.T) {
 	// `go test` pipes stdout, so the detector should report non-interactive and
 	// zot would pick plain mode.
@@ -311,40 +292,6 @@ func TestRunPlainSurfacesProviderFailures(t *testing.T) {
 	}
 }
 
-func TestRunPlainShowsDiffsWhenAsked(t *testing.T) {
-	client := plainServer(t,
-		[]string{plainCall("c1", "write", `{"path":"new.txt","content":"hello\nworld"}`)},
-		[]string{plainSuccess("written")},
-	)
-
-	options := agent.ExecuteWithToolsOptions{
-		Tools: agent.Tools{
-			"write": {
-				Description: "write",
-				Parameters:  agent.FunctionParameters{"type": "object"},
-				Handler: func(context.Context, map[string]any) (any, error) {
-					return "wrote 11 bytes", nil
-				},
-			},
-		},
-	}
-
-	withDiff, err := capture(t, func() error {
-		return runPlainErr(context.Background(), client,
-			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w", ShowDiff: true}, options)
-	})
-	if err != nil {
-		t.Fatalf("runPlain: %v", err)
-	}
-
-	if !strings.Contains(withDiff, "hello") {
-		t.Errorf("the diff should show the content being written:\n%s", withDiff)
-	}
-}
-
-// Run dispatches to the plain renderer when there is no usable terminal, or when
-// it is asked to - starting an alt-screen program without a TTY would garble the
-// output or fail outright.
 func TestRunUsesThePlainPathWithoutATerminal(t *testing.T) {
 	client := plainServer(t, []string{plainSuccess("finished")})
 

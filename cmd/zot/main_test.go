@@ -407,7 +407,6 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 func TestApplyOverrides(t *testing.T) {
 	base := func() zot.Config {
 		cfg := config.Defaults()
-		cfg.UI.Diff = true
 		cfg.UI.Plain = true
 
 		return cfg
@@ -459,11 +458,7 @@ func TestApplyOverrides(t *testing.T) {
 	t.Run("an unpassed boolean does not turn a configured one off", func(t *testing.T) {
 		cfg := base()
 
-		applyOverrides(&cfg, overrides{Diff: false, Plain: false})
-
-		if !cfg.UI.Diff {
-			t.Error("--diff was never passed; the configured value must stand")
-		}
+		applyOverrides(&cfg, overrides{Plain: false})
 
 		if !cfg.UI.Plain {
 			t.Error("--plain was never passed; the configured value must stand")
@@ -474,14 +469,9 @@ func TestApplyOverrides(t *testing.T) {
 		cfg := base()
 
 		applyOverrides(&cfg, overrides{
-			Diff:   false,
 			Plain:  false,
-			Passed: map[string]bool{"diff": true, "plain": true},
+			Passed: map[string]bool{"plain": true},
 		})
-
-		if cfg.UI.Diff {
-			t.Error("--diff=false was passed and must win")
-		}
 
 		if cfg.UI.Plain {
 			t.Error("--plain=false was passed and must win")
