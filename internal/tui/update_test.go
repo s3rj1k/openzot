@@ -1027,52 +1027,6 @@ func TestFmtTokens(t *testing.T) {
 	}
 }
 
-// A caller collecting the run's outcome (a draft run) asks the viewer to close
-// itself when the run ends; a run of record holds the final screen, because the
-// screen is its report.
-func TestQuitOnDoneClosesTheViewerWhenTheRunEnds(t *testing.T) {
-	exit := doneMsg{result: loop.Result{Reason: loop.StopSettled, Message: "done"}}
-
-	m := sized(t, 100, 30)
-	m.quitOnDone = true
-
-	_, cmd := m.Update(exit)
-	if cmd == nil {
-		t.Fatal("the viewer should quit once the run ends")
-	}
-
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Errorf("cmd() = %T, want tea.QuitMsg", cmd())
-	}
-
-	// mid-run events must not quit, even with the flag set
-	running := sized(t, 100, 30)
-	running.quitOnDone = true
-
-	if _, cmd := running.Update(eventMsg{ev: loop.Event{Kind: loop.EventIteration, Iteration: 1}}); cmd != nil {
-		t.Error("the viewer must stay open while the run is going")
-	}
-
-	// without the flag the final screen is held for review
-	held := sized(t, 100, 30)
-
-	if _, cmd := held.Update(exit); cmd != nil {
-		t.Error("a run of record must hold its final screen")
-	}
-}
-
-// A run that ends in an error also ends the run; the self-closing viewer must not
-// hang on it.
-func TestQuitOnDoneClosesTheViewerOnAnError(t *testing.T) {
-	m := sized(t, 100, 30)
-	m.quitOnDone = true
-
-	_, cmd := m.Update(doneMsg{result: loop.Result{Reason: loop.StopError, Err: fmt.Errorf("provider down")}})
-	if cmd == nil {
-		t.Fatal("the viewer should quit on a fatal error")
-	}
-}
-
 // The error behind a failed run is kept and shown - it is usually the run's only
 // diagnostic (the provider's 404, not the loop's "the provider failed").
 func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
@@ -1154,7 +1108,7 @@ func TestDefaultStatsAreCuratedNotEverything(t *testing.T) {
 	}
 
 	// the rate stats are the opposite: they answer "is this run healthy now"
-	for _, want := range []string{"tps", "pace", "task", "order"} {
+	for _, want := range []string{"tps", "pace", "task"} {
 		if !defaults[want] {
 			t.Errorf("%q tells the watcher something actionable and should default on", want)
 		}
@@ -1226,12 +1180,6 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 			before: func(m *model) { m.stepsDone, m.planSteps = 0, 12 },
 			after:  func(m *model) { m.stepsDone, m.planSteps = 10, 12 },
 		},
-		{
-			name:   "order progress within one batch",
-			stat:   "order",
-			before: func(m *model) { m.batchIndex, m.batchSize = 1, 10 },
-			after:  func(m *model) { m.batchIndex, m.batchSize = 10, 10 },
-		},
 	}
 
 	for _, test := range tests {
@@ -1257,11 +1205,11 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 // run to divide by, the bar says so rather than reporting a confident 0.0.
 func TestRateStatsReportAbsenceRatherThanZero(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.stats = []string{"tps", "pace", "task", "order"}
+	m.stats = []string{"tps", "pace", "task"}
 
 	bar := stripANSI(m.metaBar())
 
-	for _, unmeasured := range []string{"tps -", "pace -", "task -", "order -"} {
+	for _, unmeasured := range []string{"tps -", "pace -", "task -"} {
 		if !strings.Contains(bar, unmeasured) {
 			t.Errorf("an unmeasured stat should read as absent, not zero: want %q in %q", unmeasured, bar)
 		}

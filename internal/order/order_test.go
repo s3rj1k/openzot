@@ -396,33 +396,6 @@ func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 	}
 }
 
-// Only order files are listed: the book directory also holds the session logs.
-func TestListTakesOnlyOrderFilesInFilenameOrder(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, name := range []string{"2.md", "1.md", "1.jsonl", "old.yaml", "notes.txt"} {
-		write(t, filepath.Join(dir, name), "x")
-	}
-
-	if err := os.Mkdir(filepath.Join(dir, "sub.md"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	listed, err := List(dir)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-
-	if len(listed) != 2 || filepath.Base(listed[0]) != "1.md" || filepath.Base(listed[1]) != "2.md" {
-		t.Errorf("listed = %v, want just 1.md and 2.md", listed)
-	}
-
-	none, err := List(filepath.Join(dir, "missing"))
-	if err != nil || none != nil {
-		t.Errorf("a missing book = %v, %v, want an empty listing", none, err)
-	}
-}
-
 // The name is the moment of creation in unix seconds, so a directory of orders
 // lists in the order they were written and nothing has to be named.
 func TestCreateNamesTheFileForTheMoment(t *testing.T) {
@@ -477,13 +450,13 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 		t.Errorf("the first order was overwritten: %q", kept)
 	}
 
-	listed, err := List(dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("ReadDir: %v", err)
 	}
 
-	if len(listed) != 2 || listed[0] != first || listed[1] != second {
-		t.Errorf("listed = %v, want the orders in the order they were made", listed)
+	if len(entries) != 2 || entries[0].Name() != filepath.Base(first) || entries[1].Name() != filepath.Base(second) {
+		t.Errorf("entries = %v, want both orders, named so they sort in the order they were made", entries)
 	}
 }
 

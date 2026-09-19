@@ -63,11 +63,6 @@ type model struct {
 	planSteps int
 	stepsDone int
 
-	// Where this run sits in a batch (order 2 of 5), for a stat that says how
-	// much of the queue is left rather than how much of one order is.
-	batchIndex int
-	batchSize  int
-
 	status     status
 	iteration  int
 	toolCount  int
@@ -75,10 +70,6 @@ type model struct {
 	exitReason string
 	exitMsg    string
 	err        error
-
-	// quitOnDone closes the viewer as soon as the run ends (see
-	// Meta.QuitOnDone); the default holds the final screen for review.
-	quitOnDone bool
 
 	// Provider-reported cumulative token usage (not a local estimate).
 	inputTokens  int
@@ -173,24 +164,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case eventMsg:
 		m.handleEvent(msg.ev)
-		return m, m.maybeQuit()
+		return m, nil
 
 	case doneMsg:
 		m.finish(msg.result)
-		return m, m.maybeQuit()
+		return m, nil
 	}
 
 	return m, nil
-}
-
-// maybeQuit ends the program once the run has ended, when the caller asked for
-// that instead of a held final screen.
-func (m model) maybeQuit() tea.Cmd {
-	if m.quitOnDone && m.status != statusRunning {
-		return tea.Quit
-	}
-
-	return nil
 }
 
 // handleEvent folds one event of the run into the UI state.
@@ -508,7 +489,7 @@ func (m model) perIteration() time.Duration {
 // as they arrive.
 var KnownStats = []string{
 	"provider", "model", "dir", "iter", "tools", "elapsed", "tokens",
-	"tps", "pace", "task", "order",
+	"tps", "pace", "task",
 }
 
 // DefaultStats is the field set and order used when no stats are configured.
@@ -525,7 +506,7 @@ var KnownStats = []string{
 // terminal. "dir" is last despite being useful because it never changes: a
 // static path is not worth the live stats it would push off the end.
 var DefaultStats = []string{
-	"provider", "model", "task", "order", "iter", "elapsed", "tps", "pace", "tokens", "dir",
+	"provider", "model", "task", "iter", "elapsed", "tps", "pace", "tokens", "dir",
 }
 
 // IsKnownStat reports whether name is a renderable meta-bar field.
@@ -588,7 +569,6 @@ func (m model) metaBar() string {
 		"tps":      seg("tps", cell(fmtRate(m.tokensPerSecond()), 6), metaModel),
 		"pace":     seg("pace", cell(fmtPace(m.perIteration()), 5), metaCount),
 		"task":     seg("task", cell(fmtProgress(m.stepsDone, m.planSteps), progressWidth(m.planSteps)), metaCount),
-		"order":    seg("order", cell(fmtProgress(m.batchIndex, m.batchSize), progressWidth(m.batchSize)), metaCount),
 	}
 
 	fields := m.stats
@@ -661,7 +641,7 @@ func cell(v string, width int) string {
 }
 
 // progressWidth is the cell a "done/total" value is padded to: the width of
-// the total shown twice over, so every step of one plan or batch lines up. With
+// the total shown twice over, so every step of the plan lines up. With
 // no total the value is "-" and the cell is a minimal placeholder.
 func progressWidth(total int) int {
 	if total <= 0 {
@@ -718,9 +698,8 @@ func fmtPace(d time.Duration) string {
 }
 
 // fmtProgress renders "done/total", or "-" when there is no total to be a
-// fraction of. A run whose model has not planned yet, and a single order that
-// is not part of a batch, both have nothing to report - and "0/0" reads as a
-// measurement of nothing rather than the absence of one.
+// fraction of. A run whose model has not planned yet has nothing to report - and
+// "0/0" reads as a measurement of nothing rather than the absence of one.
 func fmtProgress(done, total int) string {
 	if total <= 0 {
 		return "-"

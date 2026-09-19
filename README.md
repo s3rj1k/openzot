@@ -54,7 +54,7 @@ providers:
 ```bash
 export GATEWAY_KEY="..."
 zot new    # opens a new order in your editor
-zot
+zot .zot/orders/<name>.md
 ```
 
 `zot new` creates an order under `.zot/orders/` and opens it in your editor. An
@@ -84,8 +84,8 @@ how the agent works: the template can use the order's fields, the tool list, the
 working directory, the date, the model, the project's `AGENTS.md` (`{{ .Project }}`)
 and the functions `file "path"`, `env "NAME"` and `inc N`. Whatever the prompt
 says, zot adds its non-interactive contract back if the rendered text lacks it: a
-run has no way to ask anyone anything. A bare `zot` runs the orders in the folder,
-each from zero. Any OpenAI-compatible endpoint works - a hosted service, a
+run has no way to ask anyone anything. `zot .zot/orders/<name>.md` runs an order
+from zero - one order per invocation. Any OpenAI-compatible endpoint works - a hosted service, a
 gateway, a local server - declare it under `providers:` and name it with
 `default_provider`.
 
@@ -100,7 +100,7 @@ an order again adds to the same file. Read it with `jq`.
 
 ## Why Zot
 
-- **Orders, not prompts.** Files that queue, batch and stream.
+- **Orders, not prompts.** Files you can edit, commit and re-run.
 - **Nothing in the way.** Your key, your provider, your machine.
 - **Built to run unattended.** Context trimming, loop detection, a full log of every run.
 - **Orchestration is content.** No sub-agent framework; skills decide.

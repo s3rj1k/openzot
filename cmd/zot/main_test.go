@@ -111,36 +111,40 @@ providers:
 	}
 }
 
-func TestResolveOrdersLoadsEveryFile(t *testing.T) {
-	first := orderFile(t, "build the parser")
-	second := orderFile(t, "then the lexer")
+func TestLoadOrderLoadsTheFile(t *testing.T) {
+	path := orderFile(t, "build the parser")
 
-	orders, err := resolveOrders([]string{first, second}, "")
+	o, err := loadOrder([]string{path})
 	if err != nil {
-		t.Fatalf("resolveOrders: %v", err)
+		t.Fatalf("loadOrder: %v", err)
 	}
 
-	if len(orders) != 2 || orders[0].Objective != "build the parser" || orders[1].Objective != "then the lexer" {
-		t.Errorf("orders = %+v", orders)
+	if o.Objective != "build the parser" || o.Path != path {
+		t.Errorf("order = %+v", o)
 	}
 }
 
-// A bad batch must fail before any run starts: discovering order three is
-// broken after orders one and two have spent an hour is the expensive way.
-func TestResolveOrdersFailsTheWholeBatchUpFront(t *testing.T) {
-	good := orderFile(t, "fine")
+// A broken order fails the run before a provider is touched.
+func TestLoadOrderFailsUpFront(t *testing.T) {
+	if _, err := loadOrder([]string{filepath.Join(t.TempDir(), "nope.md")}); err == nil {
+		t.Error("a missing order must not load")
+	}
 
-	if _, err := resolveOrders([]string{good, filepath.Join(t.TempDir(), "nope.md")}, ""); err == nil {
-		t.Error("a batch with a broken order must not resolve")
+	broken := filepath.Join(t.TempDir(), "broken.md")
+
+	mustWrite(t, broken, "---\nobjective: x\n---\n{{ .Objectve }}")
+
+	if _, err := loadOrder([]string{broken}); err == nil {
+		t.Error("an order whose prompt names a field that does not exist must not load")
 	}
 }
 
 // Someone typing prose where an order file goes is the retraining moment: the
 // error has to teach the new shape, not just report a missing file.
-func TestResolveOrdersTeachesProseTypers(t *testing.T) {
-	_, err := resolveOrders([]string{"add a health endpoint"}, "")
+func TestLoadOrderTeachesProseTypers(t *testing.T) {
+	_, err := loadOrder([]string{"add a health endpoint"})
 	if err == nil {
-		t.Fatal("prose must not resolve")
+		t.Fatal("prose must not load")
 	}
 
 	if !strings.Contains(err.Error(), "zot new") {
@@ -148,11 +152,19 @@ func TestResolveOrdersTeachesProseTypers(t *testing.T) {
 	}
 }
 
-func TestResolveOrdersRequiresAnOrder(t *testing.T) {
+// One order per invocation: none is told how to make one, several are told to
+// run them one at a time.
+func TestLoadOrderNeedsExactlyOne(t *testing.T) {
 	quietStderr(t)
 
-	if _, err := resolveOrders(nil, ""); err == nil {
-		t.Error("no order must be an error")
+	_, err := loadOrder(nil)
+	if err == nil || !strings.Contains(err.Error(), "zot new") {
+		t.Errorf("no order: err = %v, want it to say how to write one", err)
+	}
+
+	_, err = loadOrder([]string{orderFile(t, "a"), orderFile(t, "b")})
+	if err == nil || !strings.Contains(err.Error(), "one order per invocation") {
+		t.Errorf("two orders: err = %v, want it to say zot runs one at a time", err)
 	}
 }
 
@@ -197,13 +209,13 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 		t.Errorf("the output should say where the order went and how to run it:\n%s", out.String())
 	}
 
-	orders, err := resolveOrders([]string{matches[0]}, "")
+	o, err := loadOrder([]string{matches[0]})
 	if err != nil {
 		t.Fatalf("the written order does not resolve: %v", err)
 	}
 
-	if orders[0].Objective != "fix the typo" {
-		t.Errorf("objective = %q", orders[0].Objective)
+	if o.Objective != "fix the typo" {
+		t.Errorf("objective = %q", o.Objective)
 	}
 
 	// the book is one dotted directory: zot does not claim the generic
@@ -231,37 +243,6 @@ func TestNewOrderTakesNoProse(t *testing.T) {
 
 	if _, statErr := os.Stat(order.BookDir); !os.IsNotExist(statErr) {
 		t.Errorf("a refused invocation must create nothing: %v", statErr)
-	}
-}
-
-// Where an order is filed and which project it is about are different
-// questions: --orders-dir files it in a shared folder of briefs while --dir
-// still says which project it is for.
-func TestNewOrderWithOrdersDirFilesItThere(t *testing.T) {
-	invocation := t.TempDir()
-	project := t.TempDir()
-	briefs := filepath.Join(t.TempDir(), "shared-briefs")
-
-	t.Chdir(invocation)
-
-	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
-
-	var out strings.Builder
-
-	if err := newOrder([]string{"--dir", project, "--orders-dir", briefs}, &out); err != nil {
-		t.Fatalf("newOrder: %v", err)
-	}
-
-	matches, _ := filepath.Glob(filepath.Join(briefs, "*.md"))
-	if len(matches) != 1 {
-		t.Fatalf("orders in --orders-dir = %v, want the one", matches)
-	}
-
-	// neither the project's book nor the invoking directory is touched
-	for _, untouched := range []string{project, invocation} {
-		if _, err := os.Stat(filepath.Join(untouched, order.BookDir)); !os.IsNotExist(err) {
-			t.Errorf("--orders-dir must be the only place written; %s has a book: %v", untouched, err)
-		}
 	}
 }
 
@@ -478,7 +459,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	text := builder.String()
 
-	for _, want := range []string{"zot [flags] [<order.md>", "zot new", "zot config", "--dir", ".jsonl"} {
+	for _, want := range []string{"zot [flags] <order.md>", "zot new", "zot config", "--dir", ".jsonl"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("usage does not mention %q:\n%s", want, text)
 		}
@@ -491,11 +472,13 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 	}
 
 	// The book is a convention, so --help is where someone finds out where
-	// their orders went - and that it is theirs to point elsewhere.
-	for _, want := range []string{order.BookDir + "/orders", "--orders-dir"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("usage does not describe %q:\n%s", want, text)
-		}
+	// their orders went.
+	if !strings.Contains(text, order.BookDir+"/orders") {
+		t.Errorf("usage does not say where zot new files an order:\n%s", text)
+	}
+
+	if strings.Contains(text, "--orders-dir") {
+		t.Errorf("usage still mentions --orders-dir:\n%s", text)
 	}
 
 	// ACP is gone: zot runs unattended and has no protocol server
@@ -541,13 +524,13 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 
 	_, _ = captureStderr(t, func() error { return run() })
 
-	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color"} {
+	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color", "orders-dir"} {
 		if pflag.CommandLine.Lookup(name) != nil {
 			t.Errorf("--%s is a flag, but the config already says it", name)
 		}
 	}
 
-	for _, name := range []string{"config", "dir", "orders-dir"} {
+	for _, name := range []string{"config", "dir"} {
 		if pflag.CommandLine.Lookup(name) == nil {
 			t.Errorf("--%s should stay a flag: the config cannot say it", name)
 		}
@@ -912,10 +895,9 @@ providers:
 	}
 }
 
-// A batch is N independent runs: each order gets its own session and its own
-// recorded outcome, and the batch stops at the first order that does not end in
-// success - later orders usually assume the earlier ones landed.
-func TestRunABatchOfOrders(t *testing.T) {
+// A run gets its own log, named after its order, with its own recorded outcome;
+// an order that does not end in success fails the run.
+func TestRunAnOrder(t *testing.T) {
 	settle := func(name, args string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -951,64 +933,39 @@ providers:
 		return path
 	}
 
-	t.Run("every order gets its own run and log", func(t *testing.T) {
+	t.Run("the run gets its own log", func(t *testing.T) {
 		project := t.TempDir()
 
 		server := settle("success", `{"summary":"complete"}`)
 		defer server.Close()
 
-		orders := t.TempDir()
-
 		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
-			orderFileIn(t, orders, "first.md", "the first order"),
-			orderFileIn(t, orders, "second.md", "the second order"))
+			orderFileIn(t, t.TempDir(), "first.md", "the first order"))
 
 		if _, err := captureStdout(t, run); err != nil {
 			t.Fatalf("run: %v", err)
 		}
 
-		// each log carries its own order's objective, not a blend of the batch
-		for name, want := range map[string]string{"first.jsonl": "the first order", "second.jsonl": "the second order"} {
-			records := readLog(t, filepath.Join(project, ".zot", "orders", name))
+		records := readLog(t, filepath.Join(project, ".zot", "orders", "first.jsonl"))
 
-			if records[0].Meta == nil || records[0].Meta.Task != want {
-				t.Errorf("%s opens with %+v, want the task %q", name, records[0], want)
-			}
+		if records[0].Meta == nil || records[0].Meta.Task != "the first order" {
+			t.Errorf("the log opens with %+v, want the order's objective as the task", records[0])
 		}
 	})
 
-	t.Run("the batch stops at the first failed order", func(t *testing.T) {
+	t.Run("a failed order fails the run", func(t *testing.T) {
 		project := t.TempDir()
 
 		server := settle("failure", `{"reason":"cannot"}`)
 		defer server.Close()
 
-		orders := t.TempDir()
-
-		first := orderFileIn(t, orders, "doomed.md", "the doomed order")
-
 		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
-			first, orderFileIn(t, orders, "never.md", "the never-run order"))
-
-		var err error
+			orderFileIn(t, t.TempDir(), "doomed.md", "the doomed order"))
 
 		quietStderr(t)
 
-		if _, err = captureStdout(t, run); err == nil {
-			t.Fatal("a failed order must fail the batch")
-		}
-
-		if !strings.Contains(err.Error(), first) {
-			t.Errorf("the error should name the order that stopped the batch: %v", err)
-		}
-
-		logs, listErr := os.ReadDir(filepath.Join(project, ".zot", "orders"))
-		if listErr != nil {
-			t.Fatalf("ReadDir: %v", listErr)
-		}
-
-		if len(logs) != 1 || logs[0].Name() != "doomed.jsonl" {
-			t.Fatalf("got %d logs - the second order must never have run", len(logs))
+		if _, err := captureStdout(t, run); err == nil {
+			t.Fatal("a failed order must fail the run")
 		}
 	})
 }
@@ -1343,167 +1300,12 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var got runOptions
-
-			runs := oneRun{
-				ctx:  context.Background(),
-				logs: t.TempDir(),
-				run: func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
-					got = options
-
-					return nil
-				},
-			}
-
-			if err := runs.executeAt(loaded, true, 0, 0); err != nil {
-				t.Fatalf("execute: %v", err)
-			}
+			got := orderOptions(t.TempDir(), loaded)
 
 			if got.Title != test.want {
 				t.Errorf("viewer title = %q, want %q", got.Title, test.want)
 			}
 		})
-	}
-}
-
-// A batch tells each run where it sits in the queue, so the viewer can report
-// how much of the queue is left rather than only how much of one order is.
-func TestABatchRunKnowsItsPosition(t *testing.T) {
-	dir := t.TempDir()
-
-	var orders []order.Order
-
-	for _, name := range []string{"a-first.md", "b-second.md", "c-third.md"} {
-		path := filepath.Join(dir, name)
-
-		if err := os.WriteFile(path, []byte(orderText(name)), 0o644); err != nil {
-			t.Fatal(err)
-		}
-
-		loaded, err := order.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		orders = append(orders, loaded)
-	}
-
-	var seen []runOptions
-
-	runs := oneRun{
-		ctx:  context.Background(),
-		logs: t.TempDir(),
-		run: func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
-			seen = append(seen, options)
-
-			return nil
-		},
-	}
-
-	for i, o := range orders {
-		if err := runs.executeAt(o, i < len(orders)-1, i+1, len(orders)); err != nil {
-			t.Fatalf("executeAt: %v", err)
-		}
-	}
-
-	for i, options := range seen {
-		if options.BatchIndex != i+1 || options.BatchSize != len(orders) {
-			t.Errorf("order %d reported position %d/%d, want %d/%d",
-				i+1, options.BatchIndex, options.BatchSize, i+1, len(orders))
-		}
-	}
-
-	// a lone order is not a batch, and must not claim to be 1 of 1
-	var solo runOptions
-
-	runs.run = func(_ context.Context, _ config.Config, _ order.Order, options runOptions) error {
-		solo = options
-
-		return nil
-	}
-
-	if err := runs.executeAt(orders[0], false, 0, 0); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	if solo.BatchSize != 0 {
-		t.Errorf("a single order reported a batch size of %d, want none", solo.BatchSize)
-	}
-}
-
-func TestABareInvocationRunsTheBook(t *testing.T) {
-	project := t.TempDir()
-
-	book := order.OrdersDir(project)
-
-	if err := os.MkdirAll(book, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// written out of order, and with a file that is not an order beside them
-	for name, objective := range map[string]string{
-		"b-second.md": "the second job",
-		"a-first.md":  "the first job",
-	} {
-		if err := os.WriteFile(filepath.Join(book, name), []byte(orderText(objective)), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := os.WriteFile(filepath.Join(book, "notes.txt"), []byte("not an order\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.MkdirAll(filepath.Join(book, "archive"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	announced, err := captureStderr(t, func() error {
-		orders, err := resolveOrders(nil, book)
-		if err != nil {
-			return err
-		}
-
-		if len(orders) != 2 {
-			t.Errorf("a bare invocation resolved %d orders, want the book's 2", len(orders))
-
-			return nil
-		}
-
-		// filename order, so a batch is deterministic and can be reasoned about
-		if orders[0].Objective != "the first job" || orders[1].Objective != "the second job" {
-			t.Errorf("orders = %q, %q - want them in filename order",
-				orders[0].Objective, orders[1].Objective)
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("a bare invocation in a project with a book must run it: %v", err)
-	}
-
-	// silently running work nobody named would be worse than not running it
-	if !strings.Contains(announced, book) {
-		t.Errorf("a bare invocation must say what it is about to run:\n%s", announced)
-	}
-}
-
-// With no book and nothing named there is no work to infer, so zot says how to
-// make some rather than exiting quietly or guessing.
-func TestABareInvocationWithNoBookExplainsItself(t *testing.T) {
-	quietStderr(t)
-
-	empty := t.TempDir()
-
-	for _, ordersRoot := range []string{filepath.Join(empty, "never-created"), empty, ""} {
-		_, err := resolveOrders(nil, ordersRoot)
-		if err == nil {
-			t.Fatalf("an empty book (%q) must not resolve to a silent no-op", ordersRoot)
-		}
-
-		if !strings.Contains(err.Error(), "zot new") {
-			t.Errorf("the error should say how to write an order: %v", err)
-		}
 	}
 }
 
@@ -2988,20 +2790,5 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 
 	if opts.MaxSettles != 0 {
 		t.Errorf("MaxSettles = %d, want the unset value left for the engine to default", opts.MaxSettles)
-	}
-}
-
-// A single order must hold its final screen for review: QuitOnDone defaults
-// off, and only the batch loop switches it on for intermediate orders.
-func TestQuitOnDoneDefaultsOff(t *testing.T) {
-	cfg := stubProvider(t)
-
-	_, opts, err := resolve(cfg)
-	if err != nil {
-		t.Fatalf("resolve: %v", err)
-	}
-
-	if viewerMeta(cfg, "task", "/w", opts).QuitOnDone {
-		t.Fatal("QuitOnDone must default off - a single order holds its screen for review")
 	}
 }

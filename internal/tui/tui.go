@@ -21,12 +21,6 @@ type Meta struct {
 	// Task is the one-line instruction the agent is working on.
 	Task string
 
-	// BatchIndex and BatchSize place this run in a batch - order 2 of 5 - for
-	// the "order" stat. Zero means the run is not part of one, and the stat
-	// shows nothing rather than a fraction of one.
-	BatchIndex int
-	BatchSize  int
-
 	// Title is an optional short label for the work - a work order's title, or
 	// one derived from its file name. When set it is shown instead of the task
 	// text, which is the whole order rendered to prose and reads as a truncated
@@ -47,13 +41,6 @@ type Meta struct {
 	// Stats selects which header fields to show, and in what order (see
 	// KnownStats). Empty uses DefaultStats. Unknown names are ignored.
 	Stats []string
-
-	// QuitOnDone closes the full-screen viewer as soon as the run ends, instead
-	// of holding the final screen until the user quits. For a run of record the
-	// held screen IS the report, so it stays; for an order in the middle of a
-	// batch, holding the screen blocks the orders behind it. The streaming
-	// renderers already end with the run, so this only affects the viewer.
-	QuitOnDone bool
 
 	// MaxIterations, MaxCalls and MaxDuration are the configured run limits, shown
 	// as "5/1000" progress in the meta bar. Zero means unbounded (or not worth
@@ -88,8 +75,6 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 
 	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
-	m.batchIndex = meta.BatchIndex
-	m.batchSize = meta.BatchSize
 	if meta.MaxScrollback > 0 {
 		m.maxEntries = meta.MaxScrollback
 	}
@@ -97,7 +82,6 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 	m.maxIterations = meta.MaxIterations
 	m.maxCalls = meta.MaxCalls
 	m.maxDuration = meta.MaxDuration
-	m.quitOnDone = meta.QuitOnDone
 
 	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
 }

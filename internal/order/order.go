@@ -25,7 +25,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -92,36 +91,6 @@ type frontMatter struct {
 	Constraints []string `yaml:"constraints"`
 }
 
-// List returns the order files directly inside dir, in filename order - the
-// batch a bare `zot` runs. Only the top level is listed, matching the shell
-// glob the invocation is named after, and a missing directory is an empty
-// listing rather than an error: a project with no book yet simply has no
-// outstanding work.
-func List(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-
-		return nil, fmt.Errorf("read orders: %w", err)
-	}
-
-	var paths []string
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), Ext) {
-			continue
-		}
-
-		paths = append(paths, filepath.Join(dir, entry.Name()))
-	}
-
-	sort.Strings(paths)
-
-	return paths, nil
-}
-
 // Load reads and parses one order file.
 func Load(path string) (Order, error) {
 	data, err := os.ReadFile(path)
@@ -144,9 +113,8 @@ func Load(path string) (Order, error) {
 // Unknown front matter keys are rejected - a typo like "acceptence:" must fail
 // loudly rather than silently dropping the criteria the operator thought they
 // set. The prompt is parsed as a template and run once against stand-in data, so
-// a syntax error or a misspelt field is found now, at load, and not when the run
-// reaches it: a batch is loaded whole before any of it runs, and a bad order
-// should fail it there.
+// a syntax error or a misspelt field is found now, at load, before a provider is
+// touched, and not when the run reaches it.
 func Parse(data []byte) (Order, error) {
 	header, body, err := splitFrontMatter(string(data))
 	if err != nil {

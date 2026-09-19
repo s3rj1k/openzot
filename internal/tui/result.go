@@ -3,8 +3,8 @@ package tui
 import "fmt"
 
 // ErrCancelled reports that the operator closed the viewer while the run was
-// still going. A sentinel, so a caller running a batch can tell a deliberate
-// stop from a failure and report it calmly.
+// still going. A sentinel, so a caller can tell a deliberate stop from a failure and
+// report it calmly.
 var ErrCancelled = fmt.Errorf("run cancelled - the viewer was closed while the run was still going")
 
 // AgentExitError reports an agent-declared failed run to callers so the CLI can

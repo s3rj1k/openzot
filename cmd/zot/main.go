@@ -12,12 +12,10 @@
 //	# declare a provider (base_url, api_key), a default_provider and agent.model
 //	zot config
 //
-//	# write an order in your editor, then run it - orders live under .zot/
+//	# write an order in your editor, then run it
 //	zot new
-//	zot
 //
-//	# a bare zot runs the whole book, in filename order; naming orders runs
-//	# exactly those
+//	# run the order you wrote
 //	zot .zot/orders/1758300000.md
 //
 //	# every run is logged, appended to .zot/orders/1758300000.jsonl
@@ -53,6 +51,10 @@ import (
 var (
 	isTerminal = tui.IsInteractive
 	runViewer  = tui.Run
+
+	// execute is the engine entry point - runTask everywhere in production,
+	// replaced by tests so no provider is ever reached.
+	execute = runTask
 )
 
 func main() {
@@ -83,7 +85,6 @@ func run() error {
 
 	configPath := pflag.String("config", "", "path to zot config (default: "+config.DefaultConfigPath()+", optional)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
-	ordersFlag := pflag.String("orders-dir", "", "where this project's orders live, run by a bare `zot` (default: <dir>/"+order.BookDir+"/orders)")
 	pflag.Usage = usage
 	pflag.Parse()
 
@@ -103,23 +104,11 @@ func run() error {
 		logs = abs
 	}
 
-	// The other half of the book: where this project's own orders live. It is
-	// what a bare `zot` runs, so it is resolved here too - before the chdir,
-	// because a relative --orders-dir means what was typed.
-	ordersRoot := *ordersFlag
-	if ordersRoot == "" {
-		ordersRoot = order.OrdersDir(*dir)
-	}
-
-	if abs, err := filepath.Abs(ordersRoot); err == nil {
-		ordersRoot = abs
-	}
-
-	// Orders are loaded - all of them, so a bad batch fails before any run
-	// starts - while the original working directory is still current, because
-	// their paths mean what the user typed, not what they happen to mean after
-	// the chdir below.
-	orders, err := resolveOrders(pflag.Args(), ordersRoot)
+	// The order is loaded while the original working directory is still current,
+	// because its path means what the user typed, not what it happens to mean
+	// after the chdir below. A bad order fails the run here, before any provider
+	// is touched.
+	o, err := loadOrder(pflag.Args())
 	if err != nil {
 		return err
 	}
@@ -168,53 +157,19 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Each order is its own run: a fresh conversation and its own session log,
-	// whatever ran before. The batch stops at the first order that does not
-	// end in success, because later orders usually assume the earlier ones
-	// landed - running order three against the wreckage of order two produces
-	// confident garbage.
-	runs := oneRun{
-		ctx:  ctx,
-		cfg:  cfg,
-		logs: logs,
-		run:  runTask,
-	}
-
-	for i, o := range orders {
-		if len(orders) > 1 {
-			fmt.Fprintf(os.Stderr, "zot: order %d/%d: %s\n", i+1, len(orders), o.Path)
-		}
-
-		if err := runs.executeAt(o, i < len(orders)-1, i+1, len(orders)); err != nil {
-			// a deliberate stop - q or Ctrl-C - is the operator's decision,
-			// not an order failing; report it as what it is
-			if errors.Is(err, tui.ErrCancelled) {
-				return fmt.Errorf("batch stopped: %w", err)
-			}
-
-			if len(orders) > 1 {
-				return fmt.Errorf("order %s stopped the batch: %w", o.Path, err)
-			}
-
-			return err
-		}
-	}
-
-	return nil
+	// The run is a fresh conversation with its own session log, whatever ran
+	// before: nothing of an earlier run of the same order is read, continued or
+	// skipped.
+	return execute(ctx, cfg, o, orderOptions(logs, o))
 }
 
-// oneRun is everything a single order's run needs: a fresh conversation,
-// recorded in the task's session log.
-type oneRun struct {
-	ctx context.Context
-	cfg config.Config
-
-	// logs is the folder session logs go in: one file per order, named after it.
-	logs string
-
-	// run is the engine entry point - runTask everywhere in production,
-	// replaced by tests so no provider is ever reached.
-	run func(context.Context, config.Config, order.Order, runOptions) error
+// orderOptions is how an order is run: its log goes in logs, named after it, and
+// the viewer calls it by its title, or by its file name.
+func orderOptions(logs string, o order.Order) runOptions {
+	return runOptions{
+		SessionPath: filepath.Join(logs, sessionFile(o.Path)),
+		Title:       o.DisplayTitle(),
+	}
 }
 
 // sessionFile names an order's log: the order's own name with .jsonl for its
@@ -226,98 +181,39 @@ func sessionFile(orderPath string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base)) + ".jsonl"
 }
 
-// executeAt runs one order as its own run. Every run starts from zero: nothing
-// of an earlier run of the same order is read, continued or skipped. The
-// order's position in a batch is shown by the viewer as "order 2/5", so a long
-// queue reports how much of itself is left.
-func (r oneRun) executeAt(o order.Order, quitOnDone bool, index, size int) error {
-	options := runOptions{
-		SessionPath: filepath.Join(r.logs, sessionFile(o.Path)),
-
-		// what a person calls this order: its own title, or its file name
-		Title: o.DisplayTitle(),
-
-		BatchIndex: index,
-		BatchSize:  size,
-
-		// intermediate orders auto-advance: a held final screen would stall the
-		// rest of the batch until a keypress nobody unattended will make. The
-		// last order holds for review as usual.
-		QuitOnDone: quitOnDone,
-	}
-
-	return r.run(r.ctx, r.cfg, o, options)
-}
-
-// resolveOrders loads the orders this invocation is about: the ones named on
-// the command line, or - when none are - everything in the project's own orders
-// directory. It explains itself rather than failing silently either way.
-func resolveOrders(args []string, ordersRoot string) ([]order.Order, error) {
-	// Nothing named: run the book, every order in it, in filename order. Naming
-	// orders explicitly runs exactly those, and reads them from anywhere.
-	if len(args) == 0 {
-		found, err := listOrdersRoot(ordersRoot)
-		if err != nil {
-			return nil, err
-		}
-
-		fmt.Fprintf(os.Stderr, "zot: running %d order(s) from %s\n", len(found), ordersRoot)
-
-		args = found
-	}
-
-	orders := make([]order.Order, 0, len(args))
-
-	for _, path := range args {
-		loaded, err := order.Load(path)
-		if err != nil {
-			// The retraining moment: someone typed prose where an order file
-			// goes. The error has to teach the new shape, not just report a
-			// missing file.
-			if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
-				return nil, fmt.Errorf("work orders are files, not prose - write the order first:\n\n  zot new")
-			}
-
-			return nil, err
-		}
-
-		// the run chdirs into --dir, so the order's path must survive the move
-		if abs, absErr := filepath.Abs(loaded.Path); absErr == nil {
-			loaded.Path = abs
-		}
-
-		orders = append(orders, loaded)
-	}
-
-	return orders, nil
-}
-
-// listOrdersRoot lists the orders directory for a bare invocation, or explains
-// what to do instead. An empty book is not an error state to decode - it is
-// someone who has not written an order yet.
-func listOrdersRoot(ordersRoot string) ([]string, error) {
-	var found []string
-
-	if ordersRoot != "" {
-		var err error
-
-		if found, err = order.List(ordersRoot); err != nil {
-			return nil, err
-		}
-	}
-
-	if len(found) == 0 {
+// loadOrder loads the one order this invocation is about. It explains itself
+// rather than failing silently when there is none or more than one: zot runs a
+// single order per invocation, and running several is a shell loop away.
+func loadOrder(args []string) (order.Order, error) {
+	switch len(args) {
+	case 0:
 		usage()
 
-		where := "no orders directory is configured"
-		if ordersRoot != "" {
-			where = ordersRoot + " holds none"
-		}
-
-		return nil, fmt.Errorf("no order given, and %s (write one with `zot new`)", where)
+		return order.Order{}, errors.New("no order given (write one with `zot new`)")
+	case 1:
+	default:
+		return order.Order{}, fmt.Errorf("zot runs one order per invocation; %d were named - run them one at a time", len(args))
 	}
 
-	return found, nil
+	path := args[0]
+
+	loaded, err := order.Load(path)
+	if err != nil {
+		// The retraining moment: someone typed prose where an order file goes. The
+		// error has to teach the new shape, not just report a missing file.
+		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
+			return order.Order{}, fmt.Errorf("work orders are files, not prose - write the order first:\n\n  zot new")
+		}
+
+		return order.Order{}, err
+	}
+
+	// the run chdirs into --dir, so the order's path must survive the move
+	if abs, absErr := filepath.Abs(loaded.Path); absErr == nil {
+		loaded.Path = abs
+	}
+
+	return loaded, nil
 }
 
 // newOrder creates a blank work order under ./.zot/orders - or under
@@ -330,13 +226,11 @@ func listOrdersRoot(ordersRoot string) ([]string, error) {
 // nothing to invent and the orders sort in the order they were written.
 //
 // --dir exists because the order is written for a project the invoker may not
-// be standing in. --orders-dir files the order somewhere else again - a shared
-// folder of briefs.
+// be standing in.
 func newOrder(args []string, out io.Writer) error {
 	set := pflag.NewFlagSet("new", pflag.ContinueOnError)
 
 	dir := set.String("dir", ".", "project the order is for: it is created under <dir>/"+order.BookDir+"/orders")
-	ordersFlag := set.String("orders-dir", "", "where to create the order (default: <dir>/"+order.BookDir+"/orders)")
 
 	if err := set.Parse(args); err != nil {
 		return err
@@ -346,12 +240,7 @@ func newOrder(args []string, out io.Writer) error {
 		return fmt.Errorf("zot new takes no arguments: it opens a blank order in your editor - write the objective there")
 	}
 
-	ordersDir := *ordersFlag
-	if ordersDir == "" {
-		ordersDir = order.OrdersDir(*dir)
-	}
-
-	path, err := order.Create(ordersDir, time.Now())
+	path, err := order.Create(order.OrdersDir(*dir), time.Now())
 	if err != nil {
 		return err
 	}
@@ -362,8 +251,8 @@ func newOrder(args []string, out io.Writer) error {
 		return err
 	}
 
-	// An order left exactly as it was made is not an order, and a blank one in
-	// the book would fail every bare `zot` after it. Nothing was written, so
+	// An order left exactly as it was made is not an order, and a blank one lying
+	// in .zot/orders would only fail when someone ran it. Nothing was written, so
 	// nothing is kept.
 	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() {
 		if err := os.Remove(path); err != nil {
@@ -448,22 +337,19 @@ template that reads that block, so the order says what to do and how the agent
 works. Each order is one autonomous run.
 
 Usage:
-  zot [flags] [<order.md> ...]
-  zot new [--dir <dir>] [--orders-dir <dir>]
+  zot [flags] <order.md>
+  zot new [--dir <dir>]
   zot config
 
 Examples:
   zot new
-  zot
   zot .zot/orders/1758300000.md
-  zot --dir ./scratch .zot/orders/*.md
+  zot --dir ./scratch .zot/orders/1758300000.md
 
-The book: a project keeps its orders under .zot/orders in its root - written by
-zot new, and named for the moment they were made. Bare zot runs that book:
-every order in it, in filename order, so writing an order and typing zot is the
-whole loop. Naming order files instead runs exactly those, read from any path
-in any tree; running an order needs no book at all. --orders-dir moves the
-book: it is where zot new files an order and where a bare zot looks for work.
+zot new files an order under .zot/orders in the project, named for the moment it
+was made, and opens it in your editor; you then run it by naming it. An order
+can live anywhere - running one needs no .zot directory at all - and zot runs
+one order per invocation: to run several, run zot once for each.
 
 Every run starts from zero. Nothing of an earlier run of the same order is
 continued or skipped, so running an order again is running it fresh.
@@ -474,13 +360,9 @@ goes: a meta line, a line for each message and event, and the outcome. Running
 the order again adds a new run to the same file. Nothing in zot reads it back;
 it is a record for you, with cat and jq.
 
-A batch runs each order as its own run, in sequence, and stops at the first
-order that does not end in success.
-
 Commands:
   new        create a work order under ./.zot/orders - under <dir>/.zot/orders
-             with --dir, or anywhere with --orders-dir - and open it in $EDITOR,
-             the way zot config does. The file holds the full default prompt
+             with --dir - and open it in $EDITOR, the way zot config does. The file holds the full default prompt
              and a blank objective: write the objective, and change the prompt
              if you want the agent to work differently. It takes no prose
   config     edit the config file in $EDITOR (creates it on first run)
@@ -560,23 +442,11 @@ type runOptions struct {
 	// run of the same task again adds to it. Empty disables recording.
 	SessionPath string
 
-	// BatchIndex and BatchSize place this run in a batch - order 2 of 5 - so
-	// the viewer can show how much of the queue is left. Zero for a run that is
-	// not part of a batch.
-	BatchIndex int
-	BatchSize  int
-
 	// Title is a short label for the work, shown in the viewer instead of the
 	// task text. A work order's title, or one derived from its file name;
 	// empty falls back to the task. It is presentation only and never reaches
 	// the model - the objective is the contract, a title is a label.
 	Title string
-
-	// QuitOnDone closes the viewer as soon as the run ends instead of holding
-	// the final screen. Set for the intermediate orders of a batch, where a
-	// held screen would stall the orders behind it until a keypress nobody
-	// unattended will make; the batch's last order still holds for review.
-	QuitOnDone bool
 }
 
 // orderEnv is what an order's prompt can know about the run beyond the order: the
@@ -670,9 +540,6 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 
 	meta := viewerMeta(cfg, task, workdir, opts)
 	meta.Title = options.Title
-	meta.BatchIndex = options.BatchIndex
-	meta.BatchSize = options.BatchSize
-	meta.QuitOnDone = options.QuitOnDone
 
 	result, err := runViewer(ctx, meta, opts)
 
