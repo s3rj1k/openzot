@@ -219,8 +219,8 @@ func TestFailureOfCarriesTheBodyNotTheDump(t *testing.T) {
 		t.Errorf("failure = %+v, want the status and only the body", failure)
 	}
 
-	if failure.RequestBytes != len(`{"model":"m"}`) || failure.RequestBody != `{"model":"m"}` {
-		t.Errorf("request evidence = %d, %q", failure.RequestBytes, failure.RequestBody)
+	if failure.RequestBytes != len(`{"model":"m"}`) {
+		t.Errorf("request size = %d, want the size of what was refused", failure.RequestBytes)
 	}
 }
 

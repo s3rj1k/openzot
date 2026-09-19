@@ -44,9 +44,9 @@ behaviour broke." Coverage is gated at 90% so that bar cannot quietly erode.
   request body, not just the in-memory struct. Setting a field that never
   serialises is a silent no-op - `max_tokens` had exactly this gap.
 - **Integration/threading**: for config, prove the value reaches the run
-  (`resolve()` in `zot_test.go`), and that its env override works
-  (`internal/config/config_test.go`). A config knob is three links - file, env,
-  and the run - and each has broken independently.
+  (`resolve()` in `zot_test.go`), and that the file key is read
+  (`internal/config/config_test.go`). A config knob is two links - the file and
+  the run - and each has broken independently.
 - **Construction**: acceptable for defaults that a behavioural test would only
   reach slowly (a 1000-call run to prove "unbounded" is not worth the wall-clock;
   asserting the constructed budget is 0 is).
@@ -68,5 +68,5 @@ make test          # the suite
 make race          # under the race detector
 make cover         # per-package coverage, no gate - just the numbers
 make cover-check   # the gate: fails below 90%
-make vet           # go vet over both the release and -tags dev builds
+make vet           # go vet
 ```

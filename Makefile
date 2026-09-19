@@ -17,48 +17,28 @@ CMDS = zot
 GOOS   ?= $(shell go env GOHOSTOS)
 GOARCH ?= $(shell go env GOHOSTARCH)
 
-.PHONY: help build dev clean test race cover cover-check vet lint fmt cross
+.PHONY: help build clean test race cover cover-check vet lint fmt cross
 
-# Listing the targets rather than assuming one: zot has two build variants that
-# differ in what the binary may read from disk, and picking the wrong one
-# silently is exactly the confusion this avoids.
 help:
 	@echo "zot - an automated software factory in a single binary"
 	@echo
-	@echo "  make build      Build zot for release ($(GOOS)/$(GOARCH))"
-	@echo "  make dev        Build zot for development - see below"
+	@echo "  make build      Build zot ($(GOOS)/$(GOARCH))"
 	@echo "  make test       Run the test suite"
 	@echo "  make race       Run the test suite under the race detector"
 	@echo "  make cover      Report per-package test coverage"
 	@echo "  make cover-check  Fail if total coverage is below 90% (coverage gate)"
-	@echo "  make vet        Run go vet over both build variants"
+	@echo "  make vet        Run go vet"
 	@echo "  make fmt        Format the tree"
 	@echo "  make lint       Alias for vet"
 	@echo "  make cross      Cross-compile: make cross GOOS=darwin GOARCH=arm64"
 	@echo "  make clean      Remove built binaries"
 	@echo
-	@echo "build vs dev: a release binary does NOT read a .env from its working"
-	@echo "  directory; a developer build does. zot runs unattended with a"
-	@echo "  provider key and a shell tool, so a released binary must not take"
-	@echo "  credentials from whatever directory it was pointed at. Both write"
-	@echo "  to ./zot."
-	@echo
 	@echo "Overrides: GOOS=$(GOOS) GOARCH=$(GOARCH)"
 
 build:
 	@set -e; for cmd in $(CMDS); do \
-		echo "Building $$cmd (release)..."; \
+		echo "Building $$cmd..."; \
 		CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $$cmd ./cmd/$$cmd; \
-	done
-
-# A developer build. The only difference is that it will read a .env from the
-# working directory, which a released binary must never do - pointing zot at a
-# checkout would otherwise be enough to load whatever credentials are lying
-# around in it.
-dev:
-	@set -e; for cmd in $(CMDS); do \
-		echo "Building $$cmd (dev - reads .env)..."; \
-		CGO_ENABLED=0 go build -tags dev -trimpath -ldflags "$(LDFLAGS)" -o $$cmd ./cmd/$$cmd; \
 	done
 
 fmt:
@@ -78,11 +58,8 @@ cover:
 cover-check:
 	@./scripts/coverage.sh
 
-# Both variants, because a build tag can break a compile the default never
-# reaches - and the developer build is the one no pipeline exercises.
 vet:
 	go vet ./...
-	go vet -tags dev ./...
 
 lint: vet
 	@echo "lint ok"

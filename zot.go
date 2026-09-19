@@ -152,8 +152,8 @@ func NewClient(cfg Config) (*agent.Client, error) {
 	return client, err
 }
 
-// Load reads configuration, layering defaults < file < env. A missing default
-// file is fine (env vars alone can configure zot).
+// Load reads configuration, layering defaults < file. A missing default file is
+// fine.
 func Load(path string) (Config, error) { return config.Load(path) }
 
 // DefaultConfigPath is the default config file location.

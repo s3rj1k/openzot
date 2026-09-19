@@ -568,8 +568,6 @@ func (r *recordingRecorder) RecordEvent(kind, tool, _ string, _ int) error {
 	return nil
 }
 
-func (r *recordingRecorder) RecordFailure(*Failure) error { return nil }
-
 func (r *recordingRecorder) RecordResult(summary Summary) error {
 	r.summary = &summary
 
@@ -730,7 +728,6 @@ type failingRecorder struct{}
 
 func (failingRecorder) RecordMessage(Message) error             { return errTest }
 func (failingRecorder) RecordEvent(_, _, _ string, _ int) error { return errTest }
-func (failingRecorder) RecordFailure(*Failure) error            { return errTest }
 func (failingRecorder) RecordResult(Summary) error              { return errTest }
 
 var errTest = errors.New("disk full")
@@ -754,13 +751,6 @@ func (r *lockedRecorder) RecordEvent(kind, tool, text string, iteration int) err
 	defer r.mu.Unlock()
 
 	return r.inner.RecordEvent(kind, tool, text, iteration)
-}
-
-func (r *lockedRecorder) RecordFailure(f *Failure) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return r.inner.RecordFailure(f)
 }
 
 func (r *lockedRecorder) RecordResult(summary Summary) error {
@@ -990,9 +980,8 @@ type textRecorder struct {
 	events []string
 }
 
-func (r *textRecorder) RecordMessage(Message) error  { return nil }
-func (r *textRecorder) RecordResult(Summary) error   { return nil }
-func (r *textRecorder) RecordFailure(*Failure) error { return nil }
+func (r *textRecorder) RecordMessage(Message) error { return nil }
+func (r *textRecorder) RecordResult(Summary) error  { return nil }
 
 func (r *textRecorder) RecordEvent(kind, _, text string, _ int) error {
 	r.mu.Lock()

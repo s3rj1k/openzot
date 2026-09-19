@@ -14,7 +14,7 @@ objective: |-
   pass in the ledger.
 
   Use before you touch. Read AGENTS.md and .agents/skills/. Build the tool
-  (make build, make dev), run the gate (make vet, make test, make
+  (make build), run the gate (make vet, make test, make
   cover-check), and then exercise the binary yourself: run ./zot --help,
   create an order with zot new in a scratch directory, run it against a
   stub or dry mode if one exists, open the TUI, read a session log. Read the

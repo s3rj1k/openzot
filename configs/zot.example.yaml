@@ -6,24 +6,6 @@
 # this file to ~/.config/zot/config.yaml (or pass it with --config) and adjust
 # as needed.
 #
-# ENVIRONMENT VARIABLES (no file required - ideal for containers/CI):
-# Every scalar field below has a matching env var, ZOT_<PATH>, where PATH is the
-# field's path upper-cased with dots as underscores. Env vars override the file.
-#   agent.model           -> ZOT_AGENT_MODEL
-#   agent.max_iterations  -> ZOT_AGENT_MAX_ITERATIONS
-#   agent.max_settles     -> ZOT_AGENT_MAX_SETTLES
-#   agent.max_calls       -> ZOT_AGENT_MAX_CALLS
-#   agent.max_time        -> ZOT_AGENT_MAX_TIME
-#   agent.max_tokens      -> ZOT_AGENT_MAX_TOKENS
-#   agent.max_continuations -> ZOT_AGENT_MAX_CONTINUATIONS
-#   agent.max_recoveries  -> ZOT_AGENT_MAX_RECOVERIES
-#   agent.max_cycles      -> ZOT_AGENT_MAX_CYCLES
-#   agent.max_empties     -> ZOT_AGENT_MAX_EMPTIES
-#   ui.plain              -> ZOT_UI_PLAIN
-#   ui.color              -> ZOT_UI_COLOR
-#   ui.scrollback         -> ZOT_UI_SCROLLBACK
-#   default_provider       -> ZOT_DEFAULT_PROVIDER
-#
 # Credentials: put the key DIRECTLY in a provider's api_key, or reference an
 # environment variable with $VAR - either works. Nothing is read from a
 # conventional variable on your behalf: a key is scoped to the host it was issued
@@ -94,8 +76,7 @@ agent:
   # As a run approaches a bounded limit (iterations, calls, time), the model is
   # told at each of these percentages - once each - so it can pace itself and
   # finish before the hard stop rather than being cut off mid-task. Default
-  # [50, 80, 90]. Set to [] to turn the notices off. (Config file only - a list
-  # has no single environment variable.)
+  # [50, 80, 90]. Set to [] to turn the notices off.
   # limit_checkpoints: [50, 80, 90]
 
   # There is no context-management setting: as the conversation approaches the
@@ -133,7 +114,6 @@ ui:
   # model, provider, dir, iter, tools, edits, elapsed, tokens (default: all).
   # `tokens` shows the provider's own reported usage; iter/tools/elapsed show
   # progress against a limit (e.g. 5/1000) when one is set.
-  # (Config file only - a list has no single environment variable.)
   # stats: [model, provider, iter, tools, elapsed, tokens]
 
 # Providers are the named inference connections a run can target: direct model

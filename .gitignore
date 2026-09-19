@@ -3,7 +3,6 @@
 /.zot/
 
 configs/zot.yaml
-.env
 
 # Go workspace files, if anyone creates one locally. zot has no local module
 # dependencies, so a go.work here is only ever a personal experiment - and one

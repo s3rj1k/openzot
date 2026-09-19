@@ -40,12 +40,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/joho/godotenv"
 	"github.com/openzot/openzot/agent"
 	"github.com/spf13/pflag"
 
 	"github.com/openzot/openzot"
-	"github.com/openzot/openzot/internal/buildinfo"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
@@ -107,11 +105,6 @@ func run() error {
 	fresh := pflag.Bool("fresh", false, "start orders from scratch even when an unfinished run of the same order exists")
 	pflag.Usage = usage
 	pflag.Parse()
-
-	// Load credentials from the directory the agent will work in. This must
-	// happen after --dir is parsed but before configuration resolves env-backed
-	// provider secrets - and only on a developer build.
-	loadEnv(*dir)
 
 	sessions := *sessionDir
 	if sessions == "" {
@@ -958,22 +951,6 @@ func oneLine(text string, width int) string {
 	}
 
 	return text
-}
-
-// loadEnv reads a `.env` from the working directory, on developer builds only.
-//
-// Reading credentials out of whatever directory zot was pointed at is a
-// developer convenience and a released binary's liability: it means running zot
-// against a repository you cloned to review is enough to load a stray committed
-// `.env` into the process that is about to run shell commands. Released builds
-// take their credentials from the config file and the real environment, both of
-// which the operator chose deliberately.
-func loadEnv(dir string) {
-	if !buildinfo.Dev {
-		return
-	}
-
-	_ = godotenv.Load(filepath.Join(dir, ".env"))
 }
 
 // editConfig ensures the config file exists - seeding it from the embedded

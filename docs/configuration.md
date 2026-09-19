@@ -5,19 +5,16 @@ zot picks up `AGENTS.md` and skills. For choosing and configuring a provider, se
 [providers.md](providers.md); for work orders, [orders.md](orders.md); for the
 agent itself, [how-it-works.md](how-it-works.md).
 
-## The config file and env vars
+## The config file
 
-Configuration is layered: built-in defaults < config file < `ZOT_*` environment
-variables < CLI flags. The config file is optional - env vars alone are enough.
+Configuration is layered: built-in defaults < config file < CLI flags.
 
 ```bash
 zot config        # opens the config in $EDITOR, creating it from a template
 zot config path   # print the config file location
 ```
 
-Scalar fields have a matching `ZOT_<PATH>` env var (e.g. `agent.model` →
-`ZOT_AGENT_MODEL`, `default_provider` → `ZOT_DEFAULT_PROVIDER`). Providers
-are not built in: each is declared under `providers:` with a `base_url` and an
+Providers are not built in: each is declared under `providers:` with a `base_url` and an
 `api_key`, and a run needs `default_provider` and `agent.model` set. A key is
 written in the config or references a variable you export (`api_key:
 '$GATEWAY_KEY'`); no conventional variable is read on a provider's behalf. Every field is documented in

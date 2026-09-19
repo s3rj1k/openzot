@@ -1,5 +1,5 @@
 // Package config loads zot's configuration, layering built-in defaults, an
-// optional YAML file, and environment variables (defaults < file < env).
+// YAML file (defaults < file).
 //
 // zot ships no providers: every connection a run can target is declared under
 // `providers:` in the config, with its own endpoint and credential.
@@ -264,9 +264,9 @@ func Defaults() Config {
 	}
 }
 
-// Load resolves the configuration: defaults, then the YAML file (if present),
-// then environment overrides. A missing file at the default path is fine -
-// env vars alone can configure zot; a bad explicit --config file is an error.
+// Load resolves the configuration: defaults, then the YAML file (if present).
+// A missing file at the default path is fine; a bad explicit --config file is
+// an error.
 func Load(path string) (Config, error) {
 	cfg := Defaults()
 
@@ -287,10 +287,6 @@ func Load(path string) (Config, error) {
 		// No default config file: rely on defaults + env.
 	default:
 		return cfg, fmt.Errorf("read %s: %w", path, err)
-	}
-
-	if err := applyEnv(&cfg); err != nil {
-		return cfg, err
 	}
 
 	resolveProviders(&cfg)

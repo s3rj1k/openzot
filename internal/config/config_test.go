@@ -168,43 +168,6 @@ providers:
 	}
 }
 
-// Env vars override the file (defaults < file < env). CLI flags override env,
-// but that layer lives in main.
-func TestLoadEnvOverrides(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("GROQ_KEY", "sk-test")
-	path := writeConfig(t, `
-agent:
-  model: from-file
-default_provider: openai
-providers:
-  groq:
-    base_url: https://groq.example.com/v1
-    api_key: $GROQ_KEY
-`)
-	t.Setenv("ZOT_AGENT_MODEL", "gpt-4o")
-	t.Setenv("ZOT_AGENT_MAX_ITERATIONS", "12")
-	t.Setenv("ZOT_DEFAULT_PROVIDER", "groq")
-
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Agent.Model != "gpt-4o" {
-		t.Errorf("model = %q, want gpt-4o (env overrides file)", cfg.Agent.Model)
-	}
-	if cfg.Agent.MaxIterations != 12 {
-		t.Errorf("max_iterations = %d, want 12", cfg.Agent.MaxIterations)
-	}
-	if cfg.DefaultProvider != "groq" {
-		t.Errorf("default provider = %q, want groq (env overrides file)", cfg.DefaultProvider)
-	}
-	if got := ProviderCredential(cfg.Providers["groq"]); got != "sk-test" {
-		t.Errorf("groq credential = %q, want it from GROQ_KEY", got)
-	}
-}
-
 func TestLoadExplicitMissingIsError(t *testing.T) {
 	if _, err := Load(filepath.Join(t.TempDir(), "nope.yaml")); err == nil {
 		t.Error("expected an error for a missing explicit --config file")
@@ -426,56 +389,6 @@ func TestConfigDir(t *testing.T) {
 	}
 }
 
-// Env overrides are typed, and a bad value has to be reported rather than
-// silently zeroed - a max_iterations of 0 would end every run immediately.
-func TestEnvOverrideTypeErrors(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENAI_API_KEY", "k")
-
-	t.Setenv("ZOT_AGENT_MAX_ITERATIONS", "not-a-number")
-
-	if _, err := Load(""); err == nil {
-		t.Error("a non-numeric max_iterations must be reported")
-	}
-
-	t.Setenv("ZOT_AGENT_MAX_ITERATIONS", "42")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if cfg.Agent.MaxIterations != 42 {
-		t.Errorf("max_iterations = %d, want 42", cfg.Agent.MaxIterations)
-	}
-}
-
-func TestEnvOverrideBooleans(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENAI_API_KEY", "k")
-	t.Setenv("ZOT_UI_PLAIN", "true")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if !cfg.UI.Plain {
-		t.Error("ui.plain should be set from ZOT_UI_PLAIN")
-	}
-
-	t.Setenv("ZOT_UI_PLAIN", "maybe")
-
-	if _, err := Load(""); err == nil {
-		t.Error("a non-boolean ui.plain must be reported")
-	}
-}
-
-// A provider brings its own endpoint. There is none to fall back on, and
-// finding out mid-run that there is nowhere to send the request is worse than
-// at load.
 func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	cfg := Defaults()
 	cfg.Agent.Model = "m"
@@ -610,24 +523,23 @@ func TestMaxTimeIsValidated(t *testing.T) {
 	}
 }
 
-// Every run budget is settable from the environment, not just max_iterations -
-// the config comment promises a ZOT_AGENT_MAX_* for each, so this pins that the
-// reflection-based override actually reaches all of them (including the two-word
-// max_continuations, whose env name is the easy one to get wrong).
-func TestEveryBudgetHasAnEnvOverride(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+// Every budget the run honours is a config key. The two-word ones
+// (max_continuations, max_recoveries) are the easy ones to misspell, and a
+// misspelt key is rejected at load rather than silently ignored.
+func TestEveryBudgetIsReadFromTheFile(t *testing.T) {
+	path := writeConfig(t, `
+agent:
+  max_settles: 3
+  max_calls: 4
+  max_time: 45m
+  max_tokens: 5
+  max_continuations: 6
+  max_recoveries: 9
+  max_cycles: 7
+  max_empties: 8
+`)
 
-	t.Setenv("ZOT_AGENT_MAX_SETTLES", "3")
-	t.Setenv("ZOT_AGENT_MAX_CALLS", "4")
-	t.Setenv("ZOT_AGENT_MAX_TIME", "45m")
-	t.Setenv("ZOT_AGENT_MAX_TOKENS", "5")
-	t.Setenv("ZOT_AGENT_MAX_CONTINUATIONS", "6")
-	t.Setenv("ZOT_AGENT_MAX_RECOVERIES", "9")
-	t.Setenv("ZOT_AGENT_MAX_CYCLES", "7")
-	t.Setenv("ZOT_AGENT_MAX_EMPTIES", "8")
-
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -644,12 +556,8 @@ func TestEveryBudgetHasAnEnvOverride(t *testing.T) {
 		"max_empties":       a.MaxEmpties,
 	} {
 		if got == 0 {
-			t.Errorf("%s was not set from its ZOT_AGENT_* variable", name)
+			t.Errorf("%s was not read from the file", name)
 		}
-	}
-
-	if a.MaxTime != "45m" {
-		t.Errorf("max_time = %q, want 45m from the environment", a.MaxTime)
 	}
 
 	// and the string parses through to a real duration
@@ -706,43 +614,32 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	}
 }
 
-// The viewer scrollback is a scalar UI field, so it takes the ZOT_UI_* env
-// override like the others, and a negative value is rejected at load.
-func TestScrollbackEnvOverrideAndValidation(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("ZAI_API_KEY", "sk-zai")
-	t.Setenv("ZOT_UI_SCROLLBACK", "20000")
+// The viewer scrollback and stream color are scalar UI fields read from the
+// file, and an out-of-range value is rejected at load.
+func TestUIScrollbackAndColorAreReadAndValidated(t *testing.T) {
+	path := writeConfig(t, `
+ui:
+  scrollback: 20000
+  color: always
+`)
 
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
 	if cfg.UI.Scrollback != 20000 {
-		t.Errorf("ZOT_UI_SCROLLBACK not applied: %d", cfg.UI.Scrollback)
+		t.Errorf("ui.scrollback not read: %d", cfg.UI.Scrollback)
+	}
+
+	if cfg.UI.Color != "always" {
+		t.Errorf("ui.color not read: %q", cfg.UI.Color)
 	}
 
 	if err := validConfig(func(c *Config) { c.UI.Scrollback = -1 }).Validate(); err == nil {
 		t.Error("a negative ui.scrollback must fail validation")
 	}
-}
 
-// Stream color is a capability declaration, so containers must be able to set
-// it through the same scalar environment layer as the rest of ui.*.
-func TestUIColorEnvOverrideAndValidation(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("ZAI_API_KEY", "sk-zai")
-	t.Setenv("ZOT_UI_COLOR", "always")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.UI.Color != "always" {
-		t.Errorf("ZOT_UI_COLOR not applied: %q", cfg.UI.Color)
-	}
 	if err := validConfig(func(c *Config) { c.UI.Color = "sometimes" }).Validate(); err == nil {
 		t.Error("an unknown ui.color mode must fail validation")
 	}

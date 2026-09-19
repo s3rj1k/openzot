@@ -145,11 +145,6 @@ type Recorder interface {
 	RecordMessage(Message) error
 	RecordEvent(kind, tool, text string, iteration int) error
 	RecordResult(Summary) error
-
-	// RecordFailure persists a provider failure as it happens, so a run killed
-	// mid-retry still leaves the failing exchange behind. Called once per
-	// failure; a later one supersedes the record of an earlier.
-	RecordFailure(*Failure) error
 }
 
 // SummaryRecorder is a Recorder that keeps only the run's final Summary, so a
@@ -164,7 +159,6 @@ type SummaryRecorder struct {
 
 func (r *SummaryRecorder) RecordMessage(Message) error             { return nil }
 func (r *SummaryRecorder) RecordEvent(_, _, _ string, _ int) error { return nil }
-func (r *SummaryRecorder) RecordFailure(*Failure) error            { return nil }
 
 func (r *SummaryRecorder) RecordResult(summary Summary) error {
 	captured := summary
@@ -210,14 +204,6 @@ func (m multiRecorder) RecordEvent(kind, tool, text string, iteration int) error
 func (m multiRecorder) RecordResult(summary Summary) error {
 	for _, r := range m {
 		_ = r.RecordResult(summary)
-	}
-
-	return nil
-}
-
-func (m multiRecorder) RecordFailure(f *Failure) error {
-	for _, r := range m {
-		_ = r.RecordFailure(f)
 	}
 
 	return nil
@@ -534,13 +520,6 @@ func ExecuteWithTools(
 				}
 
 				_ = recorder.RecordEvent(string(event.Kind), event.Tool, text, event.Iteration)
-
-				// A provider failure is persisted the instant it happens, not at
-				// the run's end - a kill mid-retry would never reach the end, and
-				// the failing exchange is exactly what the operator wants then.
-				if failure := failureOf(event.Failure); failure != nil {
-					_ = recorder.RecordFailure(failure)
-				}
 			}
 
 			// The send stays synchronous - a slow consumer throttles the run -
@@ -656,10 +635,6 @@ type Failure struct {
 	// suspected context ceiling, the number that turns a correlation into a
 	// diagnosis.
 	RequestBytes int
-
-	// RequestBody is the JSON that was refused. Populated for the developer
-	// dump; empty otherwise.
-	RequestBody string
 }
 
 // failureOf extracts the wire evidence from an error ending, when there is any.
@@ -673,7 +648,6 @@ func failureOf(err error) *Failure {
 		Status:       evidence.Status,
 		ResponseBody: evidence.Body,
 		RequestBytes: evidence.RequestBytes,
-		RequestBody:  evidence.RequestBody,
 	}
 }
 

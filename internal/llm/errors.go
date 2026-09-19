@@ -304,9 +304,6 @@ type Failure struct {
 
 	// RequestBytes is the size of the request that was refused.
 	RequestBytes int
-
-	// RequestBody is the JSON that was refused, bounded.
-	RequestBody string
 }
 
 // FailureOf extracts the wire evidence from an error, when it carries any.
@@ -320,7 +317,6 @@ func FailureOf(err error) (Failure, bool) {
 		Status:       found.StatusCode,
 		Body:         clip(bodyOf(found.ResponseBody), maxDumpBody),
 		RequestBytes: len(found.RequestBody),
-		RequestBody:  clip(string(found.RequestBody), maxDumpBody),
 	}, true
 }
 

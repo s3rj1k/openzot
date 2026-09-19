@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/openzot/openzot"
-	"github.com/openzot/openzot/internal/buildinfo"
 	"github.com/openzot/openzot/internal/config"
 	"gopkg.in/yaml.v3"
 
@@ -21,79 +20,6 @@ import (
 	"sync/atomic"
 	"testing"
 )
-
-// Reading a `.env` out of whatever directory zot was pointed at is a developer
-// convenience and a released binary's liability: running zot against a
-// repository you cloned to review would otherwise be enough to load a stray
-// committed `.env` into the process that is about to run shell commands.
-//
-// So the behaviour is conditional on the build, and this test asserts whichever
-// half applies to the binary it is compiled into - which means the release
-// behaviour is verified by the ordinary `go test ./...` that CI runs, and the
-// developer behaviour by `go test -tags dev ./...`.
-func TestDotEnvIsOnlyReadOnADeveloperBuild(t *testing.T) {
-	const key = "ZOT_TEST_TARGET_DOTENV"
-
-	original, hadOriginal := os.LookupEnv(key)
-	if err := os.Unsetenv(key); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if hadOriginal {
-			_ = os.Setenv(key, original)
-		} else {
-			_ = os.Unsetenv(key)
-		}
-	})
-
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(key+"=loaded\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	loadEnv(dir)
-
-	got := os.Getenv(key)
-
-	if buildinfo.Dev {
-		if got != "loaded" {
-			t.Errorf("%s = %q, want a developer build to read the .env", key, got)
-		}
-
-		return
-	}
-
-	if got != "" {
-		t.Errorf("%s = %q, want a release build to ignore the .env entirely", key, got)
-	}
-}
-
-// A run must not be able to turn the switch back on. It is a build-time
-// constant precisely so nothing at runtime - an env var, a config key, a flag -
-// can reach it.
-func TestNothingAtRuntimeCanEnableDotEnv(t *testing.T) {
-	if buildinfo.Dev {
-		t.Skip("this is a developer build")
-	}
-
-	const key = "ZOT_TEST_RUNTIME_DOTENV"
-
-	t.Setenv("ZOT_DEV", "1")
-	t.Setenv("ZOT_DEV_MODE", "true")
-	t.Setenv("NODE_ENV", "development")
-
-	dir := t.TempDir()
-
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(key+"=loaded\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	loadEnv(dir)
-
-	if got := os.Getenv(key); got != "" {
-		t.Errorf("%s = %q; an environment variable turned .env loading back on", key, got)
-	}
-}
 
 func TestResolveOrdersLoadsEveryFile(t *testing.T) {
 	first := orderFile(t, "build the parser")
