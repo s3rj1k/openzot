@@ -1,535 +1,418 @@
 package session
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 )
 
-// A session log has one job: survive the run that wrote it. These tests are
-// mostly about the ways a run ends badly - killed mid-write, never finished,
-// two runs racing for the same file - because a log that only works when
-// everything went well is a log nobody needs.
+// readLog reads a log the way anyone does: one JSON value per line. A line that
+// is not JSON fails the test, which is the point - the format is the contract.
+func readLog(t *testing.T, path string) []Record {
+	t.Helper()
 
-func TestWriteThenReadBack(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "20260805-101500", Meta{
-		Task:     "add a health endpoint",
-		Model:    "glm-5.2",
-		Provider: "zai",
-		Workdir:  "/work",
-	})
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("Create: %v", err)
+		t.Fatalf("read log: %v", err)
 	}
 
-	if err := writer.Message(Message{Type: "user", Text: "add a health endpoint"}); err != nil {
-		t.Fatalf("Message: %v", err)
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		t.Fatalf("log does not end on a line: %q", data[max(0, len(data)-40):])
 	}
 
-	if err := writer.Event(Event{Kind: "toolStart", Tool: "read", Iteration: 1}); err != nil {
-		t.Fatalf("Event: %v", err)
-	}
+	var records []Record
 
-	if err := writer.Message(Message{Type: "assistant", Text: "done"}); err != nil {
-		t.Fatalf("Message: %v", err)
-	}
-
-	if err := writer.Result(Result{Reason: "stop", Iterations: 2, Calls: 1, InputTokens: 4200, OutputTokens: 310}); err != nil {
-		t.Fatalf("Result: %v", err)
-	}
-
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if session.Meta.ID != "20260805-101500" || session.Meta.Task != "add a health endpoint" {
-		t.Errorf("meta = %+v", session.Meta)
-	}
-
-	if session.Meta.Model != "glm-5.2" || session.Meta.Provider != "zai" {
-		t.Errorf("meta lost the model or provider: %+v", session.Meta)
-	}
-
-	if len(session.Messages) != 2 {
-		t.Fatalf("got %d messages, want 2", len(session.Messages))
-	}
-
-	if session.Messages[0].Type != "user" || session.Messages[1].Text != "done" {
-		t.Errorf("messages = %+v", session.Messages)
-	}
-
-	if len(session.Events) != 1 || session.Events[0].Tool != "read" {
-		t.Errorf("events = %+v", session.Events)
-	}
-
-	if !session.Complete() {
-		t.Error("a session that recorded a result must read back as complete")
-	}
-
-	if session.Result.Iterations != 2 || session.Result.Calls != 1 {
-		t.Errorf("result = %+v", session.Result)
-	}
-
-	if session.Result.InputTokens != 4200 || session.Result.OutputTokens != 310 {
-		t.Errorf("result lost the token totals: %+v", session.Result)
-	}
-
-	if session.Truncated {
-		t.Error("a cleanly written log must not read back as truncated")
-	}
-}
-
-// The log has to be readable while the run is still going - that is the whole
-// point of appending line by line rather than writing at the end.
-func TestALogIsReadableMidRun(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "mid", Meta{Task: "t"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	defer writer.Close()
-
-	_ = writer.Message(Message{Type: "user", Text: "hello"})
-
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if len(session.Messages) != 1 {
-		t.Fatalf("an in-flight log should read back what is written so far, got %d", len(session.Messages))
-	}
-
-	// no result yet, and that is the signal that the run has not finished
-	if session.Complete() {
-		t.Error("an in-flight session must not report complete")
-	}
-}
-
-// A killed process leaves a half-written final line. Everything before it is
-// still the record of what happened, and losing it would defeat the purpose.
-func TestATruncatedLogKeepsWhatItHas(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, _ := Create(dir, "killed", Meta{Task: "t"})
-
-	_ = writer.Message(Message{Type: "user", Text: "first"})
-	_ = writer.Message(Message{Type: "assistant", Text: "second"})
-	_ = writer.Close()
-
-	raw, err := os.ReadFile(writer.Path())
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-
-	// chop the file mid-record, exactly as SIGKILL during a write would
-	chopped := append([]byte{}, raw[:len(raw)-20]...)
-
-	if err := os.WriteFile(writer.Path(), chopped, 0o600); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if !session.Truncated {
-		t.Error("a chopped log must report Truncated")
-	}
-
-	if len(session.Messages) != 1 || session.Messages[0].Text != "first" {
-		t.Errorf("the intact records must survive, got %+v", session.Messages)
-	}
-}
-
-func TestBlankLinesAreIgnored(t *testing.T) {
-	session, err := Read(strings.NewReader("\n\n{\"kind\":\"meta\",\"meta\":{\"id\":\"x\",\"task\":\"t\"}}\n\n"))
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-
-	if session.Meta.ID != "x" {
-		t.Errorf("meta = %+v", session.Meta)
-	}
-
-	if session.Truncated {
-		t.Error("blank lines are not truncation")
-	}
-}
-
-// A record whose payload is missing is skipped rather than appended as an empty
-// message, so a malformed log cannot inject a blank turn into an export.
-func TestRecordsWithoutPayloadsAreSkipped(t *testing.T) {
-	session, err := Read(strings.NewReader(strings.Join([]string{
-		`{"kind":"meta"}`,
-		`{"kind":"message"}`,
-		`{"kind":"event"}`,
-		`{"kind":"result"}`,
-		`{"kind":"unknown","message":{"type":"user","text":"x"}}`,
-	}, "\n")))
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-
-	if len(session.Messages) != 0 || len(session.Events) != 0 || session.Result != nil {
-		t.Errorf("payload-less records must not become entries: %+v", session)
-	}
-}
-
-// Two runs sharing one log would interleave into a conversation neither had.
-func TestCreateRefusesAnExistingID(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "same", Meta{Task: "first"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	defer writer.Close()
-
-	if _, err := Create(dir, "same", Meta{Task: "second"}); err == nil {
-		t.Fatal("a second run must not be able to open the same log")
-	}
-}
-
-func TestWritingAfterCloseIsAnError(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, _ := Create(dir, "closed", Meta{Task: "t"})
-
-	if err := writer.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	// close is idempotent, because Result closes and defer closes again
-	if err := writer.Close(); err != nil {
-		t.Errorf("a second Close must be harmless, got %v", err)
-	}
-
-	if err := writer.Message(Message{Type: "user"}); err == nil {
-		t.Error("writing to a closed log must be reported")
-	}
-}
-
-func TestNewIDSortsChronologically(t *testing.T) {
-	earlier := NewID(time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC))
-	later := NewID(time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC))
-
-	if !(earlier < later) {
-		t.Errorf("ids must sort by time: %q !< %q", earlier, later)
-	}
-
-	// the id names the file, so it has to be path-safe
-	if strings.ContainsAny(earlier, `/\: `) {
-		t.Errorf("id %q is not safe as a filename", earlier)
-	}
-}
-
-// NewID is given a time rather than reading the clock so a caller in a
-// different zone still produces an id that sorts against everyone else's.
-func TestNewIDIsUTC(t *testing.T) {
-	zone := time.FixedZone("UTC+9", 9*3600)
-
-	if got := NewID(time.Date(2026, 8, 5, 9, 0, 0, 0, zone)); got != "20260805-000000" {
-		t.Errorf("NewID = %q, want the UTC rendering", got)
-	}
-}
-
-func TestListNewestFirst(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, id := range []string{"20260805-090000", "20260805-110000", "20260805-100000"} {
-		writer, err := Create(dir, id, Meta{Task: "task " + id})
-		if err != nil {
-			t.Fatalf("Create: %v", err)
+	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		if line == "" {
+			continue
 		}
 
-		_ = writer.Close()
+		var record Record
+
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("line %d is not a JSON record: %v\n%s", i+1, err, line)
+		}
+
+		records = append(records, record)
 	}
 
-	// something that is not a session log at all
-	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o600); err != nil {
-		t.Fatalf("write: %v", err)
+	return records
+}
+
+func kinds(records []Record) []Kind {
+	out := make([]Kind, 0, len(records))
+
+	for _, record := range records {
+		out = append(out, record.Kind)
 	}
 
-	// and a directory, which readdir will hand back just the same
-	if err := os.MkdirAll(filepath.Join(dir, "sub.jsonl"), 0o700); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	return out
+}
 
-	entries, err := List(dir)
+func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
+
+	writer, err := Open(path, Meta{Task: "add a health endpoint", Model: "m", Provider: "p", Driver: "openai", Workdir: "/w"})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
 
-	if len(entries) != 3 {
-		t.Fatalf("got %d entries, want 3: %+v", len(entries), entries)
+	defer writer.Close()
+
+	if writer.Path() != path {
+		t.Errorf("Path = %q, want %q", writer.Path(), path)
 	}
 
-	if entries[0].ID != "20260805-110000" || entries[2].ID != "20260805-090000" {
-		t.Errorf("listing is not newest-first: %+v", entries)
+	records := readLog(t, path)
+
+	if len(records) != 1 || records[0].Kind != KindMeta || records[0].Meta == nil {
+		t.Fatalf("a new log should open with exactly its meta record: %+v", records)
 	}
 
-	if entries[0].Task != "task 20260805-110000" {
-		t.Errorf("the listing must carry the task: %+v", entries[0])
+	meta := records[0].Meta
+
+	if meta.Task != "add a health endpoint" || meta.Model != "m" || meta.Provider != "p" || meta.Driver != "openai" || meta.Workdir != "/w" {
+		t.Errorf("meta = %+v", meta)
 	}
 
-	if entries[0].Complete {
-		t.Error("a run with no recorded result is not complete")
+	if records[0].At.IsZero() {
+		t.Error("every record is stamped with when it was written")
 	}
-}
 
-func TestListCarriesTheStopReason(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, _ := Create(dir, "done", Meta{Task: "t"})
-
-	_ = writer.Result(Result{Reason: "stop"})
-
-	entries, err := List(dir)
+	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatal(err)
 	}
 
-	if len(entries) != 1 || !entries[0].Complete || entries[0].Reason != "stop" {
-		t.Errorf("entries = %+v", entries)
+	// transcripts of a run can hold anything the agent read, so the file is the
+	// operator's alone
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("log mode = %v, want 0600", info.Mode().Perm())
 	}
 }
 
-// A first run has nowhere to look yet, and that is not an error.
-func TestListOfAMissingDirectoryIsEmpty(t *testing.T) {
-	entries, err := List(filepath.Join(t.TempDir(), "nope"))
+// Every step of a run is one line. A log a person reads with cat and jq has to
+// be complete and well-formed at every point, not only when the run is over.
+func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	writer, err := Open(path, Meta{Task: "t"})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatal(err)
 	}
 
-	if len(entries) != 0 {
-		t.Errorf("entries = %+v", entries)
-	}
-}
-
-func TestResolve(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, id := range []string{"20260805-090000", "20260805-100000"} {
-		writer, _ := Create(dir, id, Meta{Task: "t"})
-
-		_ = writer.Close()
+	steps := []func() error{
+		func() error { return writer.Message(Message{Type: "user", Text: "go"}) },
+		func() error { return writer.Message(Message{Type: "reasoning", Text: "think\nabout\nit"}) },
+		func() error {
+			return writer.Message(Message{Type: "activity", Activity: &Activity{
+				Kind: "request", ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`,
+			}})
+		},
+		func() error { return writer.Event(Event{Kind: "toolCallStart", Tool: "shell", Iteration: 1}) },
+		func() error { return writer.Result(Result{Reason: "settled", Iterations: 1}) },
 	}
 
-	newest := filepath.Join(dir, "20260805-100000.jsonl")
-
-	tests := []struct {
-		name      string
-		reference string
-		want      string
-		wantErr   bool
-	}{
-		{name: "last picks the newest", reference: "last", want: newest},
-		{name: "a bare id", reference: "20260805-090000", want: filepath.Join(dir, "20260805-090000.jsonl")},
-		{name: "an id with the extension", reference: "20260805-090000.jsonl", want: filepath.Join(dir, "20260805-090000.jsonl")},
-		{name: "an explicit path", reference: newest, want: newest},
-		{name: "surrounding space", reference: "  last  ", want: newest},
-		{name: "nothing", reference: "", wantErr: true},
-		{name: "an unknown id", reference: "nope", wantErr: true},
-		{name: "a path that does not exist", reference: filepath.Join(dir, "missing.jsonl"), wantErr: true},
+	for i, step := range steps {
+		if err := step(); err != nil {
+			t.Fatalf("step %d: %v", i+1, err)
+		}
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := Resolve(dir, test.reference)
+	got := kinds(readLog(t, path))
 
-			if test.wantErr {
-				if err == nil {
-					t.Fatalf("Resolve(%q) = %q, want an error", test.reference, got)
-				}
+	want := []Kind{KindMeta, KindMessage, KindMessage, KindMessage, KindEvent, KindResult}
 
-				return
-			}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("records = %v, want %v", got, want)
+	}
 
-			if err != nil {
-				t.Fatalf("Resolve(%q): %v", test.reference, err)
-			}
+	// a message with newlines in it is still one line: the newline is escaped
+	data, _ := os.ReadFile(path)
 
-			if got != test.want {
-				t.Errorf("Resolve(%q) = %q, want %q", test.reference, got, test.want)
-			}
-		})
+	if lines := bytes.Count(data, []byte("\n")); lines != len(want) {
+		t.Errorf("the log has %d lines, want one per record (%d)", lines, len(want))
 	}
 }
 
-func TestResolveLastWithNoSessions(t *testing.T) {
-	if _, err := Resolve(filepath.Join(t.TempDir(), "empty"), "last"); err == nil {
-		t.Fatal(`Resolve("last") with no sessions must be reported`)
-	}
-}
+// The log is append-only. Each record lands after everything already there, and
+// nothing before it is ever rewritten - so a reader tailing the file, or a copy
+// taken mid-run, is always a prefix of what comes next.
+func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-func TestLoadMissingFile(t *testing.T) {
-	if _, err := Load(filepath.Join(t.TempDir(), "nope.jsonl")); err == nil {
-		t.Fatal("loading a missing log must be reported")
-	}
-}
-
-// A tool result can be a whole file, and it lands on one line. The default
-// scanner buffer would give up at 64KB, which is well inside normal.
-func TestAVeryLongRecordSurvives(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, _ := Create(dir, "big", Meta{Task: "t"})
-
-	big := strings.Repeat("x", 512*1024)
-
-	if err := writer.Message(Message{Type: "tool", Text: big}); err != nil {
-		t.Fatalf("Message: %v", err)
-	}
-
-	_ = writer.Close()
-
-	session, err := Load(writer.Path())
+	writer, err := Open(path, Meta{Task: "t"})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatal(err)
 	}
 
-	if len(session.Messages) != 1 || session.Messages[0].Text != big {
-		t.Error("a large tool result must round-trip intact")
+	previous, _ := os.ReadFile(path)
+
+	for i := 0; i < 20; i++ {
+		var err error
+
+		if i%2 == 0 {
+			err = writer.Message(Message{Type: "bot", Text: fmt.Sprintf("message %d", i)})
+		} else {
+			err = writer.Event(Event{Kind: "iteration", Iteration: i})
+		}
+
+		if err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+
+		current, _ := os.ReadFile(path)
+
+		if !bytes.HasPrefix(current, previous) || len(current) <= len(previous) {
+			t.Fatalf("after record %d the log is not the previous log plus one more line", i)
+		}
+
+		previous = current
 	}
 }
 
-func TestActivityRoundTrips(t *testing.T) {
-	dir := t.TempDir()
+// A record is on disk when the call that wrote it returns, not when the run
+// ends: what a killed run leaves behind is everything it had recorded.
+func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Create(dir, "meta", Meta{Task: "t"})
-
-	_ = writer.Message(Message{Type: "activity", Text: "ok", Activity: &Activity{
-		Kind: "response", ID: "call_1", Name: "read", Arguments: `{"path":"a.go"}`, Result: "ok",
-	}})
-	_ = writer.Close()
-
-	session, err := Load(writer.Path())
+	writer, err := Open(path, Meta{Task: "t"})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatal(err)
 	}
 
-	activity := session.Messages[0].Activity
+	defer writer.Close()
 
-	if activity == nil {
-		t.Fatal("the log lost the tool call")
+	if err := writer.Message(Message{Type: "reasoning", Text: "the model's own words"}); err != nil {
+		t.Fatal(err)
 	}
 
-	if activity.Name != "read" || activity.ID != "call_1" || activity.Arguments != `{"path":"a.go"}` {
-		t.Errorf("activity = %+v", activity)
+	// read while the writer is still open, as a tail or a crash would
+	records := readLog(t, path)
+
+	last := records[len(records)-1]
+
+	if last.Kind != KindMessage || last.Message.Type != "reasoning" || last.Message.Text != "the model's own words" {
+		t.Errorf("the last record on disk = %+v", last)
 	}
 }
 
-func TestCreateReportsAnUnusableDirectory(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "a-file")
+// Running the task again appends to the same file. The earlier run is kept
+// byte for byte, and the new one opens with a meta record of its own, so the
+// file is the whole history of the task, one run after another.
+func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-		t.Fatalf("write: %v", err)
+	first, err := Open(path, Meta{Task: "the brief"})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := Create(filepath.Join(file, "sessions"), "x", Meta{}); err == nil {
-		t.Fatal("creating a log under a file must be reported")
+	_ = first.Message(Message{Type: "user", Text: "first run"})
+	_ = first.Result(Result{Reason: "settled"})
+
+	before, _ := os.ReadFile(path)
+
+	second, err := Open(path, Meta{Task: "the brief"})
+	if err != nil {
+		t.Fatalf("second Open: %v", err)
+	}
+
+	_ = second.Message(Message{Type: "user", Text: "second run"})
+	_ = second.Result(Result{Reason: "failed"})
+
+	after, _ := os.ReadFile(path)
+
+	if !bytes.HasPrefix(after, before) {
+		t.Fatal("the second run changed what the first run wrote")
+	}
+
+	got := kinds(readLog(t, path))
+	want := []Kind{KindMeta, KindMessage, KindResult, KindMeta, KindMessage, KindResult}
+
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("records = %v, want two runs one after the other: %v", got, want)
+	}
+}
+
+// A run killed mid-write leaves a torn last line. The next run must not glue its
+// meta record onto it: that would lose the new run's opening and leave one line
+// that is neither.
+func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	first, err := Open(path, Meta{Task: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = first.Message(Message{Type: "user", Text: "before the kill"})
+	_ = first.Close()
+
+	// what a kill mid-write leaves: half a record, no newline
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := file.WriteString(`{"kind":"message","at":"2026-09-19T10:00:00Z","message":{"type":"bo`); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = file.Close()
+
+	second, err := Open(path, Meta{Task: "t"})
+	if err != nil {
+		t.Fatalf("Open over a torn line: %v", err)
+	}
+
+	_ = second.Result(Result{Reason: "settled"})
+
+	data, _ := os.ReadFile(path)
+
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+
+	// the torn line is still there, on its own, and every line after it parses
+	if !strings.Contains(lines[2], `"type":"bo`) || strings.Contains(lines[2], `"kind":"meta"`) {
+		t.Fatalf("the torn line should stand alone: %q", lines[2])
+	}
+
+	for i, line := range lines[3:] {
+		var record Record
+
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Errorf("line %d after the torn one is not a record: %v: %s", i+4, err, line)
+		}
+	}
+
+	if !strings.Contains(lines[3], `"kind":"meta"`) {
+		t.Errorf("the new run should open on its own line with its meta: %q", lines[3])
+	}
+}
+
+// A log that already ends on a line gets no extra blank line.
+func TestACleanLogIsNotPaddedBeforeTheNextRun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	first, _ := Open(path, Meta{Task: "t"})
+	_ = first.Result(Result{Reason: "settled"})
+
+	second, err := Open(path, Meta{Task: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = second.Close()
+
+	data, _ := os.ReadFile(path)
+
+	if strings.Contains(string(data), "\n\n") {
+		t.Errorf("a blank line crept in between runs:\n%s", data)
 	}
 }
 
 // The engine emits events from its own goroutine while the caller records
-// messages, so the writer has to hold up under -race.
-func TestConcurrentWrites(t *testing.T) {
-	dir := t.TempDir()
+// messages. Two records must never share a line.
+func TestConcurrentWritesNeverInterleave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Create(dir, "race", Meta{Task: "t"})
-
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		for i := 0; i < 50; i++ {
-			_ = writer.Event(Event{Kind: "toolStart", Tool: "read", Iteration: i})
-		}
-	}()
-
-	for i := 0; i < 50; i++ {
-		_ = writer.Message(Message{Type: "assistant", Text: "x"})
+	writer, err := Open(path, Meta{Task: "t"})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	<-done
+	const writers, each = 20, 25
+
+	var wg sync.WaitGroup
+
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+
+		go func(w int) {
+			defer wg.Done()
+
+			for i := 0; i < each; i++ {
+				text := strings.Repeat(fmt.Sprintf("w%d-%d ", w, i), 40)
+
+				if err := writer.Message(Message{Type: "bot", Text: text}); err != nil {
+					t.Errorf("write: %v", err)
+				}
+			}
+		}(w)
+	}
+
+	wg.Wait()
 
 	_ = writer.Close()
 
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if len(session.Messages) != 50 || len(session.Events) != 50 {
-		t.Errorf("got %d messages and %d events, want 50 each", len(session.Messages), len(session.Events))
-	}
-
-	if session.Truncated {
-		t.Error("concurrent writes must not interleave into a corrupt line")
+	if got := len(readLog(t, path)); got != 1+writers*each {
+		t.Errorf("the log has %d records, want the meta plus %d messages", got, writers*each)
 	}
 }
 
-// Two runs started in the same second collide on the time-derived id. One of
-// them would otherwise lose its log entirely, which is exactly the run someone
-// later wants to look at.
-func TestStartAvoidsACollision(t *testing.T) {
-	dir := t.TempDir()
+func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	now := time.Date(2026, 8, 5, 10, 15, 0, 0, time.UTC)
+	writer, _ := Open(path, Meta{Task: "t"})
 
-	first, err := Start(dir, now, Meta{Task: "first"})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
+	if err := writer.Result(Result{Reason: "settled"}); err != nil {
+		t.Fatalf("Result: %v", err)
 	}
 
-	defer first.Close()
-
-	second, err := Start(dir, now, Meta{Task: "second"})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
+	if err := writer.Message(Message{Type: "user", Text: "too late"}); err == nil {
+		t.Error("writing after the result must be an error, not a silent drop")
 	}
 
-	defer second.Close()
-
-	if first.ID() == second.ID() {
-		t.Fatalf("both runs claimed %q", first.ID())
+	if got := len(readLog(t, path)); got != 2 {
+		t.Errorf("the log has %d records, want just the meta and the result", got)
 	}
 
-	if first.ID() != NewID(now) {
-		t.Errorf("the first run should get the plain id, got %q", first.ID())
-	}
-
-	entries, err := List(dir)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-
-	if len(entries) != 2 {
-		t.Fatalf("got %d logs, want both runs recorded", len(entries))
+	if err := writer.Close(); err != nil {
+		t.Errorf("Close after Result: %v", err)
 	}
 }
 
-// A directory that cannot hold a log at all is reported immediately rather than
-// retried a hundred times.
-func TestStartReportsAnUnusableDirectory(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "a-file")
+func TestOpenReportsAnUnusableLocation(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "a-file")
 
-	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-		t.Fatalf("write: %v", err)
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := Start(filepath.Join(file, "sessions"), time.Now(), Meta{}); err == nil {
-		t.Fatal("an unusable directory must be reported")
+	// a directory that cannot be made, and a path that is itself a directory
+	if _, err := Open(filepath.Join(blocker, "sub", "task.jsonl"), Meta{}); err == nil {
+		t.Error("a log under a file must not open")
+	}
+
+	if _, err := Open(t.TempDir(), Meta{}); err == nil {
+		t.Error("a directory is not a log")
+	}
+}
+
+// An activity round-trips through the log with its whole payload: the arguments
+// verbatim, the result as the tool returned it.
+func TestAToolCallIsRecordedInFull(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	writer, _ := Open(path, Meta{Task: "t"})
+
+	_ = writer.Message(Message{Type: "activity", Activity: &Activity{
+		Kind: "response", ID: "call_1", Name: "shell", Arguments: `{"command":"go test ./..."}`, Result: "ok",
+	}})
+
+	_ = writer.Close()
+
+	records := readLog(t, path)
+
+	activity := records[1].Message.Activity
+
+	if activity == nil || activity.ID != "call_1" || activity.Name != "shell" ||
+		activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
+		t.Errorf("activity = %+v", activity)
 	}
 }

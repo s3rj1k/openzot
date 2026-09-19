@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/openzot/openzot/agent"
 
@@ -201,12 +200,9 @@ func LoadProjectContext(cfg *Config, dirs ...string) error {
 
 // RunOptions configures a run beyond the configuration itself.
 type RunOptions struct {
-	// SessionDir is where the run's log is written. Empty disables recording.
-	SessionDir string
-
-	// OnSession is called once the log is open, with its path. Used to tell the
-	// operator where the record is before the run takes over the screen.
-	OnSession func(path string)
+	// SessionPath is the log this run is appended to: one file per task, so a
+	// run of the same task again adds to it. Empty disables recording.
+	SessionPath string
 
 	// BatchIndex and BatchSize place this run in a batch - order 2 of 5 - so
 	// the viewer can show how much of the queue is left. Zero for a run that is
@@ -262,9 +258,9 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 	summaryRec := &agent.SummaryRecorder{}
 	opts.Recorder = summaryRec
 
-	var sessionID string
+	var sessionPath string
 
-	if options.SessionDir != "" {
+	if options.SessionPath != "" {
 		meta := session.Meta{
 			Task:     task,
 			Model:    client.Model(),
@@ -273,7 +269,7 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 			Workdir:  workdir,
 		}
 
-		writer, err := session.Start(options.SessionDir, time.Now(), meta)
+		writer, err := session.Open(options.SessionPath, meta)
 
 		// @note a log that cannot be opened is reported but not fatal: the run
 		// is the point, and refusing to work because a directory is read-only
@@ -283,11 +279,7 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 		} else {
 			defer writer.Close()
 
-			if options.OnSession != nil {
-				options.OnSession(writer.Path())
-			}
-
-			sessionID = writer.ID()
+			sessionPath = writer.Path()
 			opts.Recorder = agent.MultiRecorder(session.NewRecorder(writer), summaryRec)
 		}
 	}
@@ -300,23 +292,24 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 
 	outcome, err := tui.Run(ctx, client, meta, opts)
 
-	printDigest(os.Stderr, sessionID, outcome, summaryRec.Summary)
+	printDigest(os.Stderr, sessionPath, outcome, summaryRec.Summary)
 
 	return err
 }
 
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
-// and - when the run was recorded - the session id. Kept to stderr so it never mixes into a piped deliverable, and
-// skipped entirely when there is nothing to say (a run that never produced a
-// summary, e.g. a setup failure before the first turn).
-func printDigest(w io.Writer, sessionID string, outcome tui.Outcome, summary *agent.Summary) {
+// and - when the run was recorded - the session log it was appended to. Kept to
+// stderr so it never mixes into a piped deliverable, and skipped entirely when
+// there is nothing to say (a run that never produced a summary, e.g. a setup
+// failure before the first turn).
+func printDigest(w io.Writer, sessionPath string, outcome tui.Outcome, summary *agent.Summary) {
 	if summary == nil {
 		return
 	}
 
 	digest := tui.Digest{
 		Status:       tui.DigestStatus(summary.Reason, summary.Code),
-		Session:      sessionID,
+		Session:      sessionPath,
 		Iterations:   summary.Iterations,
 		Calls:        summary.Calls,
 		InputTokens:  summary.InputTokens,

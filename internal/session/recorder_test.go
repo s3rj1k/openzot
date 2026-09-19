@@ -1,22 +1,62 @@
 package session
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/openzot/openzot/agent"
 )
 
-// The recorder is the seam between the engine and the disk. What matters is
-// that it satisfies the engine's interface, that it never breaks a run, and
-// that what it writes reads back as the run it recorded.
+// The model's reasoning is part of the record: the scratchpad is often the only
+// place that says why it did what it did. It arrives as its own message, kept in
+// order between what the user said and what the model answered.
+func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-func TestRecorderRoundTripsARun(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "run", Meta{Task: "add a health endpoint"})
+	writer, err := Open(path, Meta{Task: "add a health endpoint"})
 	if err != nil {
-		t.Fatalf("Create: %v", err)
+		t.Fatalf("Open: %v", err)
+	}
+
+	recorder := NewRecorder(writer)
+
+	for _, message := range []agent.Message{
+		{Type: agent.TypeUser, Text: "add a health endpoint"},
+		{Type: agent.TypeReasoning, Text: "I should look at the router first,\nthen add the handler."},
+		{Type: agent.TypeBot, Text: "on it"},
+	} {
+		if err := recorder.RecordMessage(message); err != nil {
+			t.Fatalf("RecordMessage: %v", err)
+		}
+	}
+
+	records := readLog(t, path)
+
+	var got []string
+
+	for _, record := range records[1:] {
+		got = append(got, record.Message.Type+": "+record.Message.Text)
+	}
+
+	want := []string{
+		"user: add a health endpoint",
+		"reasoning: I should look at the router first,\nthen add the handler.",
+		"bot: on it",
+	}
+
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("messages = %q, want %q", got, want)
+	}
+}
+
+func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	writer, err := Open(path, Meta{Task: "add a health endpoint"})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
 	}
 
 	recorder := NewRecorder(writer)
@@ -25,7 +65,7 @@ func TestRecorderRoundTripsARun(t *testing.T) {
 		t.Fatalf("RecordMessage: %v", err)
 	}
 
-	if err := recorder.RecordEvent("toolStart", "shell", "go test ./...", 1); err != nil {
+	if err := recorder.RecordEvent("toolCallStart", "shell", "go test ./...", 1); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 
@@ -44,67 +84,56 @@ func TestRecorderRoundTripsARun(t *testing.T) {
 	}
 
 	if err := recorder.RecordResult(agent.Summary{
-		Reason:     "stop",
-		Message:    "finished",
-		Code:       0,
-		Iterations: 3,
-		Calls:      2,
-		Cycles:     1,
-		Settles:    1,
+		Reason:       "stop",
+		Message:      "finished",
+		Iterations:   3,
+		Calls:        2,
+		Cycles:       1,
+		Settles:      1,
+		InputTokens:  1200,
+		OutputTokens: 340,
 	}); err != nil {
 		t.Fatalf("RecordResult: %v", err)
 	}
 
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	records := readLog(t, path)
+
+	got := kinds(records)
+	want := []Kind{KindMeta, KindMessage, KindEvent, KindMessage, KindResult}
+
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("records = %v, want %v", got, want)
 	}
 
-	messages := session.Messages
-
-	if len(messages) != 2 {
-		t.Fatalf("got %d messages, want 2", len(messages))
+	// the type has to survive as the string the agent's own type names
+	if records[1].Message.Type != string(agent.TypeUser) || records[3].Message.Type != string(agent.TypeActivity) {
+		t.Errorf("message types = %q, %q", records[1].Message.Type, records[3].Message.Type)
 	}
 
-	if messages[0].Type != string(agent.TypeUser) || messages[1].Type != string(agent.TypeActivity) {
-		t.Errorf("message types = %q, %q", messages[0].Type, messages[1].Type)
+	activity := records[3].Message.Activity
+
+	if activity == nil || activity.Kind != string(agent.ActivityResponse) || activity.ID != "call_1" ||
+		activity.Name != "shell" || activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
+		t.Errorf("the call was not recorded whole: %+v", activity)
 	}
 
-	// the whole call has to survive, not just a label: an export replays these
-	// into a conversation, pairing them by id
-	activity := messages[1].Activity
-
-	if activity == nil {
-		t.Fatal("the tool call was lost")
+	if event := records[2].Event; event.Kind != "toolCallStart" || event.Tool != "shell" || event.Iteration != 1 {
+		t.Errorf("event = %+v", event)
 	}
 
-	if activity.Kind != string(agent.ActivityResponse) || activity.ID != "call_1" || activity.Name != "shell" {
-		t.Errorf("activity = %+v", activity)
-	}
+	result := records[4].Result
 
-	if activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
-		t.Errorf("the call's payload was lost: %+v", activity)
-	}
-
-	if session.Result == nil {
-		t.Fatal("the outcome must be recorded")
-	}
-
-	if session.Result.Reason != "stop" || session.Result.Iterations != 3 || session.Result.Settles != 1 {
-		t.Errorf("result = %+v", session.Result)
-	}
-
-	if len(session.Events) != 1 || session.Events[0].Tool != "shell" {
-		t.Errorf("events = %+v", session.Events)
+	if result.Reason != "stop" || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
+		t.Errorf("result = %+v", result)
 	}
 }
 
 // Token events are the same text the finished message already carries. Keeping
 // them would multiply the size of every log for nothing.
 func TestTokenNarrationIsNotRecorded(t *testing.T) {
-	dir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Create(dir, "tokens", Meta{Task: "t"})
+	writer, _ := Open(path, Meta{Task: "t"})
 
 	recorder := NewRecorder(writer)
 
@@ -118,18 +147,19 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	_ = writer.Close()
 
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	records := readLog(t, path)
+
+	if got := kinds(records); fmt.Sprint(got) != fmt.Sprint([]Kind{KindMeta, KindEvent}) {
+		t.Fatalf("records = %v, want the meta and the one real event", got)
 	}
 
-	if len(session.Events) != 1 || session.Events[0].Kind != "iteration" {
-		t.Errorf("events = %+v", session.Events)
+	if records[1].Event.Kind != "iteration" {
+		t.Errorf("event = %+v", records[1].Event)
 	}
 }
 
-// A recorder with nowhere to write is the no-session case, and it has to be
-// silent rather than an error the run has to handle.
+// A recorder with nowhere to write is a run that is not recorded, and it has to
+// be silent rather than an error the run has to handle.
 func TestANilRecorderIsHarmless(t *testing.T) {
 	var recorder *Recorder
 
@@ -157,7 +187,9 @@ func TestANilRecorderIsHarmless(t *testing.T) {
 }
 
 func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
-	writer, err := Create(t.TempDir(), "20260821-090000", Meta{Task: "x"})
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	writer, err := Open(path, Meta{Task: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,16 +206,15 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 		t.Fatalf("RecordResult: %v", err)
 	}
 
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	records := readLog(t, path)
+
+	result := records[len(records)-1].Result
+
+	if result.Error != "provider: Model 'stealth/ox-alpha' not found (404)" {
+		t.Errorf("Error = %q, want the provider's own words", result.Error)
 	}
 
-	if session.Result.Error != "provider: Model 'stealth/ox-alpha' not found (404)" {
-		t.Errorf("Error = %q, want the provider's own words", session.Result.Error)
-	}
-
-	failure := session.Result.Failure
+	failure := result.Failure
 	if failure == nil || failure.Status != 404 || failure.RequestBytes != 118234 || !strings.Contains(failure.ResponseBody, "not found") {
 		t.Errorf("Failure = %+v, want the wire evidence kept verbatim", failure)
 	}

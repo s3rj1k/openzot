@@ -10,6 +10,7 @@ import (
 	"github.com/openzot/openzot/agent"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/tui"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -733,103 +734,229 @@ func quietly(t *testing.T, fn func() error) (string, error) {
 	return <-done, err
 }
 
+// readSession decodes every line of a session log, failing on any line that is
+// not a JSON record.
+func readSession(t *testing.T, path string) []session.Record {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+
+	var records []session.Record
+
+	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		var record session.Record
+
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("line %d is not a JSON record: %v\n%s", i+1, err, line)
+		}
+
+		records = append(records, record)
+	}
+
+	return records
+}
+
 // A run leaves a record of itself: what it was asked, which model answered, and
 // how it ended.
 func TestRunWithRecordsASession(t *testing.T) {
 	cfg := stubProvider(t)
 
-	sessions := t.TempDir()
+	path := filepath.Join(t.TempDir(), ".zot", "orders", "task.jsonl")
 
-	var recorded string
-
-	_, err := quietly(t, func() error {
-		return RunWith(context.Background(), cfg, "do the thing", RunOptions{
-			SessionDir: sessions,
-			OnSession:  func(path string) { recorded = path },
-		})
-	})
-	if err != nil {
+	if _, err := quietly(t, func() error {
+		return RunWith(context.Background(), cfg, "do the thing", RunOptions{SessionPath: path})
+	}); err != nil {
 		t.Fatalf("RunWith: %v", err)
 	}
 
-	if recorded == "" {
-		t.Fatal("the caller must be told where the log is")
+	records := readSession(t, path)
+
+	first, last := records[0], records[len(records)-1]
+
+	if first.Kind != session.KindMeta || first.Meta == nil {
+		t.Fatalf("the log must open with the meta: %+v", first)
 	}
 
-	logged, err := session.Load(recorded)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	if first.Meta.Task != "do the thing" || first.Meta.Provider != "local" || first.Meta.Driver != "openai" {
+		t.Errorf("meta = %+v", first.Meta)
 	}
 
-	if logged.Meta.Task != "do the thing" || logged.Meta.Provider != "local" || logged.Meta.Driver != "openai" {
-		t.Errorf("meta = %+v", logged.Meta)
+	if first.Meta.Model == "" || first.Meta.Workdir == "" {
+		t.Errorf("the log must record what it ran against: %+v", first.Meta)
 	}
 
-	if logged.Meta.Model == "" || logged.Meta.Provider == "" || logged.Meta.Workdir == "" {
-		t.Errorf("the log must record what it ran against: %+v", logged.Meta)
-	}
-
-	if logged.Result == nil || logged.Result.Reason == "" {
-		t.Errorf("the outcome must be recorded: %+v", logged.Result)
+	if last.Kind != session.KindResult || last.Result == nil || last.Result.Reason == "" {
+		t.Errorf("the log must end with the outcome: %+v", last)
 	}
 
 	// the objective is the durable task, recorded in the meta and placed in the
 	// instructions; the opening message is the kickoff, not the task
-	if len(logged.Messages) == 0 {
-		t.Errorf("the log must record the opening message: %+v", logged.Messages)
+	var opening bool
+
+	for _, record := range records {
+		if record.Kind == session.KindMessage && record.Message.Text == taskKickoff {
+			opening = true
+		}
+	}
+
+	if !opening {
+		t.Errorf("the log must record the opening message: %v", records)
 	}
 }
 
-// Every run starts from zero. Running the same task again is a new run with its
-// own log: it opens with the kickoff, and nothing of the first run's
-// conversation is carried into it.
-func TestRunningTheSameTaskAgainStartsFromZero(t *testing.T) {
+// Running the same order again adds a run to its log rather than replacing it,
+// and starts from zero: the second run opens with the kickoff and carries
+// nothing of the first run's conversation.
+func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 	cfg := stubProvider(t)
 
-	sessions := t.TempDir()
+	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	for i := 0; i < 2; i++ {
 		if output, err := quietly(t, func() error {
-			return RunWith(context.Background(), cfg, "the same brief", RunOptions{SessionDir: sessions})
+			return RunWith(context.Background(), cfg, "the same brief", RunOptions{SessionPath: path})
 		}); err != nil {
 			t.Fatalf("run %d: %v\n%s", i+1, err, output)
 		}
 	}
 
-	entries, err := session.List(sessions)
+	var runs [][]session.Record
+
+	for _, record := range readSession(t, path) {
+		if record.Kind == session.KindMeta {
+			runs = append(runs, nil)
+		}
+
+		if len(runs) == 0 {
+			t.Fatalf("a record precedes the first meta: %+v", record)
+		}
+
+		runs[len(runs)-1] = append(runs[len(runs)-1], record)
+	}
+
+	if len(runs) != 2 {
+		t.Fatalf("got %d runs in the log, want both", len(runs))
+	}
+
+	if len(runs[0]) != len(runs[1]) {
+		t.Errorf("the runs differ in length (%d, %d), so one carried the other", len(runs[0]), len(runs[1]))
+	}
+
+	for i, run := range runs {
+		if last := run[len(run)-1]; last.Kind != session.KindResult {
+			t.Errorf("run %d does not end with its outcome: %+v", i+1, last)
+		}
+	}
+}
+
+// The log holds what the model thought, and holds it while a tool is still
+// running: a snapshot of the log taken by the command itself already carries the
+// turn's reasoning and the request being run, so a run killed inside a long
+// command loses nothing of the turn that started it.
+func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
+	dir := t.TempDir()
+
+	path := filepath.Join(dir, "task.jsonl")
+	snapshot := filepath.Join(dir, "snapshot.jsonl")
+
+	command, err := json.Marshal(map[string]string{"command": "cp " + path + " " + snapshot})
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatal(err)
 	}
 
-	if len(entries) != 2 {
-		t.Fatalf("got %d logs, want one per run", len(entries))
+	call, err := json.Marshal(string(command))
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	counts := map[int]bool{}
+	turn := 0
 
-	for _, entry := range entries {
-		logged, err := session.Load(entry.Path)
-		if err != nil {
-			t.Fatalf("Load: %v", err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		turn++
+
+		if turn == 1 {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"reasoning_content":"copy the log while the shell runs"}}]}`+"\n\n")
+			fmt.Fprintf(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"shell","arguments":%s}}]},"finish_reason":"tool_calls"}]}`+"\n\n", call)
+		} else {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
 		}
 
-		if len(logged.Messages) == 0 || logged.Messages[0].Text != taskKickoff {
-			t.Errorf("%s does not open with the kickoff: %+v", entry.ID, logged.Messages)
-		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
 
-		counts[len(logged.Messages)] = true
+	t.Cleanup(server.Close)
+
+	cfg := stubProvider(t)
+	cfg.Providers["local"] = config.ProviderConfig{Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+
+	if output, err := quietly(t, func() error {
+		return RunWith(context.Background(), cfg, "do the thing", RunOptions{SessionPath: path})
+	}); err != nil {
+		t.Fatalf("RunWith: %v\n%s", err, output)
 	}
 
-	// a run that inherited the first would be longer than it
-	if len(counts) != 1 {
-		t.Errorf("the two runs differ in length, so one carried the other: %v", counts)
+	var reasoning, request bool
+
+	for _, record := range readSession(t, snapshot) {
+		if record.Kind != session.KindMessage {
+			continue
+		}
+
+		if record.Message.Type == "reasoning" && record.Message.Text == "copy the log while the shell runs" {
+			reasoning = true
+		}
+
+		if record.Message.Activity != nil && record.Message.Activity.Kind == "request" && record.Message.Activity.Name == "shell" {
+			request = true
+		}
+	}
+
+	if !reasoning || !request {
+		t.Errorf("the log was missing the turn while its tool ran (reasoning %v, request %v)", reasoning, request)
+	}
+
+	// and the finished log keeps it too
+	var final bool
+
+	for _, record := range readSession(t, path) {
+		if record.Kind == session.KindMessage && record.Message.Type == "reasoning" {
+			final = true
+		}
+	}
+
+	if !final {
+		t.Error("the finished log lost the model's reasoning")
+	}
+}
+
+// The digest names the log the run was appended to, and says nothing of one
+// when the run was not recorded.
+func TestPrintDigestNamesTheSessionLog(t *testing.T) {
+	summary := &agent.Summary{Reason: "success", Iterations: 1}
+
+	var recorded, unrecorded strings.Builder
+
+	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", tui.Outcome{}, summary)
+	printDigest(&unrecorded, "", tui.Outcome{}, summary)
+
+	if !strings.Contains(recorded.String(), "/w/.zot/orders/1758300000.jsonl") {
+		t.Errorf("the digest must say where the log is:\n%s", recorded.String())
+	}
+
+	if strings.Contains(unrecorded.String(), "session") {
+		t.Errorf("no log was written, so the digest must not mention one:\n%s", unrecorded.String())
 	}
 }
 
 // The run is the point. A log that cannot be opened is reported and the work
 // goes ahead - refusing to work because a directory is read-only would be a
 // worse failure than losing the record of it.
-func TestRunWithSurvivesAnUnwritableSessionDirectory(t *testing.T) {
+func TestRunWithSurvivesAnUnwritableSessionPath(t *testing.T) {
 	cfg := stubProvider(t)
 
 	blocked := filepath.Join(t.TempDir(), "a-file")
@@ -840,7 +967,7 @@ func TestRunWithSurvivesAnUnwritableSessionDirectory(t *testing.T) {
 
 	output, err := quietly(t, func() error {
 		return RunWith(context.Background(), cfg, "do the thing", RunOptions{
-			SessionDir: filepath.Join(blocked, "sessions"),
+			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
 	})
 	if err != nil {
@@ -852,15 +979,23 @@ func TestRunWithSurvivesAnUnwritableSessionDirectory(t *testing.T) {
 	}
 }
 
-// No session directory means no log, and that has to be silent rather than an
+// No session path means no log, and that has to be silent rather than an
 // error a caller has to handle.
-func TestRunWithoutASessionDirectoryWritesNothing(t *testing.T) {
+func TestRunWithoutASessionPathWritesNothing(t *testing.T) {
 	cfg := stubProvider(t)
+
+	dir := t.TempDir()
+
+	t.Chdir(dir)
 
 	if _, err := quietly(t, func() error {
 		return RunWith(context.Background(), cfg, "do the thing", RunOptions{})
 	}); err != nil {
 		t.Fatalf("RunWith: %v", err)
+	}
+
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("a run with no session path wrote %d entries", len(entries))
 	}
 }
 

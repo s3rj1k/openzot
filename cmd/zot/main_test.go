@@ -261,13 +261,45 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 func orderFile(t *testing.T, objective string) string {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), "order.yaml")
+	return orderFileIn(t, t.TempDir(), "order.yaml", objective)
+}
+
+// orderFileIn writes an order with the given objective to dir/name.
+func orderFileIn(t *testing.T, dir, name, objective string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
 
 	if err := os.WriteFile(path, []byte("objective: "+fmt.Sprintf("%q", objective)+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	return path
+}
+
+// readLog decodes every line of a session log, failing on any line that is not
+// a JSON record.
+func readLog(t *testing.T, path string) []session.Record {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+
+	var records []session.Record
+
+	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		var record session.Record
+
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("line %d is not a JSON record: %v\n%s", i+1, err, line)
+		}
+
+		records = append(records, record)
+	}
+
+	return records
 }
 
 // quietStderr silences stderr for a test that deliberately triggers the usage
@@ -345,7 +377,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	text := builder.String()
 
-	for _, want := range []string{"zot [flags] [<order.yaml>", "zot new", "zot config", "zot sessions", "--dir"} {
+	for _, want := range []string{"zot [flags] [<order.yaml>", "zot new", "zot config", "--dir", ".jsonl"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("usage does not mention %q:\n%s", want, text)
 		}
@@ -574,8 +606,9 @@ func TestRunRequiresAnOrder(t *testing.T) {
 
 // The whole path: argv in, config resolved, provider called, transcript out.
 func TestRunEndToEnd(t *testing.T) {
-	// a test must never write into the operator's real session directory
-	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
+	// the run's log lands under --dir, which defaults to here: keep it out of the
+	// source tree
+	t.Chdir(t.TempDir())
 
 	turn := 0
 
@@ -646,7 +679,7 @@ providers:
 }
 
 // A run pointed at another directory works end to end: every relative path on
-// the command line - --config, --session-dir, the order itself - resolves from
+// the command line - --config, the order itself - resolves from
 // the invoking directory before zot chdirs into --dir, the session records the
 // real working directory, and project context comes from --dir.
 func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
@@ -727,7 +760,7 @@ providers:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", "config.yaml", "--session-dir", "sessions", "--dir", target, "order.yaml")
+	withArgs(t, "--config", "config.yaml", "--dir", target, "order.yaml")
 
 	output, err := captureStdout(t, run)
 	if err != nil {
@@ -745,24 +778,11 @@ providers:
 			sawContext.Load(), sawSkill.Load())
 	}
 
-	// the log lands next to the invocation, because --session-dir was resolved
-	// while the invoking directory was still current
-	entries, err := session.List(filepath.Join(invocation, "sessions"))
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
+	// the log lands in the project being worked on, named after the order
+	records := readLog(t, filepath.Join(target, ".zot", "orders", "order.jsonl"))
 
-	if len(entries) != 1 {
-		t.Fatalf("got %d sessions, want the one the run wrote beside the invocation", len(entries))
-	}
-
-	recorded, err := session.Load(entries[0].Path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if recorded.Meta.Workdir != target {
-		t.Errorf("meta workdir = %q, want the absolute --dir %q", recorded.Meta.Workdir, target)
+	if records[0].Meta == nil || records[0].Meta.Workdir != target {
+		t.Errorf("meta = %+v, want the absolute --dir %q as workdir", records[0].Meta, target)
 	}
 }
 
@@ -808,49 +828,44 @@ providers:
 		return path
 	}
 
-	t.Run("every order gets its own run and session", func(t *testing.T) {
-		sessions := t.TempDir()
-
-		t.Setenv("ZOT_SESSION_DIR", sessions)
+	t.Run("every order gets its own run and log", func(t *testing.T) {
+		project := t.TempDir()
 
 		server := settle("success", `{"summary":"complete"}`)
 		defer server.Close()
 
-		withArgs(t, "--config", configFor(t, server.URL), "--dir", t.TempDir(),
-			orderFile(t, "the first order"), orderFile(t, "the second order"))
+		orders := t.TempDir()
+
+		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
+			orderFileIn(t, orders, "first.yaml", "the first order"),
+			orderFileIn(t, orders, "second.yaml", "the second order"))
 
 		if _, err := captureStdout(t, run); err != nil {
 			t.Fatalf("run: %v", err)
 		}
 
-		entries, err := session.List(sessions)
-		if err != nil {
-			t.Fatalf("List: %v", err)
-		}
+		// each log carries its own order's objective, not a blend of the batch
+		for name, want := range map[string]string{"first.jsonl": "the first order", "second.jsonl": "the second order"} {
+			records := readLog(t, filepath.Join(project, ".zot", "orders", name))
 
-		if len(entries) != 2 {
-			t.Fatalf("got %d sessions, want one per order", len(entries))
-		}
-
-		// newest first: each session carries its own order's objective, not a
-		// blend of the batch
-		if entries[0].Task != "the second order" || entries[1].Task != "the first order" {
-			t.Errorf("session tasks = %q, %q", entries[0].Task, entries[1].Task)
+			if records[0].Meta == nil || records[0].Meta.Task != want {
+				t.Errorf("%s opens with %+v, want the task %q", name, records[0], want)
+			}
 		}
 	})
 
 	t.Run("the batch stops at the first failed order", func(t *testing.T) {
-		sessions := t.TempDir()
-
-		t.Setenv("ZOT_SESSION_DIR", sessions)
+		project := t.TempDir()
 
 		server := settle("failure", `{"reason":"cannot"}`)
 		defer server.Close()
 
-		first := orderFile(t, "the doomed order")
+		orders := t.TempDir()
 
-		withArgs(t, "--config", configFor(t, server.URL), "--dir", t.TempDir(),
-			first, orderFile(t, "the never-run order"))
+		first := orderFileIn(t, orders, "doomed.yaml", "the doomed order")
+
+		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
+			first, orderFileIn(t, orders, "never.yaml", "the never-run order"))
 
 		var err error
 
@@ -864,13 +879,13 @@ providers:
 			t.Errorf("the error should name the order that stopped the batch: %v", err)
 		}
 
-		entries, listErr := session.List(sessions)
+		logs, listErr := os.ReadDir(filepath.Join(project, ".zot", "orders"))
 		if listErr != nil {
-			t.Fatalf("List: %v", listErr)
+			t.Fatalf("ReadDir: %v", listErr)
 		}
 
-		if len(entries) != 1 {
-			t.Fatalf("got %d sessions - the second order must never have run", len(entries))
+		if len(logs) != 1 || logs[0].Name() != "doomed.jsonl" {
+			t.Fatalf("got %d logs - the second order must never have run", len(logs))
 		}
 	})
 }
@@ -882,7 +897,7 @@ providers:
 // iteration. Counting provider calls is the only honest way to ask which limit
 // the engine enforced.
 func TestExplicitMaxIterationsBeatsAPerModelCap(t *testing.T) {
-	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
+	t.Chdir(t.TempDir())
 
 	var requests atomic.Int32
 
@@ -1062,13 +1077,10 @@ func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
 	return <-done, runErr
 }
 
-// A run leaves a record: the log, listed by `zot sessions`, with the task and
-// the outcome. Running the same order again is a new run with its own log.
+// A run leaves a record: one log per order, in .zot/orders of the project,
+// with the task and the outcome. Running the order again appends a new run to
+// the same log rather than starting another file.
 func TestRunRecordsASession(t *testing.T) {
-	sessions := t.TempDir()
-
-	t.Setenv("ZOT_SESSION_DIR", sessions)
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
@@ -1107,166 +1119,55 @@ providers:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", configPath, "--dir", workdir, orderFile(t, "the first task"))
+	orderPath := orderFileIn(t, t.TempDir(), "1758300000.yaml", "the first task")
+
+	withArgs(t, "--config", configPath, "--dir", workdir, orderPath)
 
 	if _, err := captureStdout(t, run); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	entries, err := session.List(sessions)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
+	logPath := filepath.Join(workdir, ".zot", "orders", "1758300000.jsonl")
 
-	if len(entries) != 1 {
-		t.Fatalf("got %d sessions, want the one the run wrote", len(entries))
-	}
-
-	if entries[0].Task != "the first task" || !entries[0].Complete {
-		t.Errorf("session entry = %+v", entries[0])
-	}
-
-	first, err := session.Load(entries[0].Path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	first := readLog(t, logPath)
 
 	// the task is the durable objective, recorded in the meta (and placed in the
 	// instructions), not as the opening user message
-	if first.Meta.Task != "the first task" {
-		t.Errorf("meta task = %q, want the objective", first.Meta.Task)
+	meta := first[0]
+
+	if meta.Kind != session.KindMeta || meta.Meta.Task != "the first task" {
+		t.Errorf("the log must open with the objective: %+v", meta)
 	}
 
-	if len(first.Messages) == 0 {
-		t.Fatalf("the log must record the opening message: %+v", first.Messages)
+	if meta.Meta.Model != "test-model" || meta.Meta.Workdir == "" {
+		t.Errorf("meta = %+v", meta.Meta)
 	}
 
-	if first.Meta.Model != "test-model" || first.Meta.Workdir == "" {
-		t.Errorf("meta = %+v", first.Meta)
+	if last := first[len(first)-1]; last.Kind != session.KindResult || last.Result.Reason == "" {
+		t.Errorf("the log must end with the outcome: %+v", last)
 	}
 
-	// `zot sessions` has to surface it, because a log nobody can find is a log
-	// nobody uses
-	withArgs(t, "sessions", "--session-dir", sessions)
-
-	listing, err := captureStdout(t, run)
-	if err != nil {
-		t.Fatalf("sessions: %v", err)
-	}
-
-	if !strings.Contains(listing, entries[0].ID) || !strings.Contains(listing, "the first task") {
-		t.Errorf("listing = %q", listing)
-	}
-
-	// running the order again is a fresh run with a log of its own, not a
-	// continuation of the first
-	withArgs(t, "--config", configPath, "--dir", workdir, orderFile(t, "the first task"))
+	// running the order again adds a run to the same log, after the first
+	withArgs(t, "--config", configPath, "--dir", workdir, orderPath)
 
 	if _, err := captureStdout(t, run); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
-	entries, err = session.List(sessions)
-	if err != nil {
-		t.Fatalf("List: %v", err)
+	second := readLog(t, logPath)
+
+	if len(second) != 2*len(first) {
+		t.Fatalf("the log holds %d records after two runs, want the first run's %d twice", len(second), len(first))
 	}
 
-	if len(entries) != 2 {
-		t.Fatalf("a second run must write its own log, got %d", len(entries))
-	}
-
-}
-
-func TestNoSessionWritesNothing(t *testing.T) {
-	sessions := t.TempDir()
-
-	t.Setenv("ZOT_SESSION_DIR", sessions)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
-
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-
-	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
-agent:
-  model: test-model
-ui:
-  plain: true
-default_provider: local
-providers:
-  local:
-    driver: openai
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	withArgs(t, "--config", configPath, "--dir", t.TempDir(), "--no-session", orderFile(t, "a task"))
-
-	if _, err := captureStdout(t, run); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-
-	entries, err := session.List(sessions)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-
-	if len(entries) != 0 {
-		t.Errorf("--no-session must leave nothing behind, got %+v", entries)
-	}
-}
-
-func TestSessionsListingWhenThereAreNone(t *testing.T) {
-	withArgs(t, "sessions", "--session-dir", filepath.Join(t.TempDir(), "empty"))
-
-	output, err := captureStdout(t, run)
-	if err != nil {
-		t.Fatalf("sessions: %v", err)
-	}
-
-	if !strings.Contains(output, "no sessions") {
-		t.Errorf("output = %q", output)
-	}
-}
-
-// A multi-line brief must not turn the listing into a wall of text - and
-// truncating it must not cut a character in half: byte slicing a task written in
-// CJK or carrying an emoji left a mangled rune in the `zot sessions` listing.
-func TestOneLine(t *testing.T) {
-	tests := []struct {
-		in    string
-		width int
-		want  string
-	}{
-		{in: "short", width: 10, want: "short"},
-		{in: "a\nmulti\nline   task", width: 40, want: "a multi line task"},
-		{in: strings.Repeat("x", 20), width: 10, want: strings.Repeat("x", 9) + "\u2026"},
-		{in: "  padded  ", width: 20, want: "padded"},
-		{in: "", width: 10, want: ""},
-		// twelve characters but thirty-six bytes: a byte-width cap would both
-		// truncate a string that fits and split the character it stopped inside
-		{in: "\u65e5\u672c\u8a9e\u306e\u30bf\u30b9\u30af\u8aac\u660e\u6587\u3067\u3059", width: 40, want: "\u65e5\u672c\u8a9e\u306e\u30bf\u30b9\u30af\u8aac\u660e\u6587\u3067\u3059"},
-		{in: "\u65e5\u672c\u8a9e\u306e\u30bf\u30b9\u30af\u8aac\u660e\u6587\u3067\u3059", width: 6, want: "\u65e5\u672c\u8a9e\u306e\u30bf\u2026"},
-		{in: strings.Repeat("\U0001F680", 5), width: 3, want: strings.Repeat("\U0001F680", 2) + "\u2026"},
-	}
-
-	for _, test := range tests {
-		if got := oneLine(test.in, test.width); got != test.want {
-			t.Errorf("oneLine(%q, %d) = %q, want %q", test.in, test.width, got, test.want)
+	for i, record := range first {
+		if second[i].Kind != record.Kind {
+			t.Errorf("record %d changed from %s to %s: the first run must be left as it was", i, record.Kind, second[i].Kind)
 		}
+	}
+
+	if again := second[len(first)]; again.Kind != session.KindMeta {
+		t.Errorf("the second run must open with its own meta, got %+v", again)
 	}
 }
 
@@ -1311,7 +1212,7 @@ providers:
 // The real tool handler answers each call, and the plain transcript - what a
 // piped run leaves behind - carries the checklist as the model sent it.
 func TestARunsTaskListReachesThePlainTranscript(t *testing.T) {
-	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
+	t.Chdir(t.TempDir())
 
 	var requests atomic.Int32
 
@@ -1407,8 +1308,8 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 			var got zot.RunOptions
 
 			runs := oneRun{
-				ctx:      context.Background(),
-				sessions: t.TempDir(),
+				ctx:  context.Background(),
+				logs: t.TempDir(),
 				run: func(_ context.Context, _ zot.Config, _ string, options zot.RunOptions) error {
 					got = options
 
@@ -1452,8 +1353,8 @@ func TestABatchRunKnowsItsPosition(t *testing.T) {
 	var seen []zot.RunOptions
 
 	runs := oneRun{
-		ctx:      context.Background(),
-		sessions: t.TempDir(),
+		ctx:  context.Background(),
+		logs: t.TempDir(),
 		run: func(_ context.Context, _ zot.Config, _ string, options zot.RunOptions) error {
 			seen = append(seen, options)
 
@@ -1565,103 +1466,5 @@ func TestABareInvocationWithNoBookExplainsItself(t *testing.T) {
 		if !strings.Contains(err.Error(), "zot new") {
 			t.Errorf("the error should say how to write an order: %v", err)
 		}
-	}
-}
-
-func TestSessionsExport(t *testing.T) {
-	dir := t.TempDir()
-
-	first, err := session.Create(dir, "20260822-100000", session.Meta{Task: "build it"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	if err := first.Message(session.Message{Type: "user", Text: "go"}); err != nil {
-		t.Fatal(err)
-	}
-
-	first.Close()
-
-	second, err := session.Create(dir, "20260822-110000", session.Meta{Task: "build it"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	if err := second.Message(session.Message{Type: "user", Text: "go"}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := second.Message(session.Message{Type: "bot", Text: "built"}); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := second.Result(session.Result{Reason: "success"}); err != nil {
-		t.Fatal(err)
-	}
-
-	// stdout: one line, the last session
-	withArgs(t, "sessions", "export", "--session-dir", dir)
-
-	output, err := captureStdout(t, run)
-	if err != nil {
-		t.Fatalf("sessions export: %v", err)
-	}
-
-	var trajectory session.Trajectory
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &trajectory); err != nil {
-		t.Fatalf("output is not one JSON line: %v\n%s", err, output)
-	}
-
-	if trajectory.ID != "20260822-110000" || !trajectory.Complete {
-		t.Errorf("trajectory = %+v", trajectory)
-	}
-
-	if len(trajectory.Messages) != 2 || trajectory.Messages[1].Role != "assistant" {
-		t.Errorf("messages = %+v", trajectory.Messages)
-	}
-
-	// --out: a file per trajectory, named by the session
-	out := filepath.Join(t.TempDir(), "export")
-
-	withArgs(t, "sessions", "export", "--session-dir", dir, "--out", out, "20260822-110000")
-
-	if _, err := captureStderr(t, run); err != nil {
-		t.Fatalf("sessions export --out: %v", err)
-	}
-
-	written, err := os.ReadFile(filepath.Join(out, "20260822-110000.jsonl"))
-	if err != nil {
-		t.Fatalf("exported file: %v", err)
-	}
-
-	if !strings.Contains(string(written), `"id":"20260822-110000"`) {
-		t.Errorf("exported file = %s", written)
-	}
-
-	// --all: every session, oldest first
-	all := filepath.Join(t.TempDir(), "all")
-
-	withArgs(t, "sessions", "export", "--session-dir", dir, "--out", all, "--all")
-
-	if _, err := captureStderr(t, run); err != nil {
-		t.Fatalf("sessions export --all: %v", err)
-	}
-
-	entries, _ := os.ReadDir(all)
-
-	names := []string{}
-	for _, entry := range entries {
-		names = append(names, entry.Name())
-	}
-
-	if len(names) != 2 || names[0] != "20260822-100000.jsonl" || names[1] != "20260822-110000.jsonl" {
-		t.Errorf("--all wrote %v, want every session", names)
-	}
-
-	// an unknown session is an error, not an empty export
-	withArgs(t, "sessions", "export", "--session-dir", dir, "nope")
-
-	if _, err := captureStdout(t, run); err == nil {
-		t.Error("exporting an unknown session succeeded")
 	}
 }

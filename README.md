@@ -64,6 +64,10 @@ the folder into a drop box. Any OpenAI-compatible endpoint works - a hosted
 service, a gateway, a local server - declare it under `providers:` and pick it
 with `--provider`.
 
+Every run is logged beside its order as `.zot/orders/<name>.jsonl`: one JSON
+line per step, including the model's reasoning, appended as the run goes. Running
+an order again adds to the same file. Read it with `jq`.
+
 ## Why Zot
 
 - **Orders, not prompts.** Files that queue, batch and stream.

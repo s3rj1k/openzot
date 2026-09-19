@@ -37,7 +37,7 @@ type Digest struct {
 	// Status is the human-readable ending: "done", "failed", "cancelled".
 	Status string
 
-	// Session is the id of the recorded session, empty when none was written.
+	// Session is the log the run was appended to, empty when none was written.
 	Session string
 
 	// Iterations and Calls are the run's agentic rounds and total tool calls.

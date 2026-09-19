@@ -64,12 +64,12 @@ type Options struct {
 	// skills.
 	Skills func() []Skill
 
-	// OnConversation, when set, is called at each iteration boundary with the
-	// conversation as it then stands. It exists so a caller can persist the
-	// conversation as the run goes rather than only when it ends - the whole
-	// point of a session log is that a run killed at iteration 500 still leaves
-	// its record, which it does not if nothing was written down until iteration
-	// 500 finished.
+	// OnConversation, when set, is called at each iteration boundary, and again
+	// just before each tool handler runs, with the conversation as it then
+	// stands. It exists so a caller can persist the conversation as the run goes
+	// rather than only when it ends - the whole point of a session log is that a
+	// run killed at iteration 500 still leaves its record, which it does not if
+	// nothing was written down until iteration 500 finished.
 	//
 	// The slice handed over is the whole conversation as it then stands, not a
 	// delta. The engine only ever appends to it - what is sent on the wire is
@@ -470,9 +470,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 		// hand the conversation over before spending anything on the next turn,
 		// so what a crash leaves behind is everything the run has actually done
-		if e.options.OnConversation != nil {
-			e.options.OnConversation(messages)
-		}
+		e.handOver(messages)
 
 		// A time cap is checked at the iteration boundary, like every other
 		// budget. A single long tool call can overrun by one operation - the
@@ -903,6 +901,11 @@ func (e *Engine) dispatch(
 			continue
 		}
 
+		// the turn's reasoning, text and this request go to the caller before the
+		// handler runs: a shell call can outlast the run, and a run killed inside
+		// one must still leave what the model thought and asked for
+		e.handOver(messages)
+
 		output, err := definition.Handler(ctx, arguments)
 
 		if err != nil {
@@ -919,6 +922,13 @@ func (e *Engine) dispatch(
 	}
 
 	return messages, nil
+}
+
+// handOver gives the conversation as it stands to the OnConversation hook.
+func (e *Engine) handOver(messages []Message) {
+	if e.options.OnConversation != nil {
+		e.options.OnConversation(messages)
+	}
 }
 
 // activityMessage renders one half of a tool-call pair.

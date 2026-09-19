@@ -801,3 +801,55 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		t.Error("a trimmed thread lost its only user turn; strict providers reject the whole request")
 	}
 }
+
+// A run killed inside a tool call still leaves the turn that made it: the
+// reasoning, the words and the request are handed over before the handler runs,
+// not at the next iteration boundary the killed run never reaches.
+func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
+	var handed [][]Message
+
+	var seenByHandler []Message
+
+	tools := map[string]ToolDefinition{
+		"echo": {
+			Name:        "echo",
+			Description: "echo",
+			Parameters:  map[string]any{"type": "object"},
+			Handler: func(context.Context, map[string]any) (any, error) {
+				seenByHandler = handed[len(handed)-1]
+
+				return "ok", nil
+			},
+		},
+	}
+
+	run(t, Options{
+		Client: stub(t,
+			[]string{
+				`{"choices":[{"delta":{"reasoning_content":"the file is probably in src"}}]}`,
+				text("looking"),
+				tool("c1", "echo", "{}"),
+			},
+			[]string{text("done"), stop()},
+		),
+		Tools:          tools,
+		ContextWindow:  testWindow,
+		OnConversation: func(messages []Message) { handed = append(handed, append([]Message(nil), messages...)) },
+	})
+
+	var got []string
+
+	for _, message := range seenByHandler {
+		got = append(got, string(message.Type)+"/"+message.Text)
+	}
+
+	want := []string{"reasoning/the file is probably in src", "bot/looking"}
+
+	if len(got) < len(want)+1 || got[len(got)-3] != want[0] || got[len(got)-2] != want[1] {
+		t.Fatalf("the handler ran when only %v had been handed over", got)
+	}
+
+	if last := seenByHandler[len(seenByHandler)-1]; last.Activity == nil || last.Activity.Kind != ActivityRequest {
+		t.Errorf("the request must be handed over with its turn, got %+v", last)
+	}
+}

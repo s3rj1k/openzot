@@ -22,13 +22,13 @@ type watchRunner struct {
 // newWatchRunner wires a dispatcher to the resolved command line. run is the
 // engine entry point, split out so tests can inject a fake and never reach a
 // provider.
-func newWatchRunner(ctx context.Context, cfg zot.Config, sessions string) watchRunner {
+func newWatchRunner(ctx context.Context, cfg zot.Config, logs string) watchRunner {
 	return watchRunner{
 		runs: oneRun{
-			ctx:      ctx,
-			cfg:      cfg,
-			sessions: sessions,
-			run:      zot.RunWith,
+			ctx:  ctx,
+			cfg:  cfg,
+			logs: logs,
+			run:  zot.RunWith,
 		},
 	}
 }

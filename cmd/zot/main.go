@@ -19,14 +19,12 @@
 //	# exactly those
 //	zot .zot/orders/1758300000.yaml
 //
-//	# every run is logged; list them, or export one
-//	zot sessions
-//	zot sessions export last --out ./trajectories
+//	# every run is logged, appended to .zot/orders/1758300000.jsonl
+//	jq . .zot/orders/1758300000.jsonl
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -37,14 +35,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/spf13/pflag"
 
 	"github.com/openzot/openzot"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/tui"
 )
 
@@ -66,17 +62,6 @@ func run() error {
 		return editConfig()
 	}
 
-	// `zot sessions` lists what previous runs left behind. Its own subcommand
-	// rather than a flag because it takes no order and produces no run.
-	// `zot sessions export` renders sessions for use outside zot.
-	if len(os.Args) > 1 && os.Args[1] == "sessions" {
-		if len(os.Args) > 2 && os.Args[2] == "export" {
-			return exportSessions(os.Args[3:], os.Stdout, os.Stderr)
-		}
-
-		return listSessions(os.Args[2:])
-	}
-
 	// `zot new` scaffolds a work order. The two-step shape is deliberate: the
 	// pause between writing the order and running it is where acceptance
 	// criteria get written, and it is what keeps zot from feeling like a
@@ -92,23 +77,18 @@ func run() error {
 	maxIter := pflag.Int("max-iterations", 0, "override the safety cap on agent iterations")
 	plainFlag := pflag.Bool("plain", false, "stream unstyled output instead of the full-screen UI (auto-enabled when not a TTY)")
 	colorFlag := pflag.String("color", "", "colorize non-interactive output: auto, always, or never")
-	sessionDir := pflag.String("session-dir", "", "where session logs are written (default: "+config.DefaultSessionDir()+")")
-	noSession := pflag.Bool("no-session", false, "do not record a session log for this run")
 	ordersFlag := pflag.String("orders-dir", "", "where this project's orders live, run by a bare `zot` (default: <dir>/"+order.BookDir+"/orders)")
 	watchFlag := pflag.Bool("watch", false, "stay up and run work orders as they arrive, instead of running once and exiting: bare --watch watches this project's orders directory, or name a folder or glob to watch instead")
 	pflag.Usage = usage
 	pflag.Parse()
 
-	sessions := *sessionDir
-	if sessions == "" {
-		sessions = config.DefaultSessionDir()
-	}
-
-	// Resolved to an absolute path while the original working directory is still
-	// current, so a relative --session-dir means what the user typed rather than
+	// Every run leaves a log in the project it works on, beside its orders in
+	// .zot/. Resolved to an absolute path while the original working directory is
+	// still current, so a relative --dir means what the user typed rather than
 	// what it happens to mean after the chdir below.
-	if abs, err := filepath.Abs(sessions); err == nil {
-		sessions = abs
+	logs := order.OrdersDir(*dir)
+	if abs, err := filepath.Abs(logs); err == nil {
+		logs = abs
 	}
 
 	// The other half of the book: where this project's own orders live. It is
@@ -210,10 +190,6 @@ func run() error {
 		return err
 	}
 
-	if *noSession {
-		sessions = ""
-	}
-
 	// A signal cancels the run rather than killing the process outright, so the
 	// engine records its aborted outcome - and, mid-failure, dumps the exchange -
 	// before exiting. Without this a `kill` (or a supervisor stopping the
@@ -229,7 +205,7 @@ func run() error {
 	// watch's.
 
 	if *watchFlag {
-		return startWatch(ctx, watchTarget, newWatchRunner(ctx, cfg, sessions))
+		return startWatch(ctx, watchTarget, newWatchRunner(ctx, cfg, logs))
 	}
 
 	// Each order is its own run: a fresh conversation and its own session log,
@@ -238,10 +214,10 @@ func run() error {
 	// landed - running order three against the wreckage of order two produces
 	// confident garbage.
 	runs := oneRun{
-		ctx:      ctx,
-		cfg:      cfg,
-		sessions: sessions,
-		run:      zot.RunWith,
+		ctx:  ctx,
+		cfg:  cfg,
+		logs: logs,
+		run:  zot.RunWith,
 	}
 
 	for i, o := range orders {
@@ -269,11 +245,13 @@ func run() error {
 
 // oneRun is everything a single order's run needs. The batch loop and watch
 // mode both go through execute, so an order runs identically however it was
-// named: a fresh conversation and its own session log.
+// named: a fresh conversation, recorded in the task's session log.
 type oneRun struct {
-	ctx      context.Context
-	cfg      zot.Config
-	sessions string
+	ctx context.Context
+	cfg zot.Config
+
+	// logs is the folder session logs go in: one file per order, named after it.
+	logs string
 
 	// run is the engine entry point - zot.RunWith everywhere in production,
 	// replaced by tests so no provider is ever reached.
@@ -286,11 +264,20 @@ func (r oneRun) execute(o order.Order, quitOnDone bool) error {
 	return r.executeAt(o, quitOnDone, 0, 0)
 }
 
+// sessionFile names an order's log: the order's own name with .jsonl for its
+// extension, so the record of a task is the file beside the task. One file per
+// task, whatever the number of runs - each appends to it.
+func sessionFile(orderPath string) string {
+	base := filepath.Base(orderPath)
+
+	return strings.TrimSuffix(base, filepath.Ext(base)) + ".jsonl"
+}
+
 // executeAt is execute with the order's position in a batch, which the viewer
 // shows as "order 2/5" so a long queue reports how much of itself is left.
 func (r oneRun) executeAt(o order.Order, quitOnDone bool, index, size int) error {
 	options := zot.RunOptions{
-		SessionDir: r.sessions,
+		SessionPath: filepath.Join(r.logs, sessionFile(o.Path)),
 
 		// what a person calls this order: its own title, or its file name
 		Title: o.DisplayTitle(),
@@ -438,156 +425,6 @@ func newOrder(args []string, out io.Writer) error {
 	return nil
 }
 
-// listSessions prints previous runs, newest first.
-func listSessions(args []string) error {
-	set := pflag.NewFlagSet("sessions", pflag.ContinueOnError)
-
-	dir := set.String("session-dir", config.DefaultSessionDir(), "directory to list")
-
-	if err := set.Parse(args); err != nil {
-		return err
-	}
-
-	entries, err := session.List(*dir)
-	if err != nil {
-		return err
-	}
-
-	if len(entries) == 0 {
-		fmt.Printf("no sessions in %s\n", *dir)
-
-		return nil
-	}
-
-	for _, entry := range entries {
-		status := "running/interrupted"
-		if entry.Complete {
-			status = entry.Reason
-		}
-
-		fmt.Printf("%-17s  %-20s  %s\n", entry.ID, status, oneLine(entry.Task, 60))
-	}
-
-	return nil
-}
-
-// exportSessions renders sessions as trajectories: the conversation in the
-// chat shape the rest of the ecosystem reads, with the run's outcome beside it.
-//
-// To stdout it is JSON Lines, one trajectory per line. With --out it is a
-// directory of `<id>.jsonl` files - the shape a dataset is built from, and one
-// `cp -r` away from wherever it is going.
-func exportSessions(args []string, stdout, stderr io.Writer) error {
-	set := pflag.NewFlagSet("sessions export", pflag.ContinueOnError)
-	set.SetOutput(stderr)
-
-	dir := set.String("session-dir", config.DefaultSessionDir(), "directory the sessions are read from")
-	out := set.String("out", "", "directory to write <id>.jsonl into (default: JSON Lines on stdout)")
-	all := set.Bool("all", false, "export every session, instead of the ones named")
-
-	set.Usage = func() {
-		fmt.Fprintln(stderr, "usage: zot sessions export [flags] [session ...]")
-		fmt.Fprintln(stderr)
-		fmt.Fprintln(stderr, "A session is an id, a path, or \"last\" (the default).")
-		fmt.Fprintln(stderr)
-		set.PrintDefaults()
-	}
-
-	if err := set.Parse(args); err != nil {
-		return err
-	}
-
-	entries, err := session.List(*dir)
-	if err != nil {
-		return err
-	}
-
-	var paths []string
-
-	switch {
-	case *all:
-		// oldest first, so a directory of exports reads in the order it happened
-		for i := len(entries) - 1; i >= 0; i-- {
-			paths = append(paths, entries[i].Path)
-		}
-
-		if len(paths) == 0 {
-			return fmt.Errorf("sessions export: no sessions in %s", *dir)
-		}
-
-	default:
-		references := set.Args()
-		if len(references) == 0 {
-			references = []string{"last"}
-		}
-
-		for _, reference := range references {
-			path, err := session.Resolve(*dir, reference)
-			if err != nil {
-				return err
-			}
-
-			paths = append(paths, path)
-		}
-	}
-
-	if *out != "" {
-		if err := os.MkdirAll(*out, 0o755); err != nil {
-			return fmt.Errorf("sessions export: %w", err)
-		}
-	}
-
-	for _, path := range paths {
-		last, err := session.Load(path)
-		if err != nil {
-			return fmt.Errorf("sessions export: read %s: %w", path, err)
-		}
-
-		trajectory, err := session.Export(last)
-		if err != nil {
-			return fmt.Errorf("sessions export: %s: %w", last.Meta.ID, err)
-		}
-
-		encoded, err := json.Marshal(trajectory)
-		if err != nil {
-			return fmt.Errorf("sessions export: encode %s: %w", last.Meta.ID, err)
-		}
-
-		if *out == "" {
-			fmt.Fprintln(stdout, string(encoded))
-
-			continue
-		}
-
-		target := filepath.Join(*out, trajectory.ID+".jsonl")
-
-		if err := os.WriteFile(target, append(encoded, '\n'), 0o644); err != nil {
-			return fmt.Errorf("sessions export: %w", err)
-		}
-
-		fmt.Fprintf(stderr, "%s  %d messages -> %s\n",
-			trajectory.ID, len(trajectory.Messages), target)
-	}
-
-	return nil
-}
-
-// oneLine flattens a task to a single truncated line, so a multi-line brief does
-// not turn the listing into a wall of text.
-//
-// The cap counts characters, not bytes: a brief written in CJK or carrying an
-// emoji would otherwise be cut inside a rune and print as a replacement glyph,
-// and would be truncated far earlier than the column it is given.
-func oneLine(text string, width int) string {
-	text = strings.Join(strings.Fields(text), " ")
-
-	if utf8.RuneCountInString(text) > width {
-		return string([]rune(text)[:width-1]) + "\u2026"
-	}
-
-	return text
-}
-
 // editConfig ensures the config file exists - seeding it from the embedded
 // template on first run - and opens it in the user's editor. This is the setup
 // path: configure the provider, model and key by editing the file.
@@ -722,7 +559,6 @@ Usage:
   zot [flags] [<order.yaml> ...]
   zot new [--dir <dir>] [--orders-dir <dir>]
   zot config
-  zot sessions
   zot --watch [<folder-or-glob>]
 
 Examples:
@@ -741,6 +577,12 @@ book: it is where zot new files an order and where a bare zot looks for work.
 Every run starts from zero. Nothing of an earlier run of the same order is
 continued or skipped, so running an order again is running it fresh.
 
+Every run is recorded. The log is one file per order, .zot/orders/<name>.jsonl
+in the project being worked on (--dir), appended to line by line as the run
+goes: a meta line, a line for each message and event, and the outcome. Running
+the order again adds a new run to the same file. Nothing in zot reads it back;
+it is a record for you, with cat and jq.
+
 A batch runs each order as its own run, in sequence, and stops at the first
 order that does not end in success.
 
@@ -757,7 +599,6 @@ Commands:
              open it in $EDITOR, the way zot config does. It takes no prose:
              write the objective in the file
   config     edit the config file in $EDITOR (creates it on first run)
-  sessions   list previous runs, newest first
 
 Flags:`)
 	pflag.PrintDefaults()

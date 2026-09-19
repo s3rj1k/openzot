@@ -17,7 +17,6 @@ import (
 	"github.com/openzot/openzot"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/watch"
 	"github.com/openzot/openzot/tui"
 )
@@ -88,8 +87,6 @@ func settleServer() *httptest.Server {
 // with the target resolved against the invoking directory - like an order path,
 // before any chdir into --dir - and with a dispatcher ready to run orders.
 func TestWatchWiring(t *testing.T) {
-	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
-
 	t.Chdir(t.TempDir())
 
 	workdir := t.TempDir()
@@ -191,8 +188,6 @@ func TestBareWatchWatchesTheProjectsOrders(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("ZOT_SESSION_DIR", t.TempDir())
-
 			invocation := t.TempDir()
 
 			t.Chdir(invocation)
@@ -261,7 +256,6 @@ providers:
 func TestWatchRejectsSeveralTargets(t *testing.T) {
 	quietStderr(t)
 
-	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
 	t.Chdir(t.TempDir())
 
 	withArgs(t, "--watch", "orders", "extra.yaml")
@@ -300,9 +294,9 @@ func TestAWatchedOrderRunsAgainEveryTimeItIsSeen(t *testing.T) {
 	engine := &fakeEngine{}
 
 	runner := watchRunner{runs: oneRun{
-		ctx:      context.Background(),
-		sessions: t.TempDir(),
-		run:      engine.run,
+		ctx:  context.Background(),
+		logs: t.TempDir(),
+		run:  engine.run,
 	}}
 
 	runner.Dispatch(loaded)
@@ -322,13 +316,13 @@ func TestAFailedOrderDoesNotKillTheWatch(t *testing.T) {
 	first := order.Order{Objective: "doomed", Path: "/book/orders/doomed.yaml"}
 	second := order.Order{Objective: "survivor", Path: "/book/orders/survivor.yaml"}
 
-	sessions := t.TempDir()
+	logs := t.TempDir()
 
 	runner := watchRunner{runs: oneRun{
-		ctx:      context.Background(),
-		cfg:      config.Defaults(),
-		sessions: sessions,
-		run:      engine.run,
+		ctx:  context.Background(),
+		cfg:  config.Defaults(),
+		logs: logs,
+		run:  engine.run,
 	}}
 
 	stderr, err := captureStderr(t, func() error {
@@ -352,12 +346,14 @@ func TestAFailedOrderDoesNotKillTheWatch(t *testing.T) {
 		t.Errorf("a failed order should be reported as survived, not fatal:\n%s", stderr)
 	}
 
-	// each order ran as its own independent run: its own session log directory,
-	// and no held final screen to stall the orders behind it
-	for _, call := range engine.calls {
-		if call.options.SessionDir != sessions {
-			t.Errorf("SessionDir = %q, want %q for task %q",
-				call.options.SessionDir, sessions, call.task)
+	// each order ran as its own independent run: its own session log, named
+	// after the order, and no held final screen to stall the orders behind it
+	for i, call := range engine.calls {
+		want := filepath.Join(logs, []string{"doomed.jsonl", "survivor.jsonl"}[i])
+
+		if call.options.SessionPath != want {
+			t.Errorf("SessionPath = %q, want %q for task %q",
+				call.options.SessionPath, want, call.task)
 		}
 
 		if !call.options.QuitOnDone {
@@ -372,9 +368,9 @@ func TestAnOperatorStopMidRunDoesNotEndTheWatch(t *testing.T) {
 	engine := &fakeEngine{errs: []error{fmt.Errorf("wrapped: %w", tui.ErrCancelled)}}
 
 	runner := watchRunner{runs: oneRun{
-		ctx:      context.Background(),
-		sessions: "",
-		run:      engine.run,
+		ctx:  context.Background(),
+		logs: "",
+		run:  engine.run,
 	}}
 
 	stderr, err := captureStderr(t, func() error {
@@ -408,7 +404,7 @@ func TestWatchRunsOrdersAsTheyArriveEndToEnd(t *testing.T) {
 
 	workdir := t.TempDir()
 
-	sessions := filepath.Join(invocation, "sessions")
+	logs := filepath.Join(workdir, ".zot", "orders")
 	watched := filepath.Join(invocation, "dropbox")
 
 	server := settleServer()
@@ -438,7 +434,7 @@ providers:
 
 	// --dir points elsewhere: the watch target must still mean the invoking
 	// directory's dropbox/, because that is what was typed
-	withArgs(t, "--config", configPath, "--session-dir", sessions,
+	withArgs(t, "--config", configPath,
 		"--dir", workdir, "--plain", "--watch", "dropbox")
 
 	done := make(chan error)
@@ -447,21 +443,20 @@ providers:
 
 	writeOrderFile(filepath.Join(watched, "first.yaml"), "the watched objective")
 
-	waitForSessions(t, sessions, 1, "the watched objective")
+	waitForLog(t, filepath.Join(logs, "first.jsonl"), "the watched objective")
 
 	// the watcher survived its first run and takes the next order too
 	writeOrderFile(filepath.Join(watched, "second.yaml"), "the follow-up objective")
 
-	waitForSessions(t, sessions, 2, "the follow-up objective")
+	waitForLog(t, filepath.Join(logs, "second.jsonl"), "the follow-up objective")
 
-	entries, err := session.List(sessions)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// each order carries only its own brief
+	for name, want := range map[string]string{"first.jsonl": "the watched objective", "second.jsonl": "the follow-up objective"} {
+		records := readLog(t, filepath.Join(logs, name))
 
-	// newest first, and each order carries only its own brief
-	if entries[0].Task != "the follow-up objective" || entries[1].Task != "the watched objective" {
-		t.Errorf("session tasks = %q, %q", entries[0].Task, entries[1].Task)
+		if records[0].Meta == nil || records[0].Meta.Task != want {
+			t.Errorf("%s opens with %+v, want the task %q", name, records[0], want)
+		}
 	}
 
 	if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
@@ -488,28 +483,24 @@ func writeOrderFile(path, objective string) {
 	}
 }
 
-// waitForSessions blocks until n session logs exist and the newest names want -
+// waitForLog blocks until the run's log at path holds the task and its outcome -
 // the observable sign that the watcher dispatched the order and the run wrote
 // its own log.
-func waitForSessions(t *testing.T, dir string, n int, want string) {
+func waitForLog(t *testing.T, path, task string) {
 	t.Helper()
 
 	deadline := time.Now().Add(20 * time.Second)
 
 	for time.Now().Before(deadline) {
-		entries, err := session.List(dir)
-		if err == nil && len(entries) >= n {
-			if strings.Contains(entries[0].Task, want) {
-				return
-			}
+		data, err := os.ReadFile(path)
+		if err == nil && strings.Contains(string(data), task) && strings.Contains(string(data), `"kind":"result"`) {
+			return
 		}
 
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	entries, _ := session.List(dir)
-
-	t.Fatalf("%d of %d sessions appeared; newest tasks: %+v", len(entries), n, entries)
+	t.Fatalf("no finished log for %q appeared at %s", task, path)
 }
 
 // The help text is how watch mode is discoverable: it names the flag, shows
