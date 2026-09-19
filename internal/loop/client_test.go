@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -186,6 +187,45 @@ func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
 
 	if result.err == nil || !IsRetriable(result.err) {
 		t.Errorf("err = %v, want a retriable failure for a stream with no ending", result.err)
+	}
+}
+
+// A connection cut at each point of a turn - after a frame, before any response,
+// by a reset - is an outage the run should wait out, not one that ends it. These
+// are the real transport errors, so they prove the rules recognise them by type.
+func TestACutConnectionIsRetriable(t *testing.T) {
+	tests := map[string]http.HandlerFunc{
+		"cut after a frame": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+
+			fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"cut"}}]}`+"\n\n")
+			w.(http.Flusher).Flush()
+
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close()
+		},
+		"closed before any response": func(w http.ResponseWriter, _ *http.Request) {
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close()
+		},
+		"reset before any response": func(w http.ResponseWriter, _ *http.Request) {
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.(*net.TCPConn).SetLinger(0)
+			conn.Close()
+		},
+	}
+
+	for name, handler := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := collect(serve(t, handler), hello()).err
+			if err == nil {
+				t.Fatal("a cut connection must surface as an error")
+			}
+
+			if !IsRetriable(err) {
+				t.Errorf("err = %v, want a retriable failure", err)
+			}
+		})
 	}
 }
 

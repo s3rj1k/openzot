@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -59,6 +60,10 @@ func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error)
 	return response, nil
 }
 
+// errStreamStalled is what a stream that went silent fails with. A sentinel, so
+// the retry rules can recognise it by type rather than by its wording.
+var errStreamStalled = errors.New("the stream stalled")
+
 // stallReader fails a stream that has gone silent, without bounding one that is
 // still producing.
 //
@@ -92,7 +97,7 @@ func (r *stallReader) Read(p []byte) (int, error) {
 	}
 
 	if err != nil && r.didStall() {
-		return n, fmt.Errorf("the stream stalled: nothing arrived for %s", r.timeout)
+		return n, fmt.Errorf("%w: nothing arrived for %s", errStreamStalled, r.timeout)
 	}
 
 	return n, err

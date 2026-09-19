@@ -2,11 +2,13 @@ package loop
 
 import (
 	"errors"
+	"io"
 	"math"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"charm.land/fantasy"
@@ -17,69 +19,11 @@ import (
 // request cannot pin arbitrary memory on the error that ends a run.
 const maxDumpBody = 1 << 20 // 1 MiB
 
-// retriablePatterns match transient failures that arrive without a usable
-// status - a bare transport error, or a gateway that puts the real problem in
-// the body of a 200.
-//
-// @note matching on prose is fragile: gateways word the same condition
-// differently, and a wording the list does not anticipate turns a transient blip
-// into a hard failure. Prefer the status; these are the fallback for errors that
-// carry none.
-var retriablePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)provider returned error`),
-	regexp.MustCompile(`(?i)internal server error`),
-	regexp.MustCompile(`(?i)bad gateway`),
-	// tolerate an adverb between the two words, as well as the bare form
-	regexp.MustCompile(`(?i)service\s+(?:\w+\s+)?unavailable`),
-	regexp.MustCompile(`(?i)temporarily unavailable`),
-	regexp.MustCompile(`(?i)gateway timeout`),
-	regexp.MustCompile(`(?i)\boverloaded\b`),
-	regexp.MustCompile(`(?i)connection reset`),
-	regexp.MustCompile(`(?i)EOF`),
-	// zot's own wordings for a stream that died mid-turn
-	regexp.MustCompile(`(?i)the stream (?:ended|stalled)`),
-}
-
-// stallPatterns match a stream that stopped producing - the upstream went
-// quiet, rather than the request being wrong.
-//
-// These are the one wording allowed to outrank the status, because gateways
-// report a stall with whatever status they please and at least one picks a 4xx.
-// Deliberately narrow: a bare "timeout" is not enough, since "timeout must be a
-// positive integer" is a rejected parameter and retrying it burns the budget.
-var stallPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)\b(?:idle|stream|read|upstream|inactivity)[ _-]?timeout\b`),
-	regexp.MustCompile(`(?i)\btimeout exceeded\b`),
-	regexp.MustCompile(`(?i)\b(?:request|upstream|connection) timed out\b`),
-}
-
-// trailingStatusPattern matches the status some providers append to a message.
-// Worth recovering even when the error carries no status field: a status is
-// authoritative where prose is not.
-var trailingStatusPattern = regexp.MustCompile(`\((\d{3})\)\s*$`)
-
 // providerError is the error fantasy raises for anything an endpoint did wrong.
 func providerError(err error) (*fantasy.ProviderError, bool) {
 	var found *fantasy.ProviderError
 
 	return found, errors.As(err, &found)
-}
-
-// statusOf recovers the HTTP status behind an error, if it carries one.
-func statusOf(err error) (int, bool) {
-	if found, ok := providerError(err); ok && found.StatusCode != 0 {
-		return found.StatusCode, true
-	}
-
-	if found := trailingStatusPattern.FindStringSubmatch(err.Error()); len(found) == 2 {
-		status, convErr := strconv.Atoi(found[1])
-
-		if convErr == nil && status >= 100 && status <= 599 {
-			return status, true
-		}
-	}
-
-	return 0, false
 }
 
 // IsProviderError reports whether err is a failure the endpoint returned, as
@@ -95,13 +39,15 @@ func IsProviderError(err error) bool {
 // IsRetriable reports whether an error is a transient provider failure worth
 // retrying.
 //
-// The status is authoritative in both directions when present: a 5xx retries and
-// a 4xx does not, whatever the message says. A 4xx is caused by the request
-// itself - a bad key, a model the provider does not have - and retrying only
-// burns the budget. Two carve-outs, both about time rather than the request: a
-// 408, and a message that names a stalled stream. An error with no status that
-// fantasy itself marks transient - an in-band error frame, a cut connection -
-// retries too.
+// It goes by what the error is, never by what it says: gateways word the same
+// condition differently, and matching prose turns a wording nobody anticipated
+// into a run that ends on a blip. When the provider answered with a status it is
+// authoritative in both directions: a 5xx or a 408 retries, and any other status
+// does not, whatever the message says - a 4xx is caused by the request itself (a
+// bad key, a model the provider does not have) and retrying only burns the
+// budget. With no status, a failure fantasy itself marks transient (an in-band
+// error frame) retries, as does a transport failure: a stream that ended
+// mid-turn, a connection reset, or one that stalled.
 //
 // 429 is deliberately excluded. A rate limit needs Retry-After backoff, not a
 // tight retry loop, and retrying it aggressively makes the throttling worse.
@@ -110,29 +56,18 @@ func IsRetriable(err error) bool {
 		return false
 	}
 
-	message := err.Error()
-
-	for _, pattern := range stallPatterns {
-		if pattern.MatchString(message) {
-			return true
-		}
-	}
-
-	if status, ok := statusOf(err); ok {
-		return status == http.StatusRequestTimeout || (status >= 500 && status <= 599)
+	if found, ok := providerError(err); ok && found.StatusCode != 0 {
+		return found.StatusCode == http.StatusRequestTimeout || (found.StatusCode >= 500 && found.StatusCode <= 599)
 	}
 
 	if found, ok := providerError(err); ok && found.IsRetryable() {
 		return true
 	}
 
-	for _, pattern := range retriablePatterns {
-		if pattern.MatchString(message) {
-			return true
-		}
-	}
-
-	return false
+	return errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, errStreamStalled)
 }
 
 // IsRateLimited reports a 429, which the caller should back off from rather than

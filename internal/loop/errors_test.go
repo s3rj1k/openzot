@@ -1,9 +1,15 @@
 package loop
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -28,7 +34,6 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 		{"a 404 does not, even naming a gateway fault", refused(404, "bad gateway upstream"), false},
 		{"a 401 does not", refused(401, "bad key"), false},
 		{"a 429 is handled by backoff, not retried", refused(429, "slow down"), false},
-		{"a status hiding in the message wins over its prose", errors.New("upstream said overloaded (404)"), false},
 		{"nil is not a failure", nil, false},
 	}
 
@@ -39,20 +44,42 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 	}
 }
 
-func TestIsRetriableFallsBackToProseWhenThereIsNoStatus(t *testing.T) {
-	for _, message := range []string{
-		"Provider returned error", "Bad Gateway", "Service temporarily unavailable",
-		"service currently unavailable", "unexpected EOF", "connection reset by peer",
-		"the stream ended without a finish reason", "the stream stalled: nothing arrived for 10m",
+// With no status to go by, what the error is decides: a stream that ended
+// mid-turn, a reset connection and zot's own stall are transient however they
+// are worded around.
+func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
+	reset := &url.Error{Op: "Post", URL: "http://gw", Err: &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}
+
+	for name, err := range map[string]error{
+		"a stream cut short": &fantasy.ProviderError{Message: "stream transport error", Cause: io.ErrUnexpectedEOF},
+		"a bare EOF":         fmt.Errorf("read: %w", io.EOF),
+		"a connection reset": reset,
+		"a stall":            fmt.Errorf("%w: nothing arrived for 10m", errStreamStalled),
+		"a wrapped stall":    fmt.Errorf("run: %w", fmt.Errorf("%w: nothing arrived", errStreamStalled)),
 	} {
-		if !IsRetriable(errors.New(message)) {
-			t.Errorf("%q should be retriable", message)
+		if !IsRetriable(err) {
+			t.Errorf("%s should be retriable: %v", name, err)
 		}
 	}
+}
 
-	for _, message := range []string{"invalid api key", "model not found", "timeout must be a positive integer"} {
-		if IsRetriable(errors.New(message)) {
-			t.Errorf("%q should not be retriable", message)
+// The other half of going by type: words alone decide nothing. These read like
+// transient faults and are not, unless something typed says so.
+func TestIsRetriableIgnoresWhatAnErrorMerelySays(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+
+	for name, err := range map[string]error{
+		"an invalid key":        errors.New("invalid api key"),
+		"a missing model":       errors.New("model not found"),
+		"a bad parameter":       errors.New("timeout must be a positive integer"),
+		"a gateway's wording":   errors.New("Bad Gateway"),
+		"an overload's wording": errors.New("the model is overloaded"),
+		"a reset's wording":     errors.New("connection reset by peer"),
+		"a refused connection":  refused,
+		"a cancellation":        context.Canceled,
+	} {
+		if IsRetriable(err) {
+			t.Errorf("%s should not be retriable: %v", name, err)
 		}
 	}
 }
@@ -64,18 +91,6 @@ func TestATransientErrorWithNoStatusIsRetriable(t *testing.T) {
 
 	if !IsRetriable(err) {
 		t.Error("a transient failure with no status should retry")
-	}
-}
-
-// A stall is the one wording allowed to outrank the status, because gateways
-// report it with whatever status they please.
-func TestAStalledUpstreamIsTransientWhateverTheStatus(t *testing.T) {
-	for _, message := range []string{
-		"Upstream idle timeout exceeded", "stream timeout", "read timeout", "request timed out", "inactivity timeout",
-	} {
-		if !IsRetriable(refused(400, message)) {
-			t.Errorf("a 400 saying %q is a stall and should retry", message)
-		}
 	}
 }
 
