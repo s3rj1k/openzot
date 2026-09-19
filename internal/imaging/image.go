@@ -1,4 +1,4 @@
-package provider
+package imaging
 
 import (
 	"crypto/sha256"

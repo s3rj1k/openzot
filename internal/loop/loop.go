@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/internal/catalogue"
+	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/thread"
 	"github.com/openzot/openzot/internal/tokenizer"
@@ -174,9 +175,9 @@ type Message struct {
 
 	// Images are what the model is shown alongside Text, on a TypeAttachment
 	// message. The bytes are not serialised with the message - see
-	// provider.Image - so a message read back from a log carries the shape of
+	// imaging.Image - so a message read back from a log carries the shape of
 	// its images and the recorder rehydrates the bytes from their blobs.
-	Images []provider.Image `json:"images,omitempty"`
+	Images []imaging.Image `json:"images,omitempty"`
 }
 
 // Result is the outcome of a run.
@@ -992,7 +993,7 @@ const maxAttachmentsPerTurn = 8
 type attachment struct {
 	tool  string
 	call  string
-	image provider.Image
+	image imaging.Image
 }
 
 // attachmentMessage renders a turn's images as the one message that carries
@@ -1017,7 +1018,7 @@ func attachmentMessage(attached []attachment) (Message, bool) {
 
 	var (
 		lines  []string
-		images []provider.Image
+		images []imaging.Image
 	)
 
 	for _, item := range attached {

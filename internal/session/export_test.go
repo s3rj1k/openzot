@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 // A session exported for training reads as one chat conversation: the
@@ -148,7 +148,7 @@ func TestExportCarriesImages(t *testing.T) {
 	}
 
 	png := []byte("\x89PNG\r\n\x1a\nnot really a png")
-	image := provider.Image{MediaType: "image/png", Digest: provider.Digest(png), Bytes: png, Size: len(png)}
+	image := imaging.Image{MediaType: "image/png", Digest: imaging.Digest(png), Bytes: png, Size: len(png)}
 
 	stored, err := writer.StoreImage(image)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestExportCarriesImages(t *testing.T) {
 	}
 
 	for range 2 {
-		if err := writer.Message(Message{Type: "attachment", Text: "screenshot of the game", Images: []provider.Image{stored}}); err != nil {
+		if err := writer.Message(Message{Type: "attachment", Text: "screenshot of the game", Images: []imaging.Image{stored}}); err != nil {
 			t.Fatalf("Message: %v", err)
 		}
 	}

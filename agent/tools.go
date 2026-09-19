@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/internal/imaging"
-	"github.com/openzot/openzot/internal/provider"
 )
 
 // DefaultMaxToolOutput is the byte ceiling on a single tool result when the
@@ -386,7 +385,7 @@ func (s toolSet) view(_ context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	image := provider.NewImage(normalized.Data, normalized.MediaType, normalized.Width, normalized.Height)
+	image := imaging.NewImage(normalized.Data, normalized.MediaType, normalized.Width, normalized.Height)
 	image.Origin = path
 
 	if detail, _ := args["detail"].(string); detail == "auto" || detail == "low" || detail == "high" {
@@ -405,7 +404,7 @@ func (s toolSet) view(_ context.Context, args map[string]any) (any, error) {
 		text += fmt.Sprintf("; reduced from the file on disk to fit %dpx", imaging.DefaultMaxEdge)
 	}
 
-	return ToolResult{Text: text, Images: []provider.Image{image}}, nil
+	return ToolResult{Text: text, Images: []imaging.Image{image}}, nil
 }
 
 func (s toolSet) write(_ context.Context, args map[string]any) (any, error) {

@@ -3,7 +3,7 @@ package loop
 import (
 	"encoding/json"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 // A tool call and its result, as first-class fields rather than a bag of keys.
@@ -33,7 +33,7 @@ type ToolResult struct {
 	Text string
 
 	// Images are attached after the turn's tool results, in call order.
-	Images []provider.Image
+	Images []imaging.Image
 }
 
 // ActivityKind is which half of a tool call a message carries.

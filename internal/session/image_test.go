@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/agent"
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 func openWriter(t *testing.T) (*Writer, string) {
@@ -30,15 +30,15 @@ func openWriter(t *testing.T) (*Writer, string) {
 func TestStoreImageWritesTheBytesBesideTheLog(t *testing.T) {
 	writer, dir := openWriter(t)
 
-	image := provider.NewImage([]byte("the png bytes"), "image/png", 100, 50)
+	image := imaging.NewImage([]byte("the png bytes"), "image/png", 100, 50)
 
 	stored, err := writer.StoreImage(image)
 	if err != nil {
 		t.Fatalf("StoreImage: %v", err)
 	}
 
-	if stored.Source != provider.SourceBlob {
-		t.Errorf("source = %q, want %q", stored.Source, provider.SourceBlob)
+	if stored.Source != imaging.SourceBlob {
+		t.Errorf("source = %q, want %q", stored.Source, imaging.SourceBlob)
 	}
 
 	if len(stored.Bytes) != 0 || stored.Data != "" {
@@ -76,7 +76,7 @@ func TestStoreImageKeepsOneCopyOfTheSameImage(t *testing.T) {
 	writer, dir := openWriter(t)
 
 	for range 3 {
-		if _, err := writer.StoreImage(provider.NewImage([]byte("same screenshot"), "image/png", 10, 10)); err != nil {
+		if _, err := writer.StoreImage(imaging.NewImage([]byte("same screenshot"), "image/png", 10, 10)); err != nil {
 			t.Fatalf("StoreImage: %v", err)
 		}
 	}
@@ -108,7 +108,7 @@ func TestRecordedMessageKeepsTheImageOutOfTheLogLine(t *testing.T) {
 
 	recorder := NewRecorder(writer)
 
-	image := provider.NewImage([]byte("bytes that must not be inlined"), "image/png", 800, 600)
+	image := imaging.NewImage([]byte("bytes that must not be inlined"), "image/png", 800, 600)
 	image.Origin = "/tmp/shot.png"
 
 	err := recorder.RecordMessage(agent.Message{
@@ -162,7 +162,7 @@ func TestResumeRehydratesAnImageFromItsBlob(t *testing.T) {
 
 	recorder := NewRecorder(writer)
 
-	image := provider.NewImage([]byte("original bytes"), "image/png", 20, 10)
+	image := imaging.NewImage([]byte("original bytes"), "image/png", 20, 10)
 	image.Origin = "/tmp/shot.png"
 
 	if err := recorder.RecordMessage(agent.Message{
@@ -205,7 +205,7 @@ func TestResumeSurvivesABlobThatIsGone(t *testing.T) {
 	if err := recorder.RecordMessage(agent.Message{
 		Type:   agent.TypeAttachment,
 		Text:   "Attached: /tmp/shot.png (image/png, 20x10)",
-		Images: []agent.Image{provider.NewImage([]byte("original bytes"), "image/png", 20, 10)},
+		Images: []agent.Image{imaging.NewImage([]byte("original bytes"), "image/png", 20, 10)},
 	}); err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestResumeSurvivesABlobThatIsGone(t *testing.T) {
 func TestLoadImageRefusesBytesThatDoNotMatchTheDigest(t *testing.T) {
 	writer, dir := openWriter(t)
 
-	image := provider.NewImage([]byte("real bytes"), "image/png", 20, 10)
+	image := imaging.NewImage([]byte("real bytes"), "image/png", 20, 10)
 
 	stored, err := writer.StoreImage(image)
 	if err != nil {
@@ -264,12 +264,12 @@ func TestLoadImageRefusesBytesThatDoNotMatchTheDigest(t *testing.T) {
 func TestAWriterWithNowhereToPutBlobsKeepsTheImageInline(t *testing.T) {
 	writer := &Writer{}
 
-	stored, err := writer.StoreImage(provider.NewImage([]byte("bytes"), "image/png", 4, 4))
+	stored, err := writer.StoreImage(imaging.NewImage([]byte("bytes"), "image/png", 4, 4))
 	if err != nil {
 		t.Fatalf("StoreImage: %v", err)
 	}
 
-	if stored.Source != provider.SourceInline || stored.Data == "" {
+	if stored.Source != imaging.SourceInline || stored.Data == "" {
 		t.Error("with no blob directory the bytes must be kept inline rather than lost")
 	}
 

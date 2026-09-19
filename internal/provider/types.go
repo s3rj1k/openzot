@@ -2,6 +2,8 @@ package provider
 
 import (
 	"encoding/json"
+
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 // The vocabulary every transport shares.
@@ -76,7 +78,7 @@ type ChatMessage struct {
 	// Only a user message may carry them: an OpenAI-compatible endpoint rejects
 	// image parts on a tool result, which is why a tool that produces an image
 	// returns text and the engine attaches the image to a message of its own.
-	Images []Image `json:"-"`
+	Images []imaging.Image `json:"-"`
 
 	// ContentArray sends Content as an array of parts even when it is plain
 	// text or empty. The transport sets it from Config.ContentArray at send time.

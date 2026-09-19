@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/imaging"
 )
 
 // Trajectory is a session rendered for consumption outside zot: the
@@ -313,7 +313,7 @@ func (e *exporter) parts(s *Session, message Message) []ContentPart {
 // A missing blob is not an error: the attachment's text is written to stand on
 // its own. A blob that cannot be copied is - the export was asked for images
 // and could not deliver one, which the caller should hear about.
-func (e *exporter) store(s *Session, image provider.Image) string {
+func (e *exporter) store(s *Session, image imaging.Image) string {
 	if e.options.ImageDir == "" {
 		return ""
 	}

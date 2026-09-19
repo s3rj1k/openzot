@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -318,12 +319,12 @@ type ToolHandler func(ctx context.Context, args map[string]any) (any, error)
 type ToolResult = loop.ToolResult
 
 // Image is one image shown to a model. Build one with NewImage.
-type Image = provider.Image
+type Image = imaging.Image
 
 // NewImage describes encoded image bytes: it computes the content digest and
 // the token estimate that the engine, the log and the budget all quote.
 func NewImage(data []byte, mediaType string, width, height int) Image {
-	return provider.NewImage(data, mediaType, width, height)
+	return imaging.NewImage(data, mediaType, width, height)
 }
 
 // ToolDefinition describes a tool the model may call.

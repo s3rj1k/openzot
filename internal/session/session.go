@@ -24,7 +24,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/imaging"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -106,7 +106,7 @@ type Message struct {
 	// their shape and digest; the bytes live in a blob beside this log, because
 	// a megabyte of base64 on one line would defeat both of the reasons this
 	// format is JSON Lines.
-	Images []provider.Image `json:"images,omitempty"`
+	Images []imaging.Image `json:"images,omitempty"`
 }
 
 // Activity is a tool call recorded in a log.
@@ -339,14 +339,14 @@ func (w *Writer) Blobs() string { return w.blobs }
 // Content-addressed: the same screenshot attached twice is stored once, and a
 // record can never name bytes that are not the ones it describes. The returned
 // image carries no Bytes - what goes in the log is the shape, not the payload.
-func (w *Writer) StoreImage(image provider.Image) (provider.Image, error) {
+func (w *Writer) StoreImage(image imaging.Image) (imaging.Image, error) {
 	if len(image.Bytes) == 0 {
 		return image, nil // already stored, or nothing to store
 	}
 
 	if w.blobs == "" {
 		// no directory to write to: keep it inline rather than lose it
-		image.Source = provider.SourceInline
+		image.Source = imaging.SourceInline
 		image.Data = image.Encoded()
 		image.Bytes = nil
 
@@ -366,7 +366,7 @@ func (w *Writer) StoreImage(image provider.Image) (provider.Image, error) {
 		}
 	}
 
-	image.Source = provider.SourceBlob
+	image.Source = imaging.SourceBlob
 	image.Bytes = nil
 	image.Data = ""
 
@@ -375,7 +375,7 @@ func (w *Writer) StoreImage(image provider.Image) (provider.Image, error) {
 
 // blobName is an image's file name: its digest, with the extension for its type
 // so the directory can be browsed by a human.
-func blobName(image provider.Image) string {
+func blobName(image imaging.Image) string {
 	digest := image.Digest
 
 	if index := strings.Index(digest, ":"); index >= 0 {
@@ -383,7 +383,7 @@ func blobName(image provider.Image) string {
 	}
 
 	if digest == "" {
-		digest = provider.Digest(image.Bytes)[len("sha256:"):]
+		digest = imaging.Digest(image.Bytes)[len("sha256:"):]
 	}
 
 	return digest + "." + image.Extension()
@@ -442,7 +442,7 @@ func Load(path string) (*Session, error) {
 // that refused to resume because a screenshot from an hour ago had been deleted
 // would be worse than one that resumes with the description of it. The image is
 // returned unready, and the wire drops it.
-func (s *Session) LoadImage(image provider.Image) provider.Image {
+func (s *Session) LoadImage(image imaging.Image) imaging.Image {
 	if len(image.Bytes) > 0 || image.Data != "" {
 		return image
 	}
@@ -459,7 +459,7 @@ func (s *Session) LoadImage(image provider.Image) provider.Image {
 
 	// the name is the digest, so a file that does not hash to it is not this
 	// image - a truncated copy, or a directory someone edited
-	if image.Digest != "" && provider.Digest(data) != image.Digest {
+	if image.Digest != "" && imaging.Digest(data) != image.Digest {
 		return image
 	}
 

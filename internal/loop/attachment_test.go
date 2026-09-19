@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -18,8 +19,8 @@ func toolAt(index int, id, name, arguments string) string {
 	)
 }
 
-func testImage(origin string) provider.Image {
-	image := provider.NewImage([]byte("bytes of "+origin), "image/png", 800, 600)
+func testImage(origin string) imaging.Image {
+	image := imaging.NewImage([]byte("bytes of "+origin), "image/png", 800, 600)
 	image.Origin = origin
 
 	return image
@@ -28,7 +29,7 @@ func testImage(origin string) provider.Image {
 func TestResultTextReadsAToolResultAsItsText(t *testing.T) {
 	activity := &Activity{
 		Kind:   ActivityResponse,
-		Result: ToolResult{Text: "attached shot.png (image/png, 800x600)", Images: []provider.Image{testImage("shot.png")}},
+		Result: ToolResult{Text: "attached shot.png (image/png, 800x600)", Images: []imaging.Image{testImage("shot.png")}},
 	}
 
 	if got := activity.ResultText(); got != "attached shot.png (image/png, 800x600)" {
@@ -74,7 +75,7 @@ func TestAttachmentMessageDescribesEachImageSoItStandsAlone(t *testing.T) {
 }
 
 func TestAttachmentMessageNamesTheToolWhenAnImageHasNoOrigin(t *testing.T) {
-	image := provider.NewImage([]byte("x"), "image/webp", 0, 0)
+	image := imaging.NewImage([]byte("x"), "image/webp", 0, 0)
 
 	message, _ := attachmentMessage([]attachment{{tool: "render", call: "c1", image: image}})
 
@@ -109,7 +110,7 @@ func TestConvertSendsAnAttachmentAsAUserMessageWithItsImages(t *testing.T) {
 	image := testImage("/tmp/shot.png")
 
 	converted := toChatMessages([]Message{
-		{Type: TypeAttachment, Text: "Attached: /tmp/shot.png (image/png, 800x600)", Images: []provider.Image{image}},
+		{Type: TypeAttachment, Text: "Attached: /tmp/shot.png (image/png, 800x600)", Images: []imaging.Image{image}},
 	})
 
 	if len(converted) != 1 {
@@ -136,7 +137,7 @@ func TestDispatchAttachesImagesAfterEveryToolResultOfTheTurn(t *testing.T) {
 			Name:       "view",
 			Parameters: map[string]any{"type": "object"},
 			Handler: func(context.Context, map[string]any) (any, error) {
-				return ToolResult{Text: "attached", Images: []provider.Image{testImage("/tmp/shot.png")}}, nil
+				return ToolResult{Text: "attached", Images: []imaging.Image{testImage("/tmp/shot.png")}}, nil
 			},
 		},
 		"note": {
