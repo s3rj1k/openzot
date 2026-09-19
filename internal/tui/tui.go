@@ -8,9 +8,11 @@ package tui
 
 import (
 	"context"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-isatty"
 
 	"github.com/openzot/openzot/internal/agent"
 )
@@ -37,12 +39,6 @@ type Meta struct {
 	Provider string
 	// Workdir is the directory the agent's tools operate in.
 	Workdir string
-	// Plain forces the unstyled streaming renderer even in a terminal. Without a
-	// TTY Zot also streams, with styling controlled independently by Color.
-	Plain bool
-	// Color controls ANSI styling for a non-interactive stream: auto, always, or
-	// never. It does not make the stream interactive or start the full-screen UI.
-	Color string
 
 	// MaxScrollback caps how many log lines the viewer keeps on screen. Zero uses
 	// DefaultMaxScrollback; a larger value keeps more history (at more memory).
@@ -68,6 +64,15 @@ type Meta struct {
 	MaxDuration   time.Duration
 }
 
+// IsInteractive reports whether stdout is a terminal capable of the full-screen
+// viewer. The viewer is the only way zot shows a run, so a caller checks this
+// before starting anything.
+func IsInteractive() bool {
+	fd := os.Stdout.Fd()
+
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
 // Run renders the read-only TUI while the autonomous agent executes. It owns the
 // Bubble Tea program lifecycle and blocks until the user quits or the program
 // errors. The agent runs in the background and communicates with the UI solely
@@ -76,17 +81,6 @@ type Meta struct {
 // Along with any error it returns the run's recorded Outcome, so a caller can
 // report how it ended without scraping the screen.
 func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
-	// ui.plain is an explicit request for an unstyled transcript. Without a
-	// terminal, stream too, but keep ANSI styling when the consumer declared
-	// that it supports color (a browser terminal is the main example).
-	if meta.Plain {
-		return runPlain(ctx, client, meta, opts)
-	}
-
-	if !isInteractive() {
-		return runStream(ctx, client, meta, opts, streamColorEnabled(meta.Color))
-	}
-
 	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
 	m.batchIndex = meta.BatchIndex

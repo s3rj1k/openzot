@@ -92,15 +92,6 @@ agent:
 
 # Presentation.
 ui:
-  # Force unstyled output instead of the full-screen viewer. Without a terminal
-  # Zot streams automatically, so an ordinary pipeline needs no flag.
-  # plain: false
-
-  # ANSI styling for a non-interactive stream: auto, always, or never. Auto is
-  # deliberately plain for pipes and CI; use always for an ANSI-aware log
-  # renderer such as wterm. This does not enable keyboard interaction.
-  # color: auto
-
   # How many log lines the full-screen viewer keeps on screen. Default 5000;
   # raise it to keep more of a long run in the scrollback (at more memory). The
   # full, untrimmed run is always in the session log regardless.

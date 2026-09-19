@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,102 @@ import (
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/tui"
 )
+
+// TestMain gives every test a stand-in for the terminal and the full-screen
+// viewer, which need a real TTY: the stand-in runs the agent to its ending and
+// prints what it said, so a test can assert on the run without a screen.
+func TestMain(m *testing.M) {
+	isTerminal = func() bool { return true }
+	runViewer = headlessViewer
+
+	os.Exit(m.Run())
+}
+
+// headlessViewer is tui.Run without the screen. It reports endings the way the
+// viewer does: an agent-declared failure as an AgentExitError, an engine error
+// as itself.
+func headlessViewer(ctx context.Context, client *agent.Client, meta tui.Meta, opts agent.ExecuteWithToolsOptions) (tui.Outcome, error) {
+	fmt.Println(meta.Task)
+
+	events, errs := agent.ExecuteWithTools(ctx, client, opts)
+
+	var (
+		outcome tui.Outcome
+		exitErr error
+		sawExit bool
+	)
+
+	for ev := range events {
+		switch e := ev.(type) {
+		case agent.TokenAgentEvent:
+			fmt.Print(e.Token)
+		case agent.AgentExitEvent:
+			sawExit = true
+			outcome = tui.Outcome{Reason: e.Reason, Message: e.Message}
+
+			fmt.Println(e.Message)
+
+			if e.Code != 0 {
+				exitErr = &tui.AgentExitError{Code: e.Code, Message: e.Message}
+			}
+		}
+	}
+
+	if err := <-errs; err != nil {
+		return tui.Outcome{}, err
+	}
+
+	if !sawExit {
+		return tui.Outcome{}, errors.New("agent stream ended without an exit")
+	}
+
+	return outcome, exitErr
+}
+
+// With no terminal there is nothing to show a run in, so zot refuses before it
+// reads an order or touches a provider.
+func TestRunNeedsATerminal(t *testing.T) {
+	original := isTerminal
+	isTerminal = func() bool { return false }
+
+	t.Cleanup(func() { isTerminal = original })
+
+	var requests atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
+agent:
+  model: test-model
+default_provider: local
+providers:
+  local:
+    base_url: %s
+    api_key: test-key
+    models:
+      test-model:
+        context: 100000
+`, server.URL)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	withArgs(t, "--config", configPath, "--dir", t.TempDir(), orderFile(t, "a task"))
+
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "terminal") {
+		t.Fatalf("run = %v, want it to say zot needs a terminal", err)
+	}
+
+	if requests.Load() != 0 {
+		t.Error("a run with no terminal must not reach the provider")
+	}
+}
 
 func TestResolveOrdersLoadsEveryFile(t *testing.T) {
 	first := orderFile(t, "build the parser")
@@ -599,9 +696,6 @@ agent:
   model: test-model
   max_iterations: 5
 
-ui:
-  plain: true
-
 default_provider: local
 
 providers:
@@ -699,8 +793,6 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	if err := os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
 agent:
   model: test-model
-ui:
-  plain: true
 default_provider: local
 providers:
   local:
@@ -764,8 +856,6 @@ func TestRunABatchOfOrders(t *testing.T) {
 		if err := os.WriteFile(path, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-ui:
-  plain: true
 default_provider: local
 providers:
   local:
@@ -986,9 +1076,6 @@ agent:
   model: test-model
   max_iterations: 5
 
-ui:
-  plain: true
-
 default_provider: local
 
 providers:
@@ -1076,8 +1163,6 @@ func settleOnce(t *testing.T) string {
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-ui:
-  plain: true
 default_provider: local
 providers:
   local:
@@ -1095,9 +1180,9 @@ providers:
 }
 
 // The tasks tool end to end: a model lists its work, keeps going, and settles.
-// The real tool handler answers each call, and the plain transcript - what a
-// piped run leaves behind - carries the checklist as the model sent it.
-func TestARunsTaskListReachesThePlainTranscript(t *testing.T) {
+// The real tool handler answers the call, so the run carries on to a second turn
+// instead of ending on the list.
+func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	var requests atomic.Int32
@@ -1127,8 +1212,6 @@ func TestARunsTaskListReachesThePlainTranscript(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-ui:
-  plain: true
 default_provider: local
 providers:
   local:
@@ -1144,15 +1227,8 @@ providers:
 
 	withArgs(t, "--config", configPath, "--dir", t.TempDir(), orderFile(t, "fix the lexer"))
 
-	transcript, err := captureStdout(t, run)
-	if err != nil {
+	if _, err := captureStdout(t, run); err != nil {
 		t.Fatalf("run: %v", err)
-	}
-
-	for _, want := range []string{"1/3 done", "[x] read the parser", "[>] fix the lexer - off by one", "[ ] add a test"} {
-		if !strings.Contains(transcript, want) {
-			t.Errorf("the transcript is missing %q:\n%s", want, transcript)
-		}
 	}
 
 	if requests.Load() != 2 {
@@ -1515,8 +1591,6 @@ func TestCredentialResolutionLayers(t *testing.T) {
 			path := writeCfg(t, fmt.Sprintf(`
 agent:
   model: %q
-ui:
-  plain: true
 default_provider: myprovider
 providers:
   myprovider:
@@ -1627,8 +1701,6 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 			path := writeCfg(t, fmt.Sprintf(`
 agent:
   model: default
-ui:
-  plain: true
 default_provider: selfhosted
 providers:
   selfhosted:
@@ -1889,8 +1961,8 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 }
 
 // runTask is the whole thing end to end: config in, a provider call out, a
-// transcript back. With ui.plain set it takes the non-TTY path, which is what CI
-// uses and what can be asserted on.
+// transcript back. The tests' stand-in viewer prints what the run said, which is
+// what can be asserted on without a terminal.
 func TestRunTaskEndToEnd(t *testing.T) {
 	turn := 0
 
@@ -1920,7 +1992,6 @@ func TestRunTaskEndToEnd(t *testing.T) {
 	defer server.Close()
 
 	cfg := testDefaults()
-	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
 		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
@@ -2004,7 +2075,6 @@ func stubProvider(t *testing.T) config.Config {
 	t.Cleanup(server.Close)
 
 	cfg := testDefaults()
-	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
 		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},

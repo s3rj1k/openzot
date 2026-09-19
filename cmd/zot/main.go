@@ -46,6 +46,13 @@ import (
 	"github.com/openzot/openzot/internal/tui"
 )
 
+// Seams for tests, which have no terminal: production always uses the real
+// terminal check and the real full-screen viewer.
+var (
+	isTerminal = tui.IsInteractive
+	runViewer  = tui.Run
+)
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "zot: "+err.Error())
@@ -77,6 +84,13 @@ func run() error {
 	ordersFlag := pflag.String("orders-dir", "", "where this project's orders live, run by a bare `zot` (default: <dir>/"+order.BookDir+"/orders)")
 	pflag.Usage = usage
 	pflag.Parse()
+
+	// The run is shown in the full-screen viewer and nowhere else, so with no
+	// terminal there is nothing to show it in: say so before any order is read
+	// or any provider is touched.
+	if !isTerminal() {
+		return errors.New("zot runs in a terminal: stdout is not one")
+	}
 
 	// Every run leaves a log in the project it works on, beside its orders in
 	// .zot/. Resolved to an absolute path while the original working directory is
@@ -712,7 +726,7 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 	meta.BatchSize = options.BatchSize
 	meta.QuitOnDone = options.QuitOnDone
 
-	outcome, err := tui.Run(ctx, client, meta, opts)
+	outcome, err := runViewer(ctx, client, meta, opts)
 
 	printDigest(os.Stderr, sessionPath, outcome, summaryRec.Summary)
 
@@ -720,9 +734,8 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 }
 
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
-// and - when the run was recorded - the session log it was appended to. Kept to
-// stderr so it never mixes into a piped deliverable, and skipped entirely when
-// there is nothing to say (a run that never produced a summary, e.g. a setup
+// and - when the run was recorded - the session log it was appended to. Skipped
+// entirely when there is nothing to say (a run that never produced a summary, e.g. a setup
 // failure before the first turn).
 func printDigest(w io.Writer, sessionPath string, outcome tui.Outcome, summary *agent.Summary) {
 	if summary == nil {
@@ -761,8 +774,6 @@ func viewerMeta(cfg config.Config, task, workdir string, opts agent.ExecuteWithT
 		Model:         cfg.Agent.Model,
 		Provider:      cfg.DefaultProvider,
 		Workdir:       workdir,
-		Plain:         cfg.UI.Plain,
-		Color:         cfg.UI.Color,
 		MaxScrollback: cfg.UI.Scrollback,
 		MaxIterations: iterLimit,
 		MaxCalls:      opts.MaxCalls,

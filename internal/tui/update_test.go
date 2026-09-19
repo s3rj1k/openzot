@@ -558,75 +558,6 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 	}
 }
 
-func TestPlainArgCoversTheBuiltInTools(t *testing.T) {
-	tests := []struct {
-		tool string
-		args map[string]any
-		want string
-	}{
-		{"shell", map[string]any{"command": "go test ./..."}, "go test ./..."},
-		{"custom", map[string]any{"thing": "value"}, "thing=value"},
-	}
-
-	for _, test := range tests {
-		if got := plainArg(test.tool, test.args); got != test.want && !strings.Contains(got, test.want) {
-			t.Errorf("plainArg(%q) = %q, want %q", test.tool, got, test.want)
-		}
-	}
-}
-
-func TestPlainToolEnd(t *testing.T) {
-	tests := []struct {
-		name    string
-		tool    string
-		result  any
-		wantAny bool
-		want    string
-	}{
-		{"shell output is echoed", "shell", "hello\nworld", true, "hello"},
-		{"a silent command says nothing", "shell", "", false, ""},
-		{"a structured failure surfaces", "shell", map[string]any{"success": false, "error": "exit 1"}, true, "exit 1"},
-		{"structured output surfaces", "shell", map[string]any{"stdout": "captured"}, true, "captured"},
-		{"an unsupported result type", "shell", 42, false, ""},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := plainToolEnd(test.tool, test.result)
-
-			if !test.wantAny {
-				if got != "" {
-					t.Errorf("expected nothing, got %q", got)
-				}
-
-				return
-			}
-
-			if !strings.Contains(got, test.want) {
-				t.Errorf("plainToolEnd = %q, want it to contain %q", got, test.want)
-			}
-		})
-	}
-}
-
-func TestPlainOutputIsCapped(t *testing.T) {
-	var lines []string
-
-	for i := 0; i < 50; i++ {
-		lines = append(lines, "noise")
-	}
-
-	got := plainToolEnd("shell", strings.Join(lines, "\n"))
-
-	if strings.Count(got, "noise") > maxOutputLines {
-		t.Errorf("plain output was not capped:\n%s", got)
-	}
-
-	if !strings.Contains(got, "...") {
-		t.Error("clipping must be visible in plain output too")
-	}
-}
-
 // A key nobody bound must reach the viewport rather than being swallowed, and
 // must not quit: an unattended run ended by a stray keystroke is a lost run.
 func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
@@ -1357,28 +1288,6 @@ func TestRenderTasksIsRobust(t *testing.T) {
 		if strings.Contains(out, "done") {
 			t.Errorf("%s: a refused list must not report progress: %q", name, out)
 		}
-	}
-}
-
-// The plain (non-TTY) renderer surfaces the same checklist for a piped run.
-func TestPlainTasksShowsTheChecklist(t *testing.T) {
-	got := plainArg("tasks", tasksArgs(
-		[3]string{"step one", "done", ""},
-		[3]string{"step two", "in_progress", "halfway"},
-		[3]string{"step three", "pending", ""},
-		[3]string{"step four", "blocked", "waiting on a key"},
-	))
-
-	for _, want := range []string{
-		"1/4 done", "[x] step one", "[>] step two - halfway", "[ ] step three", "[!] step four - waiting on a key",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("plain tasks missing %q:\n%s", want, got)
-		}
-	}
-
-	if plainArg("tasks", map[string]interface{}{}) != "" {
-		t.Error("a refused list has nothing to show in a plain log")
 	}
 }
 

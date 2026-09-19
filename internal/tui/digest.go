@@ -8,8 +8,7 @@ import (
 )
 
 // DigestStatus maps a run's stop reason and exit code to the one human word a
-// digest shows: "done", "failed", or "cancelled". Shared so the viewer and the
-// streaming renderers classify an ending the same way.
+// digest shows: "done", "failed", or "cancelled".
 func DigestStatus(reason string, code int) string {
 	switch reason {
 	case agent.ReasonAborted:
@@ -27,12 +26,10 @@ func DigestStatus(reason string, code int) string {
 
 // Digest is the compact end-of-run report printed after a run concludes.
 //
-// It exists because the two places a run's ending shows up are both poor
-// records: the full-screen viewer runs in the alternate screen and takes its
-// stats with it when it restores the terminal, and the streaming renderer ends
-// on a prose line with no numbers at all. Neither tells an operator what the run
-// spent or where its record is. The digest is a small, fixed block that survives
-// on the main screen and carries both.
+// It exists because the full-screen viewer runs in the alternate screen and
+// takes its stats with it when it restores the terminal, so nothing tells an
+// operator what the run spent or where its record is. The digest is a small,
+// fixed block that survives on the main screen and carries both.
 type Digest struct {
 	// Status is the human-readable ending: "done", "failed", "cancelled".
 	Status string

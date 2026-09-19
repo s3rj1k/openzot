@@ -678,13 +678,12 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	}
 }
 
-// The viewer scrollback and stream color are scalar UI fields read from the
-// file, and an out-of-range value is rejected at load.
-func TestUIScrollbackAndColorAreReadAndValidated(t *testing.T) {
+// The viewer scrollback is a scalar UI field read from the file, and an
+// out-of-range value is rejected at load.
+func TestUIScrollbackIsReadAndValidated(t *testing.T) {
 	path := writeConfig(t, `
 ui:
   scrollback: 20000
-  color: always
 `)
 
 	cfg, err := Load(path)
@@ -696,16 +695,8 @@ ui:
 		t.Errorf("ui.scrollback not read: %d", cfg.UI.Scrollback)
 	}
 
-	if cfg.UI.Color != "always" {
-		t.Errorf("ui.color not read: %q", cfg.UI.Color)
-	}
-
 	if err := validConfig(func(c *Config) { c.UI.Scrollback = -1 }).Validate(); err == nil {
 		t.Error("a negative ui.scrollback must fail validation")
-	}
-
-	if err := validConfig(func(c *Config) { c.UI.Color = "sometimes" }).Validate(); err == nil {
-		t.Error("an unknown ui.color mode must fail validation")
 	}
 }
 

@@ -117,13 +117,6 @@ func ProviderModels(provider ProviderConfig) []string {
 
 // UI holds presentation options for the read-only viewer.
 type UI struct {
-	// Plain forces the unstyled streaming renderer (no full-screen TUI). Without
-	// a terminal Zot also streams, with styling decided separately by Color.
-	Plain bool `yaml:"plain"`
-	// Color controls ANSI styling for automatic non-interactive streams: auto,
-	// always, or never. Plain still forces unstyled output, and Color never
-	// enables terminal input.
-	Color string `yaml:"color"`
 	// Scrollback caps how many log lines the full-screen viewer keeps on screen.
 	// Zero uses the built-in default; raise it to keep more of a long run visible
 	// (at more memory). The full run is always in the session log regardless.
@@ -225,7 +218,6 @@ func Defaults() Config {
 		Agent: Agent{
 			MaxIterations: 1_000_000,
 		},
-		UI: UI{Color: "auto"},
 	}
 }
 
@@ -351,11 +343,6 @@ func (c Config) Validate() error {
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")
-	}
-	switch strings.ToLower(strings.TrimSpace(c.UI.Color)) {
-	case "", "auto", "always", "never":
-	default:
-		return fmt.Errorf("ui.color: %q is not valid (use auto, always, or never)", c.UI.Color)
 	}
 	for _, s := range c.UI.Stats {
 		if !tui.IsKnownStat(s) {
