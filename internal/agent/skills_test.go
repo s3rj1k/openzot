@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,29 +22,30 @@ func writeSkill(t *testing.T, root, name, content string) {
 	}
 }
 
-func TestLoadSkillsReadsFrontMatter(t *testing.T) {
+func TestLoadSkillsReadsFrontMatterAndKeepsTheContent(t *testing.T) {
 	root := t.TempDir()
 
-	writeSkill(t, root, "deploy", `---
+	body := `---
 name: deploy-service
 description: Ship a service to production
 ---
-
 # Deploy
 
 Long instructions the model reads only when it decides the skill is relevant.
-`)
+`
 
-	result, err := LoadSkills([]string{root})
+	writeSkill(t, root, "deploy", body)
+
+	skills, err := LoadSkills(root)
 	if err != nil {
 		t.Fatalf("LoadSkills: %v", err)
 	}
 
-	if len(result.Skills) != 1 {
-		t.Fatalf("got %d skills, want 1", len(result.Skills))
+	if len(skills) != 1 {
+		t.Fatalf("got %d skills, want 1", len(skills))
 	}
 
-	skill := result.Skills[0]
+	skill := skills[0]
 
 	if skill.Name != "deploy-service" {
 		t.Errorf("name = %q, want the front-matter name to win over the directory", skill.Name)
@@ -53,9 +55,12 @@ Long instructions the model reads only when it decides the skill is relevant.
 		t.Errorf("description = %q", skill.Description)
 	}
 
-	// the path is what the model reads; the body is not loaded into context
-	if skill.Path == "" {
-		t.Error("a skill must carry the path to its instructions")
+	if skill.Content != body {
+		t.Errorf("content = %q, want the whole SKILL.md held in memory", skill.Content)
+	}
+
+	if skill.Dir != filepath.Join(root, "deploy") {
+		t.Errorf("dir = %q, want the skill's own directory", skill.Dir)
 	}
 }
 
@@ -64,61 +69,68 @@ func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
 
 	writeSkill(t, root, "review", "# Review\n\nReview a pull request carefully.\n")
 
-	result, err := LoadSkills([]string{root})
+	skills, err := LoadSkills(root)
 	if err != nil {
 		t.Fatalf("LoadSkills: %v", err)
 	}
 
-	if len(result.Skills) != 1 {
-		t.Fatalf("got %d skills, want 1", len(result.Skills))
+	if len(skills) != 1 || skills[0].Name != "review" {
+		t.Fatalf("got %+v, want the directory name as the skill's name", skills)
 	}
 
-	skill := result.Skills[0]
-
-	// without front matter the directory names it and the first prose line
-	// describes it
-	if skill.Name != "review" {
-		t.Errorf("name = %q, want the directory name", skill.Name)
-	}
-
-	if skill.Description != "Review a pull request carefully." {
-		t.Errorf("description = %q, want the first prose line", skill.Description)
+	if skills[0].Description != "Review a pull request carefully." {
+		t.Errorf("description = %q, want the first prose line", skills[0].Description)
 	}
 }
 
-func TestLoadSkillsSkipsNonSkillDirectories(t *testing.T) {
+func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
 	root := t.TempDir()
 
-	writeSkill(t, root, "real", "---\nname: real\n---\n")
+	writeSkill(t, root, "zebra", "---\nname: zebra\n---\n")
+	writeSkill(t, root, "apple", "---\nname: apple\n---\n")
 
 	// a skills folder routinely holds other things; they are skipped rather
-	// than treated as an error
-	os.MkdirAll(filepath.Join(root, "notaskill"), 0o755)
-	os.WriteFile(filepath.Join(root, "loose.md"), []byte("x"), 0o644)
+	// than failing the load
+	if err := os.MkdirAll(filepath.Join(root, "notaskill"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	result, err := LoadSkills([]string{root})
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	skills, err := LoadSkills(root)
 	if err != nil {
 		t.Fatalf("LoadSkills: %v", err)
 	}
 
-	if len(result.Skills) != 1 {
-		t.Fatalf("got %d skills, want just the real one: %+v", len(result.Skills), result.Skills)
+	if len(skills) != 2 || skills[0].Name != "apple" || skills[1].Name != "zebra" {
+		t.Fatalf("got %+v, want just the two real skills, sorted by name", skills)
 	}
 }
 
-func TestLoadSkillsToleratesAMissingDirectory(t *testing.T) {
-	result, err := LoadSkills([]string{filepath.Join(t.TempDir(), "nope")})
-	if err != nil {
-		t.Fatalf("a missing skills directory must not be an error: %v", err)
+// The folder was named in the config, so one that cannot be read is an error
+// rather than an empty set.
+func TestLoadSkillsFailsOnAMissingDirectory(t *testing.T) {
+	if _, err := LoadSkills(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Fatal("a missing skills directory must be an error")
 	}
+}
 
-	if len(result.Skills) != 0 {
-		t.Errorf("got %d skills, want none", len(result.Skills))
+func TestLoadSkillsRefusesTwoSkillsWithOneName(t *testing.T) {
+	root := t.TempDir()
+
+	writeSkill(t, root, "a", "---\nname: same\n---\n")
+	writeSkill(t, root, "b", "---\nname: same\n---\n")
+
+	_, err := LoadSkills(root)
+	if err == nil || !strings.Contains(err.Error(), `"same"`) {
+		t.Fatalf("err = %v, want it to name the clashing skill", err)
 	}
 }
 
 func TestParseSkillStripsQuotes(t *testing.T) {
-	skill := parseSkill("dir", "p", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
+	skill := parseSkill("dir", "/d", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
 
 	if skill.Name != "quoted name" {
 		t.Errorf("name = %q, want the quotes stripped", skill.Name)
@@ -129,113 +141,110 @@ func TestParseSkillStripsQuotes(t *testing.T) {
 	}
 }
 
-func TestSkillHintPointsAShellCommandAtThePath(t *testing.T) {
-	skill := SkillDefinition{Name: "d", Path: "/skills/d/SKILL.md"}
+func skillsCall(t *testing.T, skills []Skill, args map[string]any) (any, error) {
+	t.Helper()
 
-	hint := skill.Hint()
+	tool, ok := DefaultToolsWith(0, skills)["skills"]
+	if !ok {
+		t.Fatal("no skills tool")
+	}
 
-	if !strings.Contains(hint, "cat /skills/d/SKILL.md") || !strings.Contains(hint, "shell") {
-		t.Errorf("a skill must point the shell at its path: %q", hint)
+	return tool.Handler(context.Background(), args)
+}
+
+var testSkills = []Skill{
+	{Name: "deploy", Description: "Ship a service", Dir: "/skills/deploy", Content: "# Deploy\n\nRun the pipeline.\n"},
+	{Name: "review", Description: "Review a change", Dir: "/skills/review", Content: "# Review\n"},
+}
+
+func TestSkillsToolListsNamesWithDescriptions(t *testing.T) {
+	out, err := skillsCall(t, testSkills, map[string]any{})
+	if err != nil {
+		t.Fatalf("skills: %v", err)
+	}
+
+	listing := out.(string)
+
+	for _, want := range []string{"- deploy: Ship a service", "- review: Review a change"} {
+		if !strings.Contains(listing, want) {
+			t.Errorf("listing is missing %q:\n%s", want, listing)
+		}
+	}
+
+	if strings.Contains(listing, "Run the pipeline") {
+		t.Errorf("the listing must not carry the instructions themselves:\n%s", listing)
 	}
 }
 
-func TestMergePrefersEarlierSets(t *testing.T) {
-	project := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "deploy", Description: "the project's own"},
-	}}
+func TestSkillsToolShortensALongDescription(t *testing.T) {
+	long := strings.Repeat("word ", 100)
 
-	builtin := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "deploy", Description: "the shipped default"},
-		{Name: "review", Description: "also shipped"},
-	}}
+	out, _ := skillsCall(t, []Skill{{Name: "verbose", Description: long}}, nil)
 
-	merged := Merge(project, builtin, nil)
+	line := out.(string)
 
-	if len(merged.Skills) != 2 {
-		t.Fatalf("got %d skills, want 2", len(merged.Skills))
-	}
-
-	if merged.Skills[0].Description != "the project's own" {
-		t.Errorf("the earlier set must win: %q", merged.Skills[0].Description)
+	if strings.Count(line, "word") > maxListedDescription/5 || !strings.Contains(line, "…") {
+		t.Errorf("a long description must be cut with an ellipsis:\n%s", line)
 	}
 }
 
-// The loader must pick up a skill added to its directory after the first scan -
-// the mid-run case the dynamic loader exists for.
-func TestSkillLoaderRescansDirectory(t *testing.T) {
-	root := t.TempDir()
-
-	writeSkill(t, root, "recon", "---\nname: recon\ndescription: map the target\n---\nbody")
-
-	static := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "catalog", Description: "where the skills live"},
-	}}
-
-	loader := NewSkillLoader(static, root)
-
-	first := loader.Skills()
-	if len(first) != 2 {
-		t.Fatalf("first scan: got %d skills, want 2 (static + one on disk)", len(first))
+func TestSkillsToolReadsOneInFull(t *testing.T) {
+	out, err := skillsCall(t, testSkills, map[string]any{"name": "deploy"})
+	if err != nil {
+		t.Fatalf("skills: %v", err)
 	}
 
-	// A skill cloned in after the run started.
-	writeSkill(t, root, "exploit", "---\nname: exploit\ndescription: prove it\n---\nbody")
+	got := out.(string)
 
-	names := map[string]bool{}
-	for _, s := range loader.Skills() {
-		names[s.Name] = true
+	if !strings.Contains(got, "Run the pipeline.") {
+		t.Errorf("the full instructions are missing:\n%s", got)
 	}
 
-	for _, want := range []string{"catalog", "recon", "exploit"} {
-		if !names[want] {
-			t.Errorf("rescan missing %q; the loader must see files added after the first scan", want)
+	if !strings.Contains(got, "Skill directory: /skills/deploy") {
+		t.Errorf("the skill's directory is missing, so bundled files cannot be found:\n%s", got)
+	}
+
+	if strings.Contains(got, "Review") {
+		t.Errorf("only the named skill may come back:\n%s", got)
+	}
+}
+
+func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
+	_, err := skillsCall(t, testSkills, map[string]any{"name": "nope"})
+	if err == nil {
+		t.Fatal("an unknown skill must be an error the model can act on")
+	}
+
+	for _, want := range []string{`"nope"`, "deploy", "review"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
 		}
 	}
 }
 
-// A directory skill must win over an embedded one of the same name, so a
-// downloaded skill can override a shipped default.
-func TestSkillLoaderDirectoryOverridesTheStaticSet(t *testing.T) {
-	root := t.TempDir()
+func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
+	big := []Skill{{Name: "big", Content: strings.Repeat("x", 500)}}
 
-	writeSkill(t, root, "recon", "---\nname: recon\ndescription: the downloaded one\n---\nbody")
+	tool := DefaultToolsWith(100, big)["skills"]
 
-	static := &SkillsResult{Skills: []SkillDefinition{
-		{Name: "recon", Description: "the shipped one"},
-	}}
-
-	skills := NewSkillLoader(static, root).Skills()
-
-	if len(skills) != 1 {
-		t.Fatalf("got %d skills, want 1", len(skills))
-	}
-
-	if skills[0].Description != "the downloaded one" {
-		t.Errorf("the on-disk skill must win: %q", skills[0].Description)
-	}
-}
-
-// A directory that disappears mid-run must not wipe the last good set.
-func TestSkillLoaderFallsBackToLastGoodSet(t *testing.T) {
-	root := t.TempDir()
-
-	writeSkill(t, root, "recon", "---\nname: recon\ndescription: map the target\n---\nbody")
-
-	loader := NewSkillLoader(nil, root)
-
-	if got := len(loader.Skills()); got != 1 {
-		t.Fatalf("first scan: got %d skills, want 1", got)
-	}
-
-	// LoadSkills treats a missing directory as empty rather than an error, so
-	// removing it yields an empty scan - a legitimate result, not a failure to
-	// fall back from. The loader must handle the vanished directory without
-	// panicking and simply report no skills.
-	if err := os.RemoveAll(root); err != nil {
+	out, err := tool.Handler(context.Background(), map[string]any{"name": "big"})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got := loader.Skills(); len(got) != 0 {
-		t.Errorf("got %d skills after the directory vanished, want 0", len(got))
+	if !strings.Contains(out.(string), "[truncated:") {
+		t.Errorf("a skill larger than the tool ceiling must be visibly truncated: %q", out)
+	}
+}
+
+// A run with no skills has no skills tool: nothing to list is not worth a tool
+// in every request.
+func TestTheSkillsToolExistsOnlyWhenThereAreSkills(t *testing.T) {
+	if _, ok := DefaultToolsWith(0, nil)["skills"]; ok {
+		t.Error("no skills tool without skills")
+	}
+
+	if _, ok := DefaultToolsWith(0, testSkills)["skills"]; !ok {
+		t.Error("skills tool expected when skills are loaded")
 	}
 }

@@ -63,6 +63,11 @@ the orders in the folder, each from zero. Any OpenAI-compatible endpoint works -
 a hosted service, a gateway, a local server - declare it under `providers:` and
 name it with `default_provider`.
 
+Skills - folders of `SKILL.md` instructions - live in the directory named by
+`skills_dir` in the config. They are read into memory at startup and offered to
+the model through a `skills` tool: it lists them with short descriptions and reads
+one in full when it decides it applies.
+
 Every run is logged beside its order as `.zot/orders/<name>.jsonl`: one JSON
 line per step, including the model's reasoning, appended as the run goes. Running
 an order again adds to the same file. Read it with `jq`.

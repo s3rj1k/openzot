@@ -23,16 +23,14 @@ import (
 type Config struct {
 	Agent Agent `yaml:"agent"`
 	UI    UI    `yaml:"ui"`
-	// Skills supplied programmatically, on top of whatever SkillDirectories
-	// yields. The engine describes them in the system prompt; a directory
-	// skill with the same name wins.
-	Skills []agent.SkillDefinition `yaml:"-"`
-	// SkillDirectories are the context folders scanned for SKILL.md entries.
-	// Not configured directly: LoadProjectContext records them, and the run
-	// rescans them at every iteration - which is what lets a skill added
-	// mid-run, by the operator or by the agent itself, surface on the model's
-	// next turn.
-	SkillDirectories []string `yaml:"-"`
+	// SkillsDir is the folder of skills - subdirectories each holding a
+	// SKILL.md - loaded into memory at startup and offered to the model through
+	// the skills tool. "~/" is the home directory; a relative path is taken
+	// against --dir. Empty means no skills.
+	SkillsDir string `yaml:"skills_dir"`
+	// Skills are the skills loaded from SkillsDir at startup. Not configured
+	// directly.
+	Skills []agent.Skill `yaml:"-"`
 	// DefaultProvider names the entry in Providers used by every run. There is
 	// no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`

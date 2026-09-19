@@ -1,163 +1,91 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
-	"sync"
+	"unicode/utf8"
 )
 
-// SkillDefinition is a capability advertised to the model.
+// maxListedDescription bounds one skill's description in the listing the skills
+// tool returns. The listing is meant to be scanned, so a long description is
+// cut; the skill itself, read by name, is always whole.
+const maxListedDescription = 200
+
+// Skill is one skill, loaded into memory at startup: a directory holding a
+// SKILL.md of instructions the model reads when it decides the skill applies.
+// Until it does, only the name and a short description reach the conversation.
+type Skill struct {
+	// Name is what the model asks for. The front matter's name, or the
+	// directory's when there is none.
+	Name string
+
+	// Description is the short summary shown in the listing.
+	Description string
+
+	// Dir is the skill's own directory, which the model needs to find anything
+	// the instructions refer to beside them.
+	Dir string
+
+	// Content is the whole SKILL.md.
+	Content string
+}
+
+// LoadSkills reads every skill under dir into memory, sorted by name.
 //
-// Path points at the instructions rather than containing them. The model reads
-// it only when it decides the skill is relevant, which keeps a large library
-// cheap: until then, just the name and description occupy context.
-type SkillDefinition struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Path        string `json:"path"`
-}
+// A skill is a subdirectory containing a SKILL.md whose front matter supplies
+// the name and description. A subdirectory without one is skipped rather than
+// treated as an error - a skills folder routinely contains other things. dir
+// itself must exist: it was named in the config, so a typo should stop the run
+// at startup rather than quietly leave the model without its skills.
+func LoadSkills(dir string) ([]Skill, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
 
-// Hint is the instruction appended to a skill's description telling the model
-// how to reach its instructions: with a shell command, at the skill's path.
-func (s SkillDefinition) Hint() string {
-	return fmt.Sprintf("Read it with a shell command, such as `cat %s`.", s.Path)
-}
+	var (
+		skills []Skill
+		seen   = map[string]string{}
+	)
 
-// SkillsResult is a loaded skill set.
-type SkillsResult struct {
-	Skills []SkillDefinition
-}
-
-// Merge combines skill sets, later entries losing to earlier ones on a name
-// clash.
-//
-// The order matters and is deliberate: a project's own skill should win over a
-// built-in one with the same name, which is what lets a repository override a
-// shipped default rather than being stuck with it.
-func Merge(sets ...*SkillsResult) *SkillsResult {
-	merged := &SkillsResult{}
-
-	seen := map[string]bool{}
-
-	for _, set := range sets {
-		if set == nil {
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		for _, skill := range set.Skills {
-			if seen[skill.Name] {
-				continue
-			}
+		skillDir := filepath.Join(dir, entry.Name())
 
-			seen[skill.Name] = true
-
-			merged.Skills = append(merged.Skills, skill)
-		}
-	}
-
-	return merged
-}
-
-// LoadSkills discovers skills in the given directories.
-//
-// A skill is a directory containing a SKILL.md whose front matter supplies the
-// name and description. A directory without one is skipped rather than treated
-// as an error - a skills folder routinely contains other things.
-func LoadSkills(directories []string) (*SkillsResult, error) {
-	result := &SkillsResult{}
-
-	for _, directory := range directories {
-		entries, err := os.ReadDir(directory)
-
+		content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-
-			return nil, err
+			continue
 		}
 
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
+		skill := parseSkill(entry.Name(), skillDir, string(content))
 
-			file := filepath.Join(directory, entry.Name(), "SKILL.md")
-
-			content, err := os.ReadFile(file)
-			if err != nil {
-				continue
-			}
-
-			result.Skills = append(result.Skills, parseSkill(entry.Name(), file, string(content)))
+		if other, clash := seen[skill.Name]; clash {
+			return nil, fmt.Errorf("skills %s and %s are both named %q", other, skillDir, skill.Name)
 		}
+
+		seen[skill.Name] = skillDir
+
+		skills = append(skills, skill)
 	}
 
-	return result, nil
-}
+	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
 
-// SkillLoader serves a skill set that can change while a run is live.
-//
-// LoadSkills is a snapshot: it reads its directories once, so a skill added
-// after startup - dropped in by the operator, or cloned by the agent itself
-// mid-run - would never surface. The loader closes that gap by rescanning its
-// directories on every call to Skills. The engine re-renders the system prompt
-// each iteration, so handing it this method as the skills source makes a
-// freshly added SKILL.md appear to the model on its very next turn, with no
-// reload hook anyone has to remember to call.
-//
-// A rescan is a handful of small file reads - noise next to the model call
-// that follows it - which is why there is no cache to invalidate and no
-// watcher to wire up.
-type SkillLoader struct {
-	static      *SkillsResult
-	directories []string
-
-	mu   sync.Mutex
-	last []SkillDefinition
-}
-
-// NewSkillLoader builds a loader over the given directories, layered on top of
-// a static set - programmatic skills, typically - that is never rescanned. Either
-// part may be empty or nil. On a name clash a directory skill wins, so a skill
-// on disk can override a shipped default rather than being stuck with it.
-func NewSkillLoader(static *SkillsResult, directories ...string) *SkillLoader {
-	return &SkillLoader{static: static, directories: directories}
-}
-
-// Skills rescans the directories and returns the current set, merged with the
-// static one. Its signature matches the engine's dynamic Skills option, so a
-// caller passes the method value itself.
-//
-// A scan that fails outright falls back to the last good set rather than to
-// nothing: losing the skill list mid-run because a directory turned unreadable
-// would silently cost the model capabilities it was already using.
-func (l *SkillLoader) Skills() []SkillDefinition {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	scanned, err := LoadSkills(l.directories)
-	if err != nil {
-		if l.last != nil {
-			return l.last
-		}
-
-		scanned = &SkillsResult{}
-	}
-
-	l.last = Merge(scanned, l.static).Skills
-
-	return l.last
+	return skills, nil
 }
 
 // parseSkill reads the name and description out of a SKILL.md.
 //
-// Front matter is preferred; the first heading and paragraph are the fallback so
-// a skill written without front matter still works.
-func parseSkill(directory, location, content string) SkillDefinition {
-	skill := SkillDefinition{Name: directory, Path: location}
+// Front matter is preferred; the first heading-free line is the fallback so a
+// skill written without front matter still works.
+func parseSkill(directoryName, dir, content string) Skill {
+	skill := Skill{Name: directoryName, Dir: dir, Content: content}
 
 	lines := strings.Split(content, "\n")
 
@@ -203,4 +131,73 @@ func parseSkill(directory, location, content string) SkillDefinition {
 	}
 
 	return skill
+}
+
+// skillsTool is the model's way to the skills: called with no name it lists them
+// with their short descriptions, called with one it returns that skill's full
+// instructions. Everything is already in memory, so a call reads no file.
+func (s toolSet) skillsTool(skills []Skill) ToolDefinition {
+	return ToolDefinition{
+		Description: "Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
+		Parameters: FunctionParameters{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "The skill to read in full. Omit to list the available skills."},
+			},
+		},
+		Handler: func(_ context.Context, args map[string]any) (any, error) {
+			name, _ := args["name"].(string)
+
+			if strings.TrimSpace(name) == "" {
+				return listSkills(skills), nil
+			}
+
+			for _, skill := range skills {
+				if skill.Name == name {
+					return s.truncate(fmt.Sprintf("Skill directory: %s\n\n%s", skill.Dir, skill.Content)), nil
+				}
+			}
+
+			return nil, fmt.Errorf("no skill named %q (available: %s)", name, skillNames(skills))
+		},
+	}
+}
+
+// listSkills renders the listing: one line per skill, name then description.
+func listSkills(skills []Skill) string {
+	var b strings.Builder
+
+	b.WriteString("Available skills - call again with a name to read one in full:\n")
+
+	for _, skill := range skills {
+		b.WriteString("\n- " + skill.Name)
+
+		if skill.Description != "" {
+			b.WriteString(": " + shorten(skill.Description, maxListedDescription))
+		}
+	}
+
+	return b.String()
+}
+
+func skillNames(skills []Skill) string {
+	names := make([]string, len(skills))
+
+	for i, skill := range skills {
+		names[i] = skill.Name
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// shorten flattens text to one line and caps it at max characters, by rune so a
+// multi-byte character is never cut in half.
+func shorten(text string, max int) string {
+	text = strings.Join(strings.Fields(text), " ")
+
+	if utf8.RuneCountInString(text) <= max {
+		return text
+	}
+
+	return string([]rune(text)[:max-1]) + "…"
 }

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,10 +110,6 @@ func TestShellRespectsCancellation(t *testing.T) {
 }
 
 func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the shell idiom under test is POSIX")
-	}
-
 	done := make(chan any, 1)
 
 	go func() {
@@ -207,7 +202,7 @@ func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 // The ceiling is configurable, so a model on a small-window endpoint can be
 // given a tighter bound than the default.
 func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
-	got, err := call(t, DefaultToolsWith(4_000), "shell", map[string]any{
+	got, err := call(t, DefaultToolsWith(4_000, nil), "shell", map[string]any{
 		"command": "head -c 40000 /dev/zero | tr '\\0' x",
 	})
 	if err != nil {

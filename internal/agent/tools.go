@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"runtime"
 	"time"
 )
 
@@ -12,20 +11,22 @@ import (
 // caller does not set its own. See toolSet.truncate for why a bound exists.
 const DefaultMaxToolOutput = 100_000
 
-// DefaultTools returns the standard tool set, with the default output ceiling.
+// DefaultTools returns the standard tool set, with the default output ceiling
+// and no skills.
 //
 // The set is two tools. shell is the only one that touches the machine: the
 // model reads, lists, creates and changes files with ordinary commands, the way
 // anyone does at a terminal, so there is one place a run's effects come from and
 // one place to bound them. tasks changes nothing on disk; it exists so the work
-// a run has set itself, and how far along it is, can be followed.
+// a run has set itself, and how far along it is, can be followed. A third, skills,
+// is added when there are skills to offer.
 //
 // shell runs with the privileges of the process. That is the point - an agent
 // that cannot touch the machine is not much use to a CLI - but it means the
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
 func DefaultTools() Tools {
-	return DefaultToolsWith(DefaultMaxToolOutput)
+	return DefaultToolsWith(DefaultMaxToolOutput, nil)
 }
 
 // DefaultToolsWith returns the standard tool set with a specific ceiling on a
@@ -33,14 +34,16 @@ func DefaultTools() Tools {
 // window needs a tighter bound than one with a large one - a single result
 // that overflows the window is rejected wholesale, and the run cannot recover
 // from a message it cannot even send. Zero or negative uses the default.
-func DefaultToolsWith(maxOutput int) Tools {
+//
+// skills, when there are any, adds the skills tool over them.
+func DefaultToolsWith(maxOutput int, skills []Skill) Tools {
 	if maxOutput <= 0 {
 		maxOutput = DefaultMaxToolOutput
 	}
 
 	s := toolSet{maxOutput: maxOutput}
 
-	return Tools{
+	tools := Tools{
 		"shell": {
 			Description: "Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
 			Parameters: FunctionParameters{
@@ -78,6 +81,12 @@ func DefaultToolsWith(maxOutput int) Tools {
 			Handler: tasksHandler,
 		},
 	}
+
+	if len(skills) > 0 {
+		tools["skills"] = s.skillsTool(skills)
+	}
+
+	return tools
 }
 
 // toolSet carries the configuration the tools share - currently just the output
@@ -139,13 +148,7 @@ func (s toolSet) shell(ctx context.Context, args map[string]any) (any, error) {
 
 	defer cancel()
 
-	shell, flag := "/bin/sh", "-c"
-
-	if runtime.GOOS == "windows" {
-		shell, flag = "cmd", "/c"
-	}
-
-	cmd := exec.CommandContext(ctx, shell, flag, command)
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 
 	// Killing the shell is not enough. A command that leaves a process behind -
 	// `npm start &`, anything that daemonises - hands the inherited output pipe

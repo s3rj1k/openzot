@@ -307,14 +307,6 @@ type ExecuteWithToolsOptions struct {
 	// Tools the model may call.
 	Tools Tools
 
-	// Skills are described in the system prompt so the model knows they exist
-	// and where to read their instructions. A function rather than a slice so
-	// the set can change while a run is live: the prompt is re-rendered every
-	// iteration from whatever the function returns. Use StaticSkills for a
-	// fixed set, or (*SkillLoader).Skills for one that follows directories on
-	// disk. Nil means no skills.
-	Skills func() []SkillDefinition
-
 	// Recorder, when set, is handed every message and event as the run goes.
 	//
 	// The engine does not know what a session log is; it hands over what
@@ -436,17 +428,11 @@ func ExecuteWithTools(
 
 		log := &conversationLog{recorder: recorder, recorded: len(seed)}
 
-		skills := options.Skills
-		if skills == nil {
-			skills = func() []SkillDefinition { return nil }
-		}
-
 		engine, err := loop.New(loop.Options{
 			Client:           client.inner,
 			Instructions:     options.Instructions,
 			Messages:         toLoopMessages(options),
 			Tools:            toLoopTools(options.Tools),
-			Skills:           func() []loop.Skill { return toLoopSkills(skills()) },
 			MaxIterations:    options.MaxIterations,
 			MaxCalls:         options.MaxCalls,
 			MaxContinuations: options.MaxContinuations,
@@ -682,27 +668,6 @@ func toLoopTools(tools Tools) map[string]loop.ToolDefinition {
 				return handler(ctx, args)
 			},
 		}
-	}
-
-	return converted
-}
-
-// StaticSkills adapts a fixed skill set to the dynamic Skills option, for a
-// caller whose set genuinely cannot change - or one that does not care to.
-func StaticSkills(skills []SkillDefinition) func() []SkillDefinition {
-	return func() []SkillDefinition { return skills }
-}
-
-func toLoopSkills(skills []SkillDefinition) []loop.Skill {
-	converted := make([]loop.Skill, 0, len(skills))
-
-	for _, skill := range skills {
-		converted = append(converted, loop.Skill{
-			Name:        skill.Name,
-			Description: skill.Description,
-			Path:        skill.Path,
-			Hint:        skill.Hint(),
-		})
 	}
 
 	return converted

@@ -747,14 +747,10 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := os.MkdirAll(filepath.Join(target, ".skills", "deploy"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, ".skills", "deploy", "SKILL.md"),
-		[]byte("---\nname: deploy\ndescription: DEPLOYMENT-SKILL-MARKER\n---\nDeploy carefully.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// a relative skills_dir means the project: the skills tool only exists if
+	// this folder, inside --dir, was found
+	mustWrite(t, filepath.Join(target, "skills", "deploy", "SKILL.md"),
+		"---\nname: deploy\ndescription: ship it\n---\nDeploy carefully.\n")
 
 	// every path on the command line is relative to the invoking directory -
 	// none of them exist inside --dir, so they must resolve before the chdir
@@ -774,7 +770,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 			sawContext.Store(true)
 		}
 
-		if strings.Contains(string(body), "DEPLOYMENT-SKILL-MARKER") {
+		if strings.Contains(string(body), `"name":"skills"`) {
 			sawSkill.Store(true)
 		}
 
@@ -793,6 +789,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	if err := os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
 agent:
   model: test-model
+skills_dir: skills
 default_provider: local
 providers:
   local:
@@ -820,7 +817,7 @@ providers:
 	}
 
 	if !sawContext.Load() || !sawSkill.Load() {
-		t.Errorf("project context did not come from --dir (AGENTS.md seen: %v, skills seen: %v)",
+		t.Errorf("project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)",
 			sawContext.Load(), sawSkill.Load())
 	}
 
@@ -1439,17 +1436,8 @@ func TestLoadProjectContext(t *testing.T) {
 	mustWrite(t, filepath.Join(configDir, "AGENTS.md"), "GLOBAL CONVENTIONS")
 	mustWrite(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
 
-	// A skill in each location: plain "skills/" in the config dir and hidden
-	// ".skills/" in the project dir - both layouts must be picked up.
-	mustWrite(t, filepath.Join(configDir, "skills", "greet", "SKILL.md"),
-		"---\nname: greet\ndescription: say hello\n---\nbody")
-	mustWrite(t, filepath.Join(workDir, ".skills", "deploy", "SKILL.md"),
-		"---\nname: deploy\ndescription: ship it\n---\nbody")
-
 	cfg := config.Config{}
-	if err := loadProjectContext(&cfg, configDir, workDir); err != nil {
-		t.Fatalf("LoadProjectContext: %v", err)
-	}
+	loadProjectContext(&cfg, configDir, workDir)
 
 	// Instructions keeps the default and appends both AGENTS.md files in order.
 	for _, want := range []string{defaultInstructions[:20], "GLOBAL CONVENTIONS", "PROJECT CONVENTIONS"} {
@@ -1460,48 +1448,150 @@ func TestLoadProjectContext(t *testing.T) {
 	if i, j := strings.Index(cfg.Agent.Instructions, "GLOBAL"), strings.Index(cfg.Agent.Instructions, "PROJECT"); i > j {
 		t.Error("expected config-dir AGENTS.md to appear before work-dir AGENTS.md")
 	}
-
-	// Both skills' directories are recorded; the run rescans them live rather
-	// than snapshotting the skills at load. Load them the same way the run
-	// does and confirm both are found.
-	loaded, err := agent.LoadSkills(cfg.SkillDirectories)
-	if err != nil {
-		t.Fatalf("LoadSkills: %v", err)
-	}
-
-	if len(loaded.Skills) != 2 {
-		t.Fatalf("expected 2 skills, got %d (%v)", len(loaded.Skills), loaded.Skills)
-	}
-
-	names := map[string]bool{}
-	for _, skill := range loaded.Skills {
-		names[skill.Name] = true
-
-		if skill.Path == "" {
-			t.Errorf("skill %q has no path for the model to read", skill.Name)
-		}
-	}
 }
 
 func TestLoadProjectContextNoFiles(t *testing.T) {
 	cfg := config.Config{}
-	if err := loadProjectContext(&cfg, t.TempDir()); err != nil {
-		t.Fatalf("LoadProjectContext: %v", err)
-	}
+	loadProjectContext(&cfg, t.TempDir())
+
 	if cfg.Agent.Instructions != "" {
 		t.Error("expected instructions untouched when no AGENTS.md is present")
 	}
+}
 
-	// Candidate skill directories are recorded even when empty - the run
-	// watches them live, so a skill added later is still found - but no skill
-	// resolves from them yet.
-	loaded, err := agent.LoadSkills(cfg.SkillDirectories)
-	if err != nil {
-		t.Fatalf("LoadSkills: %v", err)
+func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
+	t.Run("unset means no skills", func(t *testing.T) {
+		cfg := config.Config{}
+
+		if err := loadSkills(&cfg); err != nil || cfg.Skills != nil {
+			t.Errorf("skills = %v, err = %v, want none and no error", cfg.Skills, err)
+		}
+	})
+
+	t.Run("a relative folder is taken against the working directory", func(t *testing.T) {
+		project := t.TempDir()
+		mustWrite(t, filepath.Join(project, "my-skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: say hello\n---\nbody")
+		t.Chdir(project)
+
+		cfg := config.Config{SkillsDir: "my-skills"}
+
+		if err := loadSkills(&cfg); err != nil {
+			t.Fatalf("loadSkills: %v", err)
+		}
+
+		if len(cfg.Skills) != 1 || cfg.Skills[0].Name != "greet" || cfg.Skills[0].Content == "" {
+			t.Errorf("skills = %+v, want greet loaded with its content", cfg.Skills)
+		}
+	})
+
+	t.Run("~ is the home directory", func(t *testing.T) {
+		home := t.TempDir()
+		mustWrite(t, filepath.Join(home, "skills", "deploy", "SKILL.md"), "---\nname: deploy\n---\nbody")
+		t.Setenv("HOME", home)
+
+		cfg := config.Config{SkillsDir: "~/skills"}
+
+		if err := loadSkills(&cfg); err != nil {
+			t.Fatalf("loadSkills: %v", err)
+		}
+
+		if len(cfg.Skills) != 1 || cfg.Skills[0].Name != "deploy" {
+			t.Errorf("skills = %+v, want deploy from ~/skills", cfg.Skills)
+		}
+	})
+
+	t.Run("a folder that cannot be read stops the run", func(t *testing.T) {
+		cfg := config.Config{SkillsDir: filepath.Join(t.TempDir(), "missing")}
+
+		err := loadSkills(&cfg)
+		if err == nil || !strings.Contains(err.Error(), "skills_dir") {
+			t.Errorf("err = %v, want it to name skills_dir", err)
+		}
+	})
+}
+
+// The whole path a skill takes: the model lists the skills, reads one by name,
+// and each answer reaches its next request - from memory, with the folder gone.
+func TestTheModelListsAndReadsASkill(t *testing.T) {
+	project := t.TempDir()
+	skillsDir := filepath.Join(project, "skills")
+
+	mustWrite(t, filepath.Join(skillsDir, "deploy", "SKILL.md"),
+		"---\nname: deploy\ndescription: LISTING-MARKER\n---\n# Deploy\n\nINSTRUCTIONS-MARKER\n")
+
+	var (
+		requests atomic.Int32
+		bodies   = make(chan string, 8)
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		body, _ := io.ReadAll(r.Body)
+		bodies <- string(body)
+
+		var call string
+
+		switch requests.Add(1) {
+		case 1:
+			call = `{"name":"skills","arguments":"{}"}`
+		case 2:
+			call = `{"name":"skills","arguments":"{\"name\":\"deploy\"}"}`
+		default:
+			call = `{"name":"success","arguments":"{\"summary\":\"complete\"}"}`
+		}
+
+		fmt.Fprintf(w, "data: %s\n\n",
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","type":"function","function":`+call+`}]},"finish_reason":"tool_calls"}]}`)
+
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	defer server.Close()
+
+	cfg := stubProvider(t)
+	cfg.DefaultProvider = "local"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
+	}
+	cfg.SkillsDir = skillsDir
+
+	if err := loadSkills(&cfg); err != nil {
+		t.Fatal(err)
 	}
 
-	if len(loaded.Skills) != 0 {
-		t.Error("expected no skills when none are present")
+	// loaded at startup: the folder is not read again during the run
+	if err := os.RemoveAll(skillsDir); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := quietly(t, func() error {
+		return runTask(context.Background(), cfg, "do the thing", runOptions{})
+	}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	close(bodies)
+
+	var all []string
+	for body := range bodies {
+		all = append(all, body)
+	}
+
+	if len(all) != 3 {
+		t.Fatalf("the model was called %d times, want list, read, settle", len(all))
+	}
+
+	if strings.Contains(all[0], "LISTING-MARKER") || strings.Contains(all[0], "INSTRUCTIONS-MARKER") {
+		t.Error("nothing of a skill may reach the model before it asks")
+	}
+
+	if !strings.Contains(all[1], "LISTING-MARKER") || strings.Contains(all[1], "INSTRUCTIONS-MARKER") {
+		t.Error("the listing must carry the description and not the instructions")
+	}
+
+	if !strings.Contains(all[2], "INSTRUCTIONS-MARKER") {
+		t.Error("reading a skill by name must return its full instructions")
 	}
 }
 
@@ -2668,11 +2758,7 @@ providers:
 		prepare func(*config.Config)
 	}{
 		{"the built-in prompt", func(*config.Config) {}},
-		{"the built-in prompt plus AGENTS.md", func(cfg *config.Config) {
-			if err := loadProjectContext(cfg, project); err != nil {
-				t.Fatalf("LoadProjectContext: %v", err)
-			}
-		}},
+		{"the built-in prompt plus AGENTS.md", func(cfg *config.Config) { loadProjectContext(cfg, project) }},
 		{"a custom prompt", func(cfg *config.Config) { cfg.Agent.Instructions = "Do the thing." }},
 		{"a custom prompt that already quotes the contract", func(cfg *config.Config) {
 			cfg.Agent.Instructions = "Do the thing.\n\n" + nonInteractiveContract

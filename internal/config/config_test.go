@@ -678,6 +678,19 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	}
 }
 
+// skills_dir names the folder skills are loaded from; it is read as written and
+// expanded by the caller, which knows the working directory.
+func TestSkillsDirIsRead(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "skills_dir: ~/skills\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.SkillsDir != "~/skills" {
+		t.Errorf("skills_dir = %q, want it as written", cfg.SkillsDir)
+	}
+}
+
 // The viewer scrollback is a scalar UI field read from the file, and an
 // out-of-range value is rejected at load.
 func TestUIScrollbackIsReadAndValidated(t *testing.T) {

@@ -131,7 +131,7 @@ func run() error {
 		return err
 	}
 
-	// Resolve the config directory (source of any global AGENTS.md / skills) while
+	// Resolve the config directory (source of any global AGENTS.md) while
 	// the original working directory is still current, so a relative --config
 	// resolves correctly before the chdir below.
 	configDir := config.ConfigDir(*configPath)
@@ -146,10 +146,15 @@ func run() error {
 		return fmt.Errorf("cannot enter --dir %q: %w", *dir, err)
 	}
 
-	// Fold in AGENTS.md and skills from the config directory, then the working
-	// directory (project-level context wins / appends last).
+	// Fold in AGENTS.md from the config directory, then the working directory
+	// (project-level context wins / appends last).
 	workDir, _ := os.Getwd()
-	if err := loadProjectContext(&cfg, configDir, workDir); err != nil {
+	loadProjectContext(&cfg, configDir, workDir)
+
+	// Skills are read once, here, into memory: the run offers them through the
+	// skills tool and never touches the folder again. Loaded after the chdir so a
+	// relative skills_dir means the project being worked on.
+	if err := loadSkills(&cfg); err != nil {
 		return err
 	}
 
@@ -485,11 +490,6 @@ const (
 	projectContext = "# Project context"
 )
 
-// skillSubdirs are the folder names searched for skills under each context
-// directory. Both the hidden ".skills" (typical at a project root) and the plain
-// "skills" (e.g. directly in the config directory) are accepted.
-var skillSubdirs = []string{".skills", "skills"}
-
 // defaultInstructions is the system prompt handed to the agent when the
 // configuration does not override it. It establishes the fully-autonomous,
 // no-questions-asked contract: zot has no input channel, so the agent must
@@ -585,11 +585,10 @@ func withTask(instructions, task string) string {
 // then the working directory):
 //
 //   - <dir>/AGENTS.md  - appended to the agent instructions
-//   - <dir>/skills/   - loaded via the SDK and added as a "skills" feature
 //
-// Missing files and directories are ignored, and duplicate directories are
-// searched once. AGENTS.md content augments (never replaces) the base instructions.
-func loadProjectContext(cfg *config.Config, dirs ...string) error {
+// Missing files are ignored, and duplicate directories are searched once.
+// AGENTS.md content augments (never replaces) the base instructions.
+func loadProjectContext(cfg *config.Config, dirs ...string) {
 	seen := map[string]bool{}
 	var search []string
 	for _, d := range dirs {
@@ -606,35 +605,43 @@ func loadProjectContext(cfg *config.Config, dirs ...string) error {
 	}
 
 	var instructions []string
-	var skillDirs []string
 	for _, d := range search {
 		if data, err := os.ReadFile(filepath.Join(d, agentFile)); err == nil {
 			if s := strings.TrimSpace(string(data)); s != "" {
 				instructions = append(instructions, s)
 			}
 		}
-		for _, sub := range skillSubdirs {
-			skillDirs = append(skillDirs, filepath.Join(d, sub))
-		}
 	}
 
 	if len(instructions) > 0 {
 		cfg.Agent.Instructions = base + "\n\n" + projectContext + "\n\n" + strings.Join(instructions, "\n\n---\n\n")
 	}
+}
 
-	// Probe the directories once so a broken one - unreadable, say - fails at
-	// load rather than being silently skipped mid-run. The scan's result is
-	// deliberately discarded: the run rescans the directories at every
-	// iteration, so a skill added while the agent works (including by the
-	// agent itself) is picked up without a restart.
-	if _, err := agent.LoadSkills(skillDirs); err != nil {
-		return fmt.Errorf("load skills: %w", err)
+// loadSkills reads the skills folder named by skills_dir into cfg.Skills. An
+// unset skills_dir means no skills; a set one that cannot be read is an error,
+// since the config asked for skills the run would otherwise silently lack.
+func loadSkills(cfg *config.Config) error {
+	dir := strings.TrimSpace(cfg.SkillsDir)
+	if dir == "" {
+		return nil
 	}
 
-	// @note skills are described in the system prompt rather than shipped to a
-	// server as a feature. The engine renders them locally now, so a skill is
-	// inert text plus a path the model may choose to read.
-	cfg.SkillDirectories = append(cfg.SkillDirectories, skillDirs...)
+	if dir == "~" || strings.HasPrefix(dir, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("skills_dir %q: %w", cfg.SkillsDir, err)
+		}
+
+		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	}
+
+	skills, err := agent.LoadSkills(dir)
+	if err != nil {
+		return fmt.Errorf("skills_dir: %w", err)
+	}
+
+	cfg.Skills = skills
 
 	return nil
 }
@@ -854,15 +861,9 @@ func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agen
 	// it as unbounded rather than failing a run that already passed validation.
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
-	// The loader rescans the context directories every time the engine renders
-	// the system prompt, so a SKILL.md that appears mid-run is described to the
-	// model on its next turn. Programmatic skills ride along as the static layer.
-	skills := agent.NewSkillLoader(&agent.SkillsResult{Skills: cfg.Skills}, cfg.SkillDirectories...)
-
 	opts := agent.ExecuteWithToolsOptions{
 		Instructions:     instructions,
-		Tools:            agent.DefaultToolsWith(cfg.Agent.MaxToolOutput),
-		Skills:           skills.Skills,
+		Tools:            agent.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
 		MaxIterations:    maxIterations,
 		MaxSettles:       cfg.Agent.MaxSettles,
 		MaxCalls:         cfg.Agent.MaxCalls,

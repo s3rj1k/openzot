@@ -542,17 +542,6 @@ func TestEveryEventImplementsTheInterface(t *testing.T) {
 	}
 }
 
-// StaticSkills adapts a fixed set to the dynamic Skills option.
-func TestStaticSkills(t *testing.T) {
-	skills := []SkillDefinition{{Name: "deploy"}}
-
-	fn := StaticSkills(skills)
-
-	if got := fn(); len(got) != 1 || got[0].Name != "deploy" {
-		t.Errorf("StaticSkills must return the fixed set: %+v", got)
-	}
-}
-
 // recordingRecorder captures everything the engine hands over.
 type recordingRecorder struct {
 	messages []Message
