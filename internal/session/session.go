@@ -6,10 +6,6 @@
 // failed overnight" into something answerable - what it tried, what the tools
 // returned, and where it stopped.
 //
-// It is also what makes a run resumable. The conversation is the entire state
-// of an agent, so writing it down and reading it back is enough to continue: no
-// server-side session, no snapshot format, nothing to keep in sync.
-//
 // The format is JSON Lines. One record per line, appended as the run goes, so a
 // log is readable while the run is still going and a crashed run still leaves
 // everything up to the crash. A truncated final line loses one record rather
@@ -40,12 +36,11 @@ const (
 	// Exactly one, first.
 	KindMeta Kind = "meta"
 
-	// KindMessage is one conversation message. Replaying these in order
-	// reconstructs the agent's state.
+	// KindMessage is one conversation message, in the order it was said.
 	KindMessage Kind = "message"
 
 	// KindEvent is something that happened - a tool call, a retry, a nudge.
-	// Not needed to resume; kept because it is what explains a run afterwards.
+	// Kept because it is what explains a run afterwards.
 	KindEvent Kind = "event"
 
 	// KindResult closes a log with the outcome. Absent means the run did not
@@ -87,9 +82,6 @@ type Meta struct {
 
 	// Workdir is where the agent's tools operated.
 	Workdir string `json:"workdir"`
-
-	// ResumedFrom names the session this one continues, if any.
-	ResumedFrom string `json:"resumedFrom,omitempty"`
 }
 
 // Message is one conversation entry.
@@ -152,7 +144,7 @@ type Result struct {
 	Settles       int `json:"settles"`
 
 	// InputTokens and OutputTokens are the provider-billed totals for the run,
-	// persisted so an audit or a resumed run can see cost rather than only the
+	// persisted so an audit can see cost rather than only the
 	// terminal that produced it. Omitted from an older log, which read back as
 	// zero - not wrong, just unrecorded.
 	InputTokens  int `json:"inputTokens,omitempty"`
@@ -223,7 +215,7 @@ func Start(dir string, now time.Time, meta Meta) (*Writer, error) {
 //
 // The directory is created if needed. A session whose id already exists is an
 // error rather than an append: two runs sharing a log would interleave into
-// something that resumes as neither.
+// something that reads back as neither.
 func Create(dir, id string, meta Meta) (*Writer, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)
@@ -432,10 +424,10 @@ func Load(path string) (*Session, error) {
 
 // LoadImage restores an image's bytes from wherever the record says they are.
 //
-// A missing blob is not an error: logs are copied, pruned and cached, and a run
-// that refused to resume because a screenshot from an hour ago had been deleted
-// would be worse than one that resumes with the description of it. The image is
-// returned unready, and the wire drops it.
+// A missing blob is not an error: logs are copied, pruned and cached, and an
+// export that refused to run because a screenshot from an hour ago had been
+// deleted would be worse than one that keeps the description of it. The image is
+// returned unready.
 func (s *Session) LoadImage(image imaging.Image) imaging.Image {
 	if len(image.Bytes) > 0 || image.Data != "" {
 		return image
@@ -537,11 +529,6 @@ type Entry struct {
 
 	// Reason is the recorded stop reason, empty for an unfinished run.
 	Reason string
-
-	// ResumedFrom names the session this one continues, empty if it started
-	// clean. Listed rather than left inside the log so a caller can walk a
-	// chain of resumes without loading every session in the directory.
-	ResumedFrom string
 }
 
 // List enumerates the sessions in dir, newest first.
@@ -576,11 +563,10 @@ func List(dir string) ([]Entry, error) {
 		}
 
 		entry := Entry{
-			ID:          strings.TrimSuffix(file.Name(), ".jsonl"),
-			Path:        path,
-			Task:        session.Meta.Task,
-			Complete:    session.Complete(),
-			ResumedFrom: session.Meta.ResumedFrom,
+			ID:       strings.TrimSuffix(file.Name(), ".jsonl"),
+			Path:     path,
+			Task:     session.Meta.Task,
+			Complete: session.Complete(),
 		}
 
 		if info, err := file.Info(); err == nil {
@@ -604,7 +590,7 @@ func List(dir string) ([]Entry, error) {
 // Resolve turns a session reference into a path.
 //
 // A reference is an id, a filename, or a path. "last" picks the most recent,
-// which is what someone reaching for a resume almost always means.
+// which is what someone reaching for a run they just did almost always means.
 func Resolve(dir, reference string) (string, error) {
 	reference = strings.TrimSpace(reference)
 

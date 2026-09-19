@@ -11,7 +11,6 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	out := RenderDigest(Digest{
 		Status:       "done",
 		Session:      "20260824-143210",
-		Resume:       "rook --resume 20260824-143210",
 		Iterations:   42,
 		Calls:        137,
 		InputTokens:  1234567,
@@ -33,7 +32,6 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	want := map[string]string{
 		"status":        "done",
 		"session":       "20260824-143210",
-		"resume":        "rook --resume 20260824-143210",
 		"iterations":    "42",
 		"calls":         "137",
 		"input-tokens":  "1234567",
@@ -51,7 +49,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 func TestRenderDigestOmitsEmptyFields(t *testing.T) {
 	out := RenderDigest(Digest{Status: "done", Iterations: 1, Calls: 1})
 
-	for _, absent := range []string{"session", "resume", "message"} {
+	for _, absent := range []string{"session", "message"} {
 		if strings.Contains(out, absent) {
 			t.Errorf("a run with no %s must not render that row:\n%s", absent, out)
 		}

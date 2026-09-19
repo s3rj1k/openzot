@@ -331,10 +331,6 @@ type ExecuteWithToolsOptions struct {
 	// Text seeds the conversation with user messages.
 	Text []string
 
-	// Messages seeds the conversation directly. Combined with Text, which is
-	// appended after.
-	Messages []Message
-
 	// Tools the model may call.
 	Tools Tools
 
@@ -677,16 +673,7 @@ func exitCode(reason loop.StopReason) int {
 }
 
 func toLoopMessages(options ExecuteWithToolsOptions) []loop.Message {
-	messages := make([]loop.Message, 0, len(options.Messages)+len(options.Text))
-
-	for _, message := range options.Messages {
-		messages = append(messages, loop.Message{
-			Type:     message.Type,
-			Text:     message.Text,
-			Activity: message.Activity,
-			Images:   message.Images,
-		})
-	}
+	messages := make([]loop.Message, 0, len(options.Text))
 
 	for _, text := range options.Text {
 		messages = append(messages, loop.Message{Type: loop.TypeUser, Text: text})

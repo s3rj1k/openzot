@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadReadsAFullOrder(t *testing.T) {
@@ -133,144 +134,6 @@ func TestTaskOfABareObjectiveIsJustTheObjective(t *testing.T) {
 	}
 }
 
-// The scaffold's whole job is to produce a file zot itself will accept.
-func TestScaffoldWritesALoadableOrder(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "orders")
-
-	path, err := Scaffold(dir, Order{Objective: "Fix the typo in README!"})
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
-	}
-
-	if filepath.Base(path) != "fix-the-typo-in-readme.yaml" {
-		t.Errorf("path = %q", path)
-	}
-
-	order, err := Load(path)
-	if err != nil {
-		t.Fatalf("the scaffold does not load: %v", err)
-	}
-
-	if order.Objective != "Fix the typo in README!" {
-		t.Errorf("Objective = %q", order.Objective)
-	}
-
-	// the stub sections are comments: present to invite editing, absent from
-	// the parsed order
-	if len(order.Acceptance) != 0 || len(order.Constraints) != 0 {
-		t.Errorf("the scaffold's commented stubs leaked into the order: %+v", order)
-	}
-}
-
-func TestScaffoldCarriesAMultilineObjective(t *testing.T) {
-	dir := t.TempDir()
-
-	path, err := Scaffold(dir, Order{Objective: "first line\n\nthird line: with a colon"})
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
-	}
-
-	order, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if order.Objective != "first line\n\nthird line: with a colon" {
-		t.Errorf("Objective = %q", order.Objective)
-	}
-}
-
-// Scaffolding the same objective twice is routine, not an error.
-func TestScaffoldUniquifiesRatherThanOverwrites(t *testing.T) {
-	dir := t.TempDir()
-
-	first, err := Scaffold(dir, Order{Objective: "fix the bug"})
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
-	}
-
-	second, err := Scaffold(dir, Order{Objective: "fix the bug"})
-	if err != nil {
-		t.Fatalf("Scaffold again: %v", err)
-	}
-
-	if first == second {
-		t.Fatalf("both scaffolds wrote %s", first)
-	}
-
-	if filepath.Base(second) != "fix-the-bug-2.yaml" {
-		t.Errorf("second = %q", second)
-	}
-}
-
-// A filled order - a drafted one - scaffolds with its sections as real YAML,
-// not commented stubs, and the file round-trips through Load.
-func TestScaffoldRendersFilledSections(t *testing.T) {
-	path, err := Scaffold(t.TempDir(), Order{
-		Objective:   "add rate limiting",
-		Acceptance:  []string{"429 beyond the limit", "the: suite { passes }"},
-		Constraints: []string{"no new dependencies"},
-	})
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
-	}
-
-	loaded, err := Load(path)
-	if err != nil {
-		t.Fatalf("the drafted scaffold does not load: %v", err)
-	}
-
-	if len(loaded.Acceptance) != 2 || loaded.Acceptance[1] != "the: suite { passes }" {
-		t.Errorf("Acceptance = %q", loaded.Acceptance)
-	}
-
-	if len(loaded.Constraints) != 1 || loaded.Constraints[0] != "no new dependencies" {
-		t.Errorf("Constraints = %q", loaded.Constraints)
-	}
-}
-
-// An empty objective scaffolds the blank form - which must refuse to run until
-// it is filled in, or a forgotten edit becomes a run with no goal.
-func TestScaffoldBlankForm(t *testing.T) {
-	path, err := Scaffold(t.TempDir(), Order{})
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
-	}
-
-	if filepath.Base(path) != "order.yaml" {
-		t.Errorf("path = %q", path)
-	}
-
-	if _, err := Load(path); err == nil {
-		t.Error("the unedited blank form must not load")
-	}
-}
-
-func TestScaffoldErrors(t *testing.T) {
-	// a file where the directory should go
-	blocked := filepath.Join(t.TempDir(), "orders")
-	write(t, blocked, "not a directory")
-
-	if _, err := Scaffold(filepath.Join(blocked, "sub"), Order{Objective: "x"}); err == nil {
-		t.Error("an uncreatable directory must be an error")
-	}
-}
-
-func TestSlug(t *testing.T) {
-	tests := []struct{ in, want string }{
-		{"Fix the bug", "fix-the-bug"},
-		{"añadir límites!!", "a-adir-l-mites"},
-		{"...", "order"},
-		{strings.Repeat("very long objective ", 10), "very-long-objective-very-long-objective-very-lon"},
-	}
-
-	for _, test := range tests {
-		if got := slug(test.in); got != test.want {
-			t.Errorf("slug(%q) = %q, want %q", test.in, got, test.want)
-		}
-	}
-}
-
 func write(t *testing.T, path, content string) {
 	t.Helper()
 
@@ -375,16 +238,15 @@ func TestTitleIsOptionalAndRoundTrips(t *testing.T) {
 	}
 
 	// through a file and back
-	dir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "thing.yaml")
 
-	path, err := Scaffold(dir, titled)
-	if err != nil {
-		t.Fatalf("Scaffold: %v", err)
+	if err := os.WriteFile(path, []byte(titled.Encode()), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	reloaded, err := Load(path)
 	if err != nil {
-		t.Fatalf("a scaffolded titled order does not load: %v", err)
+		t.Fatalf("a titled order does not load: %v", err)
 	}
 
 	if reloaded.Title != "The Thing" {
@@ -392,71 +254,100 @@ func TestTitleIsOptionalAndRoundTrips(t *testing.T) {
 	}
 }
 
-// An untitled scaffold advertises the field without implying it is expected -
-// a stub nobody has to fill in, because the file name already names the order.
-func TestAnUntitledScaffoldMentionsTheField(t *testing.T) {
-	dir := t.TempDir()
+// A new order is a blank form, not a runnable one: it must be written before it
+// can run, and it says so when loaded.
+func TestBlankIsNotARunnableOrder(t *testing.T) {
+	if _, err := Parse([]byte(Blank())); err == nil {
+		t.Error("the blank form parsed as an order with an objective")
+	}
 
-	path, err := Scaffold(dir, Order{Objective: "do the thing"})
+	// the form still has to be valid YAML once the objective is written in
+	filled := strings.Replace(Blank(), "objective:\n", "objective: fix the typo\n", 1)
+
+	loaded, err := Parse([]byte(filled))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Parse: %v", err)
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(string(data), "# title:") {
-		t.Errorf("the scaffold should show the optional title field:\n%s", data)
-	}
-
-	// commented out, so it stays optional and the file still loads
-	if _, err := Load(path); err != nil {
-		t.Errorf("the scaffold must still load: %v", err)
+	if loaded.Objective != "fix the typo" {
+		t.Errorf("objective = %q", loaded.Objective)
 	}
 }
 
-// A drafted order is named by its title, not its objective. An objective is
-// however the thought arrived; slugging one gives
-// the-new-command-should-have-an-interactive-versi.yaml, which is hard to tell
-// from its neighbours in the directory where orders are actually browsed.
-func TestScaffoldNamesTheFileByTitleWhenThereIsOne(t *testing.T) {
+// The name is the moment of creation in unix seconds, so a directory of orders
+// lists in the order they were written and nothing has to be named.
+func TestCreateNamesTheFileForTheMoment(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "orders")
+
+	now := time.Unix(1758300000, 0)
+
+	path, err := Create(dir, now)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if filepath.Base(path) != "1758300000.yaml" {
+		t.Errorf("name = %q, want the unix timestamp", filepath.Base(path))
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if string(written) != Blank() {
+		t.Errorf("file = %q, want the blank form", written)
+	}
+}
+
+// Two orders in the same second are routine. The second must not overwrite the
+// first, and must still sort after it.
+func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 	dir := t.TempDir()
 
-	titled, err := Scaffold(dir, Order{
-		Title:     "Interactive zot new",
-		Objective: "the new command should have an interactive version where I can continuously type new brain farts that get recorded as orders",
-	})
+	now := time.Unix(1758300000, 0)
+
+	first, err := Create(dir, now)
 	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := os.WriteFile(first, []byte("objective: keep me\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := filepath.Base(titled); got != "interactive-zot-new.yaml" {
-		t.Errorf("file name = %q, want it named from the title", got)
+	second, err := Create(dir, now)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
 	}
 
-	// without a title the objective still names it, exactly as before
-	untitled, err := Scaffold(dir, Order{Objective: "fix the flaky test"})
+	if second == first || filepath.Base(second) != "1758300001.yaml" {
+		t.Errorf("second = %q, want the next free second", filepath.Base(second))
+	}
+
+	kept, _ := os.ReadFile(first)
+	if string(kept) != "objective: keep me\n" {
+		t.Errorf("the first order was overwritten: %q", kept)
+	}
+
+	listed, err := List(dir)
 	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(listed) != 2 || listed[0] != first || listed[1] != second {
+		t.Errorf("listed = %v, want the orders in the order they were made", listed)
+	}
+}
+
+func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := filepath.Base(untitled); got != "fix-the-flaky-test.yaml" {
-		t.Errorf("file name = %q, want it named from the objective", got)
-	}
-
-	// and a name already taken is still uniquified rather than overwritten
-	again, err := Scaffold(dir, Order{Title: "Interactive zot new", Objective: "something else"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if again == titled {
-		t.Error("scaffolding the same title twice must not overwrite the first")
-	}
-
-	if got := filepath.Base(again); got != "interactive-zot-new-2.yaml" {
-		t.Errorf("the second file is %q, want it uniquified from the title", got)
+	if _, err := Create(filepath.Join(blocker, "orders"), time.Now()); err == nil {
+		t.Error("creating under a file must fail")
 	}
 }

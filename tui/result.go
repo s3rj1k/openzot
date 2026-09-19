@@ -3,10 +3,8 @@ package tui
 import "fmt"
 
 // Outcome is the run's recorded ending: the stop reason and the message the
-// terminal tool carried. For most runs it is display material the caller
-// already watched; for a run whose deliverable IS its recorded outcome - a
-// draft run delivering criteria through the success summary - it is the
-// return value.
+// terminal tool carried. It is display material the caller already watched, and
+// what the end-of-run digest reports.
 type Outcome struct {
 	// Reason is the machine-readable stop reason (see the agent.Reason
 	// constants).

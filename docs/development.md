@@ -29,7 +29,7 @@ make build               # or: go build -o zot ./cmd/zot
 | `internal/llm/`        | the model connection: fantasy over chat-completions, plus error classification |
 | `internal/catalogue/`  | what each model's context window and capabilities are                          |
 | `internal/tokenizer/`  | BPE token counting with embedded vocabularies                                  |
-| `internal/session/`    | JSONL run logs: write, read, list, resume                                      |
+| `internal/session/`    | JSONL run logs: write, read, list, export                                      |
 | `internal/config/`     | layered config (defaults < file < env), XDG paths, env overrides               |
 | `tui/`                 | public Bubble Tea read-only viewer (themeable; embeddable over any `agent` run) |
 | `configs/`             | example configuration                                                          |

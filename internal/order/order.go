@@ -4,8 +4,8 @@
 // zot deliberately takes no prose on the command line. A factory accepts a work
 // order, not a conversation - a durable objective, the acceptance criteria that
 // define "done", and the constraints the work must hold to. The order is a file
-// so it outlives the invocation: it can be edited, committed, re-run, and later
-// judged against.
+// so it outlives the invocation: it can be edited, committed and re-run, and
+// every run of it starts from zero.
 //
 // An order is advisory input - what to do - and may therefore live anywhere,
 // including the repository being worked on. How the result is judged (quality
@@ -14,40 +14,37 @@
 package order
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
 
-// The book's layout. A project's orders and the ledger of what has been run
-// from them live together under one dotted directory at its root, the way every
-// other tool that keeps state in a repository does it: .zot/orders/<slug>.yaml
-// and .zot/records/<slug>/<run>.yaml. Two top-level orders/ and records/
-// directories claimed generic names in the root of somebody else's project,
-// which is not zot's to take.
+// The book's layout. A project's orders live under one dotted directory at its
+// root, the way every other tool that keeps state in a repository does it:
+// .zot/orders/<name>.yaml. A top-level orders/ directory would claim a generic
+// name in the root of somebody else's project, which is not zot's to take.
 //
-// Only the defaults live here. An order may be read from anywhere, and the
-// ledger root is configurable - see Ledger - so this names the convention
-// rather than enforcing it.
+// Only the default lives here. An order may be read from anywhere, so this
+// names the convention rather than enforcing it.
 const (
-	// BookDir is the per-project directory holding both.
+	// BookDir is the per-project directory holding the orders.
 	BookDir = ".zot"
 
-	ordersName  = "orders"
-	recordsName = "records"
+	ordersName = "orders"
 )
 
-// OrdersDir is where new orders for the project rooted at dir are scaffolded.
+// OrdersDir is where new orders for the project rooted at dir are created.
 func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersName) }
-
-// RecordsDir is the default ledger root for the project rooted at dir.
-func RecordsDir(dir string) string { return filepath.Join(dir, BookDir, recordsName) }
 
 // Order is one work order: a single run's brief.
 type Order struct {
@@ -229,159 +226,64 @@ func (o Order) Task() string {
 	return b.String()
 }
 
-// Scaffold writes the order as a new file under dir, creating the directory if
-// needed, and returns its path. Sections the order does not fill are written as
-// commented stubs that invite editing; an empty objective scaffolds the blank
-// form, which will not run until it is filled in. An existing file is never
-// overwritten; the name is uniquified instead, because scaffolding the same
-// objective twice is routine, not an error.
-func Scaffold(dir string, o Order) (string, error) {
-	o.Objective = strings.TrimSpace(o.Objective)
+// blank is the form a new order starts from. The objective is left empty, so
+// the order will not run until it is written.
+const blank = `# zot work order - what to do, and what "done" means.
 
+# An optional short label for this order, shown in the viewer. Without
+# one the file name is used.
+# title:
+
+# The durable goal of the run. The order will not run until this is filled in.
+objective:
+
+# The objective is not met until every one of these holds.
+# acceptance:
+#   - the new behaviour is covered by a test that fails without the change
+#   - the full test suite passes
+
+# Rules that hold for the whole run.
+# constraints:
+#   - do not change public API signatures
+`
+
+// Blank returns the form a new order starts from.
+func Blank() string { return blank }
+
+// Create writes a blank order into dir, creating the directory if needed, and
+// returns its path. The file is named for the moment it was made, in unix
+// seconds, so orders sort in the order they were written and no name has to be
+// invented. A name already taken moves on to the next second rather than
+// overwriting: creating two orders in a second is routine, not an error.
+func Create(dir string, now time.Time) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create order directory: %w", err)
 	}
 
-	path := filepath.Join(dir, nameFor(o)+".yaml")
-	for n := 2; exists(path); n++ {
-		path = filepath.Join(dir, fmt.Sprintf("%s-%d.yaml", nameFor(o), n))
-	}
+	for stamp := now.Unix(); ; stamp++ {
+		path := filepath.Join(dir, strconv.FormatInt(stamp, 10)+".yaml")
 
-	if err := os.WriteFile(path, []byte(template(o)), 0o644); err != nil {
-		return "", fmt.Errorf("write order: %w", err)
-	}
-
-	return path, nil
-}
-
-// nameFor picks the file name for an order: its title when it has one, its
-// objective otherwise.
-//
-// A title is a few deliberate words naming the change; an objective is however
-// the thought arrived, and slugging one gives
-// the-new-command-should-have-an-interactive-versi.yaml - a name that is hard
-// to tell apart from its neighbours in a directory listing, which is where
-// orders are actually browsed. The drafting survey proposes a title precisely
-// so the file can be found by it later.
-func nameFor(o Order) string {
-	if o.Title != "" {
-		return slug(o.Title)
-	}
-
-	return slug(o.Objective)
-}
-
-// template renders the scaffold. The objective is a literal block scalar, which
-// carries any text without quoting rules getting a say; filled lists are
-// rendered by the YAML encoder for the same reason.
-func template(o Order) string {
-	var b strings.Builder
-
-	b.WriteString("# zot work order - what to do, and what \"done\" means.\n\n")
-
-	// The title is optional and the file name stands in for it, so an untitled
-	// order gets a commented stub: discoverable without implying the field is
-	// expected.
-	if o.Title != "" {
-		b.WriteString(encodeScalar("title", o.Title))
-	} else {
-		b.WriteString("# An optional short label for this order, shown in the viewer. Without\n" +
-			"# one the file name is used, with its dashes read as spaces.\n" +
-			"# title:\n")
-	}
-
-	b.WriteString("\n")
-
-	if o.Objective == "" {
-		b.WriteString("# The durable goal of the run. The order will not run until this is filled in.\nobjective:\n")
-	} else {
-		b.WriteString("objective: |-\n")
-
-		for _, line := range strings.Split(o.Objective, "\n") {
-			if line == "" {
-				b.WriteString("\n")
-
-				continue
-			}
-
-			b.WriteString("  " + line + "\n")
-		}
-	}
-
-	b.WriteString("\n# The objective is not met until every one of these holds.\n")
-
-	if len(o.Acceptance) > 0 {
-		b.WriteString(encodeList("acceptance", o.Acceptance))
-	} else {
-		b.WriteString(`# acceptance:
-#   - the new behaviour is covered by a test that fails without the change
-#   - the full test suite passes
-`)
-	}
-
-	b.WriteString("\n# Rules that hold for the whole run.\n")
-
-	if len(o.Constraints) > 0 {
-		b.WriteString(encodeList("constraints", o.Constraints))
-	} else {
-		b.WriteString(`# constraints:
-#   - do not change public API signatures
-`)
-	}
-
-	return b.String()
-}
-
-// encodeScalar renders one named scalar as YAML, so any title text is quoted
-// correctly rather than by hand.
-func encodeScalar(name, value string) string {
-	// a map of plain strings, which Marshal cannot fail on
-	data, _ := yaml.Marshal(map[string]string{name: value})
-
-	return string(data)
-}
-
-// encodeList renders one named list as YAML.
-func encodeList(name string, items []string) string {
-	// a map of plain strings, which Marshal cannot fail on
-	data, _ := yaml.Marshal(map[string][]string{name: items})
-
-	return string(data)
-}
-
-// slug turns an objective into a filename: lower-case words joined by dashes,
-// bounded so a paragraph-long objective still names a manageable file.
-func slug(objective string) string {
-	const maxLen = 48
-
-	var b strings.Builder
-
-	dash := false
-
-	for _, r := range strings.ToLower(objective) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			if dash && b.Len() > 0 {
-				b.WriteByte('-')
-			}
-
-			dash = false
-
-			b.WriteRune(r)
-		default:
-			dash = true
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, fs.ErrExist) {
+			continue
 		}
 
-		if b.Len() >= maxLen {
-			break
+		if err != nil {
+			return "", fmt.Errorf("create order: %w", err)
 		}
-	}
 
-	if b.Len() == 0 {
-		return "order"
-	}
+		_, err = file.WriteString(blank)
 
-	return strings.TrimSuffix(b.String(), "-")
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("write order: %w", err)
+		}
+
+		return path, nil
+	}
 }
 
 // cleanList trims entries and drops empty ones, so a stray "- " in the YAML
@@ -396,10 +298,4 @@ func cleanList(items []string) []string {
 	}
 
 	return out
-}
-
-func exists(path string) bool {
-	_, err := os.Stat(path)
-
-	return err == nil
 }

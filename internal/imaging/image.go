@@ -14,7 +14,7 @@ import (
 // mid-line; a megabyte of base64 on one line defeats both, and the arcade-style
 // caller that caches its session directory between runs would be caching
 // screenshots. So a record keeps the digest and the shape, the recorder writes
-// the bytes to a blob beside the log, and a resumed run rehydrates by digest.
+// the bytes to a blob beside the log, and an export finds them again by digest.
 //
 // Digest is the identity rather than the path: the same screenshot read twice
 // stores once, and a record can never disagree with the bytes it names.

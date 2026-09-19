@@ -70,8 +70,9 @@ type Options struct {
 	// OnConversation, when set, is called at each iteration boundary with the
 	// conversation as it then stands. It exists so a caller can persist the
 	// conversation as the run goes rather than only when it ends - the whole
-	// point of a session log is that a run killed at iteration 500 is resumable,
-	// which it is not if nothing was written down until iteration 500 finished.
+	// point of a session log is that a run killed at iteration 500 still leaves
+	// its record, which it does not if nothing was written down until iteration
+	// 500 finished.
 	//
 	// The slice handed over is the whole conversation as it then stands, not a
 	// delta. The engine only ever appends to it - what is sent on the wire is
@@ -983,10 +984,9 @@ type attachment struct {
 // them.
 //
 // The text is written to stand alone. It is what the model reads if the images
-// are trimmed away, what remains in a log whose blobs were deleted,
-// and what a resumed run falls back to when a blob cannot be found - in every
-// one of those cases the conversation should still say that an image existed
-// and what it was.
+// are trimmed away, and what remains in a log whose blobs were deleted - in
+// every one of those cases the conversation should still say that an image
+// existed and what it was.
 func attachmentMessage(attached []attachment) (Message, bool) {
 	if len(attached) == 0 {
 		return Message{}, false

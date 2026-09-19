@@ -27,7 +27,7 @@ import (
 // takes them off the result and attaches them to a message of its own. Text is
 // what the model reads as the result, and it has to stand alone: it is what
 // remains if the images are dropped from a trimmed history, or if their
-// blobs go missing before a resume.
+// blobs go missing from a log.
 type ToolResult struct {
 	// Text is the tool result the model reads.
 	Text string

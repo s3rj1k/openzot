@@ -49,12 +49,13 @@ providers:
 
 ```bash
 export GATEWAY_KEY="..."
-zot new "add input validation to the signup handler and a test"
+zot new    # opens a blank order in your editor
 zot
 ```
 
-`zot new` writes a small YAML order under `.zot/orders/`; edit its acceptance
-criteria, then a bare `zot` runs everything outstanding. `zot --watch` turns
+`zot new` creates a small YAML order under `.zot/orders/` and opens it in your
+editor; write the objective and the acceptance criteria, then a bare `zot` runs
+the orders in the folder, each from zero. `zot --watch` turns
 the folder into a drop box. Any OpenAI-compatible endpoint works - a hosted
 service, a gateway, a local server - declare it and pick it with `--provider`;
 see [providers](docs/providers.md).
@@ -63,7 +64,7 @@ see [providers](docs/providers.md).
 
 - **Orders, not prompts.** Files that queue, batch and stream. [→ work orders](docs/orders.md)
 - **Nothing in the way.** Your key, your provider, your machine. [→ philosophy](docs/philosophy.md)
-- **Built to run unattended.** Context trimming, loop detection, resumable logs. [→ how it works](docs/how-it-works.md)
+- **Built to run unattended.** Context trimming, loop detection, a full log of every run. [→ how it works](docs/how-it-works.md)
 - **Orchestration is content.** No sub-agent framework; skills decide. [→ sub-agents](docs/how-it-works.md#sub-agents-and-coordination)
 
 Watch it work: [the factories](#factories) run in public, each shipping from

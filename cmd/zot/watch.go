@@ -13,9 +13,8 @@ import (
 )
 
 // watchRunner dispatches watched orders. Each one gets exactly the treatment a
-// batch position does - ledger skip, automatic continuation of an unfinished
-// run, its own session log, its own recorded outcome - and whatever happens to
-// one order, the watch stays up.
+// batch position does - a fresh run with its own session log - and whatever
+// happens to one order, the watch stays up.
 type watchRunner struct {
 	runs oneRun
 }
@@ -23,15 +22,12 @@ type watchRunner struct {
 // newWatchRunner wires a dispatcher to the resolved command line. run is the
 // engine entry point, split out so tests can inject a fake and never reach a
 // provider.
-func newWatchRunner(ctx context.Context, cfg zot.Config, sessions string, ledger order.Ledger, rerun, fresh bool) watchRunner {
+func newWatchRunner(ctx context.Context, cfg zot.Config, sessions string) watchRunner {
 	return watchRunner{
 		runs: oneRun{
 			ctx:      ctx,
 			cfg:      cfg,
 			sessions: sessions,
-			ledger:   ledger,
-			rerun:    rerun,
-			fresh:    fresh,
 			run:      zot.RunWith,
 		},
 	}

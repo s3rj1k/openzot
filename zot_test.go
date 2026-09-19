@@ -728,29 +728,20 @@ func TestRunWithRecordsASession(t *testing.T) {
 	}
 }
 
-// A resumed run carries the earlier conversation, so the agent continues rather
-// than rediscovering what it already knew.
-func TestRunWithResumesAnEarlierSession(t *testing.T) {
+// Every run starts from zero. Running the same task again is a new run with its
+// own log: it opens with the kickoff, and nothing of the first run's
+// conversation is carried into it.
+func TestRunningTheSameTaskAgainStartsFromZero(t *testing.T) {
 	cfg := stubProvider(t)
-
-	earlier := &session.Session{
-		Meta: session.Meta{ID: "20260805-090000", Task: "the original brief"},
-		Messages: []session.Message{
-			{Type: "user", Text: "the original brief"},
-			{Type: "bot", Text: "I got halfway"},
-		},
-	}
 
 	sessions := t.TempDir()
 
-	output, err := quietly(t, func() error {
-		return RunWith(context.Background(), cfg, "the original brief", RunOptions{
-			SessionDir: sessions,
-			Resume:     earlier,
-		})
-	})
-	if err != nil {
-		t.Fatalf("RunWith: %v\n%s", err, output)
+	for i := 0; i < 2; i++ {
+		if output, err := quietly(t, func() error {
+			return RunWith(context.Background(), cfg, "the same brief", RunOptions{SessionDir: sessions})
+		}); err != nil {
+			t.Fatalf("run %d: %v\n%s", i+1, err, output)
+		}
 	}
 
 	entries, err := session.List(sessions)
@@ -758,39 +749,28 @@ func TestRunWithResumesAnEarlierSession(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 
-	if len(entries) != 1 {
-		t.Fatalf("got %d logs, want the resumed run's own", len(entries))
+	if len(entries) != 2 {
+		t.Fatalf("got %d logs, want one per run", len(entries))
 	}
 
-	logged, err := session.Load(entries[0].Path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	counts := map[int]bool{}
+
+	for _, entry := range entries {
+		logged, err := session.Load(entry.Path)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+
+		if len(logged.Messages) == 0 || logged.Messages[0].Text != taskKickoff {
+			t.Errorf("%s does not open with the kickoff: %+v", entry.ID, logged.Messages)
+		}
+
+		counts[len(logged.Messages)] = true
 	}
 
-	if logged.Meta.ResumedFrom != "20260805-090000" {
-		t.Errorf("ResumedFrom = %q", logged.Meta.ResumedFrom)
-	}
-
-	var texts []string
-
-	for _, message := range logged.Messages {
-		texts = append(texts, message.Text)
-	}
-
-	joined := strings.Join(texts, "|")
-
-	// the replayed conversation, then the resume kickoff - not the fresh-start
-	// one, which would tell an agent with half the work done to begin again
-	if !strings.Contains(joined, "I got halfway") {
-		t.Errorf("the resumed conversation is missing the replayed history: %s", joined)
-	}
-
-	if !strings.Contains(joined, resumeKickoff) {
-		t.Errorf("the resumed run must open with the resume kickoff: %s", joined)
-	}
-
-	if strings.Contains(joined, taskKickoff) {
-		t.Errorf("a resumed run opened with the fresh-start kickoff: %s", joined)
+	// a run that inherited the first would be longer than it
+	if len(counts) != 1 {
+		t.Errorf("the two runs differ in length, so one carried the other: %v", counts)
 	}
 }
 

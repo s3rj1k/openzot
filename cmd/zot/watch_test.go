@@ -250,51 +250,30 @@ providers:
 	}
 }
 
-// A watch has one target: it is a place work arrives at, and a resume continues
-// one specific session rather than an open-ended stream of new ones.
-func TestWatchRejectsSeveralTargetsAndResume(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{
-			name: "several targets",
-			args: []string{"--watch", "orders", "extra.yaml"},
-			want: "--watch takes one folder or glob",
-		},
-		{
-			name: "--resume alongside --watch",
-			args: []string{"--watch", "orders", "--resume", "last"},
-			want: "use one, not both",
-		},
+// A watch has one target: it is a place work arrives at, and two places would
+// interleave two streams of runs into one screen.
+func TestWatchRejectsSeveralTargets(t *testing.T) {
+	quietStderr(t)
+
+	t.Setenv("ZOT_SESSION_DIR", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	withArgs(t, "--watch", "orders", "extra.yaml")
+
+	err := run()
+	if err == nil {
+		t.Fatal("this invocation must be refused")
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			quietStderr(t)
-
-			t.Setenv("ZOT_SESSION_DIR", t.TempDir())
-			t.Chdir(t.TempDir())
-
-			withArgs(t, test.args...)
-
-			err := run()
-			if err == nil {
-				t.Fatal("this invocation must be refused")
-			}
-
-			if !strings.Contains(err.Error(), test.want) {
-				t.Errorf("error = %v, want it to say %q", err, test.want)
-			}
-		})
+	if !strings.Contains(err.Error(), "--watch takes one folder or glob") {
+		t.Errorf("error = %v, want it to say a watch takes one target", err)
 	}
 }
 
-// An order picked up by the watcher goes through the same gate a batch position
-// does: one already satisfied by the ledger is skipped without touching the
-// engine, however many times the sweep sees it.
-func TestAWatchedOrderAlreadySatisfiedIsSkipped(t *testing.T) {
+// Nothing remembers that an order ran. One the watcher sees again - the sweep
+// hands the same file over each time it looks - is run again, from zero, exactly
+// as it was the first time.
+func TestAWatchedOrderRunsAgainEveryTimeItIsSeen(t *testing.T) {
 	book := t.TempDir()
 
 	orderPath := filepath.Join(order.OrdersDir(book), "the-work.yaml")
@@ -312,28 +291,19 @@ func TestAWatchedOrderAlreadySatisfiedIsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger := order.Ledger{Root: order.RecordsDir(book)}
-
-	if err := ledger.Record(loaded, "20260822-010101", "settled", time.Now(), order.Evidence{}); err != nil {
-		t.Fatal(err)
-	}
-
 	engine := &fakeEngine{}
 
 	runner := watchRunner{runs: oneRun{
 		ctx:      context.Background(),
 		sessions: t.TempDir(),
-		ledger:   ledger,
 		run:      engine.run,
 	}}
 
 	runner.Dispatch(loaded)
-
-	// the sweep will hand the same file over again; it stays skipped
 	runner.Dispatch(loaded)
 
-	if got := engine.tasks(); len(got) != 0 {
-		t.Errorf("a satisfied order reached the engine %d times (%v), want never", len(got), got)
+	if got := engine.tasks(); len(got) != 2 {
+		t.Errorf("the order reached the engine %d times (%v), want a fresh run each time", len(got), got)
 	}
 }
 

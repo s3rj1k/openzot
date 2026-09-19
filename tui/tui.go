@@ -65,10 +65,9 @@ type Meta struct {
 
 	// QuitOnDone closes the full-screen viewer as soon as the run ends, instead
 	// of holding the final screen until the user quits. For a run of record the
-	// held screen IS the report, so it stays; for a run whose deliverable is
-	// collected by the caller - a draft run - holding the screen blocks the
-	// step that consumes the outcome. The streaming renderers already end with
-	// the run, so this only affects the viewer.
+	// held screen IS the report, so it stays; for an order in the middle of a
+	// batch, holding the screen blocks the orders behind it. The streaming
+	// renderers already end with the run, so this only affects the viewer.
 	QuitOnDone bool
 
 	// MaxIterations, MaxCalls and MaxDuration are the configured run limits, shown
@@ -84,9 +83,8 @@ type Meta struct {
 // errors. The agent runs in the background and communicates with the UI solely
 // through tea messages.
 //
-// Along with any error it returns the run's recorded Outcome, so a caller whose
-// deliverable is the outcome itself - a draft run - gets it without scraping
-// the screen.
+// Along with any error it returns the run's recorded Outcome, so a caller can
+// report how it ended without scraping the screen.
 func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
 	// Set the brand colours before anything renders. An empty Theme falls back to
 	// zot's neutral default (see applyTheme).

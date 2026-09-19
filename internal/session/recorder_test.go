@@ -9,7 +9,7 @@ import (
 
 // The recorder is the seam between the engine and the disk. What matters is
 // that it satisfies the engine's interface, that it never breaks a run, and
-// that what it writes reads back as something a run can resume from.
+// that what it writes reads back as the run it recorded.
 
 func TestRecorderRoundTripsARun(t *testing.T) {
 	dir := t.TempDir()
@@ -60,28 +60,25 @@ func TestRecorderRoundTripsARun(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	messages := session.AgentMessages()
+	messages := session.Messages
 
 	if len(messages) != 2 {
 		t.Fatalf("got %d messages, want 2", len(messages))
 	}
 
-	// the type has to survive as a type, not as a string that happens to match:
-	// a resumed run replays these straight into the engine
-	if messages[0].Type != agent.TypeUser || messages[1].Type != agent.TypeActivity {
+	if messages[0].Type != string(agent.TypeUser) || messages[1].Type != string(agent.TypeActivity) {
 		t.Errorf("message types = %q, %q", messages[0].Type, messages[1].Type)
 	}
 
-	// the whole call has to survive, not just a label: a resumed run replays
-	// these into the engine, which pairs them by id and replays the arguments
-	// to the provider verbatim
+	// the whole call has to survive, not just a label: an export replays these
+	// into a conversation, pairing them by id
 	activity := messages[1].Activity
 
 	if activity == nil {
 		t.Fatal("the tool call was lost")
 	}
 
-	if activity.Kind != agent.ActivityResponse || activity.ID != "call_1" || activity.Name != "shell" {
+	if activity.Kind != string(agent.ActivityResponse) || activity.ID != "call_1" || activity.Name != "shell" {
 		t.Errorf("activity = %+v", activity)
 	}
 
@@ -159,16 +156,6 @@ func TestANilRecorderIsHarmless(t *testing.T) {
 	}
 }
 
-func TestAgentMessagesOfAnEmptySession(t *testing.T) {
-	session := &Session{}
-
-	if got := session.AgentMessages(); len(got) != 0 {
-		t.Errorf("AgentMessages = %+v, want empty", got)
-	}
-}
-
-// A run that dies to a provider error must leave the provider's own words in
-// the log - "the provider failed" answers nothing when the terminal is gone.
 func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	writer, err := Create(t.TempDir(), "20260821-090000", Meta{Task: "x"})
 	if err != nil {

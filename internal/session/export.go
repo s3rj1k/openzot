@@ -23,13 +23,8 @@ import (
 // images a tool produced - it is carried in additive fields a loader that does
 // not know them simply drops.
 type Trajectory struct {
-	// ID is the session this trajectory was exported from - the last of its
-	// chain, which carries the whole conversation.
+	// ID is the session this trajectory was exported from.
 	ID string `json:"id"`
-
-	// Chain lists the sessions behind this one, oldest first and ending in ID:
-	// a run continued across interruptions is one trajectory, not several.
-	Chain []string `json:"chain"`
 
 	Task     string `json:"task"`
 	Model    string `json:"model"`
@@ -48,9 +43,8 @@ type Trajectory struct {
 	Complete  bool `json:"complete"`
 	Truncated bool `json:"truncated,omitempty"`
 
-	// Messages is the conversation as it stood at the end: what a resume would
-	// replay, and every turn that happened - the conversation is only ever
-	// appended to.
+	// Messages is the conversation as it stood at the end, every turn that
+	// happened - the conversation is only ever appended to.
 	Messages []ChatMessage `json:"messages"`
 
 	// Images lists the image files this trajectory refers to, relative to the
@@ -122,12 +116,7 @@ type ExportOptions struct {
 }
 
 // Export renders a session as a trajectory.
-//
-// Chain holds the sessions this one continued, oldest first; it may be empty.
-// Their messages are not needed - a resumed session re-records the history it
-// continues, so the last log carries the whole conversation - but their ids are
-// the provenance, and their events count toward the total.
-func Export(s *Session, chain []*Session, options ExportOptions) (*Trajectory, error) {
+func Export(s *Session, options ExportOptions) (*Trajectory, error) {
 	if s == nil {
 		return nil, fmt.Errorf("session: nothing to export")
 	}
@@ -148,20 +137,6 @@ func Export(s *Session, chain []*Session, options ExportOptions) (*Trajectory, e
 		Truncated: s.Truncated,
 		Events:    map[string]int{},
 	}
-
-	for _, previous := range chain {
-		trajectory.Chain = append(trajectory.Chain, previous.Meta.ID)
-
-		if !previous.Started.IsZero() && (trajectory.Started.IsZero() || previous.Started.Before(trajectory.Started)) {
-			trajectory.Started = previous.Started
-		}
-
-		for _, event := range previous.Events {
-			trajectory.Events[event.Kind]++
-		}
-	}
-
-	trajectory.Chain = append(trajectory.Chain, s.Meta.ID)
 
 	for _, event := range s.Events {
 		trajectory.Events[event.Kind]++

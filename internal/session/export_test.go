@@ -46,17 +46,13 @@ func TestExportFoldsATurnIntoTheChatShape(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	trajectory, err := Export(loaded, nil, ExportOptions{})
+	trajectory, err := Export(loaded, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
 
 	if trajectory.ID != "20260822-100000" || trajectory.Task != "make a game" || trajectory.Model != "m" {
 		t.Errorf("trajectory header = %+v", trajectory)
-	}
-
-	if len(trajectory.Chain) != 1 || trajectory.Chain[0] != trajectory.ID {
-		t.Errorf("chain = %v, want just the session", trajectory.Chain)
 	}
 
 	if !trajectory.Complete || trajectory.Outcome == nil || trajectory.Outcome.Reason != "success" {
@@ -171,7 +167,7 @@ func TestExportCarriesImages(t *testing.T) {
 	}
 
 	// without an image directory: text only
-	plain, err := Export(loaded, nil, ExportOptions{})
+	plain, err := Export(loaded, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -187,7 +183,7 @@ func TestExportCarriesImages(t *testing.T) {
 	// with one: the blob is copied and referenced relative to the export root
 	out := filepath.Join(t.TempDir(), "export")
 
-	withImages, err := Export(loaded, nil, ExportOptions{ImageDir: filepath.Join(out, "images"), RelativeTo: out})
+	withImages, err := Export(loaded, ExportOptions{ImageDir: filepath.Join(out, "images"), RelativeTo: out})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -220,78 +216,6 @@ func TestExportCarriesImages(t *testing.T) {
 	}
 }
 
-// A resume starts a new log that re-records the history it continues, so the
-// last log carries the whole conversation. The export is that one conversation,
-// with the chain's ids as provenance and its events counted across every log.
-func TestExportOfAResumedChainIsOneConversation(t *testing.T) {
-	dir := t.TempDir()
-
-	first, err := Create(dir, "20260822-120000", Meta{Task: "long job"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	must := func(err error) {
-		t.Helper()
-
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	must(first.Message(Message{Type: "user", Text: "go"}))
-	must(first.Message(Message{Type: "bot", Text: "first answer"}))
-	must(first.Event(Event{Kind: "iteration", Iteration: 1}))
-	// no result: the run was cut short here
-	must(first.Close())
-
-	second, err := Create(dir, "20260822-130000", Meta{Task: "long job", ResumedFrom: "20260822-120000"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	// a resume re-records the history it continues, then adds to it
-	must(second.Message(Message{Type: "user", Text: "go"}))
-	must(second.Message(Message{Type: "bot", Text: "first answer"}))
-	must(second.Message(Message{Type: "user", Text: "continue"}))
-	must(second.Message(Message{Type: "bot", Text: "finished"}))
-	must(second.Event(Event{Kind: "iteration", Iteration: 2}))
-	must(second.Result(Result{Reason: "success"}))
-
-	earlier, err := Load(first.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	last, err := Load(second.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	export, err := Export(last, []*Session{earlier}, ExportOptions{})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	if len(export.Chain) != 2 || export.Chain[0] != "20260822-120000" || export.Chain[1] != "20260822-130000" {
-		t.Errorf("chain = %v", export.Chain)
-	}
-
-	if len(export.Messages) != 4 || export.Messages[3].Content != "finished" {
-		t.Errorf("messages = %+v", export.Messages)
-	}
-
-	if export.Events["iteration"] != 2 {
-		t.Errorf("events across the chain = %v", export.Events)
-	}
-
-	if !export.Started.Equal(earlier.Started) {
-		t.Errorf("started = %v, want the chain's first record %v", export.Started, earlier.Started)
-	}
-}
-
-// A structured tool result is rendered as JSON, and a session without a result
-// does not export as complete.
 func TestExportRendersAStructuredToolResult(t *testing.T) {
 	session := &Session{Meta: Meta{ID: "x"}, Messages: []Message{
 		{Type: "activity", Activity: &Activity{
@@ -300,7 +224,7 @@ func TestExportRendersAStructuredToolResult(t *testing.T) {
 		{Type: "activity", Activity: &Activity{Kind: "response", ID: "c1", Name: "shell", Result: map[string]any{"stdout": "a\n"}}},
 	}}
 
-	trajectory, err := Export(session, nil, ExportOptions{})
+	trajectory, err := Export(session, ExportOptions{})
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

@@ -111,11 +111,6 @@ const taskHeading = "\n\n## Your task\n\n"
 // instructions; this only has to get the agent moving.
 const taskKickoff = "Begin working on your task. Start by calling the plan tool to lay out your approach, then carry it through to completion."
 
-// resumeKickoff starts a resumed run. The replayed conversation carries what
-// already happened; this points the agent back at the gap between its plan and
-// the tree, rather than telling it to begin as though nothing had.
-const resumeKickoff = "Continue your task from where the session left off. Reconcile your plan with the current state of the working tree, then carry the task through to completion."
-
 // withNonInteractiveContract guarantees the no-questions contract reaches the
 // model whatever the instructions say. Custom instructions replace the built-in
 // prompt wholesale - that is what an override is for - but they cannot opt a run
@@ -139,17 +134,6 @@ func withTask(instructions, task string) string {
 	}
 
 	return instructions + taskHeading + task
-}
-
-// NewClient resolves the configuration into a provider-backed client, for
-// engine work outside the main run path - the read-only survey that drafts a
-// work order's acceptance criteria, say. A run of record never takes this
-// path: it goes through Run or RunWith, which render, log, and record an
-// outcome.
-func NewClient(cfg Config) (*agent.Client, error) {
-	client, _, err := resolve(cfg, DefaultInstructions)
-
-	return client, err
 }
 
 // Load reads configuration, layering defaults < file. A missing default file is
@@ -223,10 +207,6 @@ type RunOptions struct {
 	// SessionDir is where the run's log is written. Empty disables recording.
 	SessionDir string
 
-	// Resume seeds the conversation from an earlier session, so a run that ran
-	// out of budget or died overnight continues rather than starting again.
-	Resume *session.Session
-
 	// OnSession is called once the log is open, with its path. Used to tell the
 	// operator where the record is before the run takes over the screen.
 	OnSession func(path string)
@@ -258,20 +238,13 @@ func Run(ctx context.Context, cfg Config, task string) error {
 	return RunWith(ctx, cfg, task, RunOptions{})
 }
 
-// RunWith is Run with session recording and resume.
+// RunWith is Run with session recording.
 func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) error {
 	config.ScrubProviderSecrets(cfg)
 
 	client, opts, err := resolve(cfg, DefaultInstructions)
 	if err != nil {
 		return err
-	}
-
-	// A resumed run replays the earlier conversation and then adds the new
-	// instruction, so the agent picks up with everything it already knew rather
-	// than rediscovering it.
-	if options.Resume != nil {
-		opts.Messages = options.Resume.AgentMessages()
 	}
 
 	// The task is the durable objective and goes into the system prompt; the
@@ -283,12 +256,7 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 	// saying to the agent belongs in the order, where it is durable.
 	opts.Instructions = withTask(opts.Instructions, task)
 
-	kickoff := taskKickoff
-	if options.Resume != nil {
-		kickoff = resumeKickoff
-	}
-
-	opts.Messages = append(opts.Messages, agent.Message{Type: agent.TypeUser, Text: kickoff})
+	opts.Text = []string{taskKickoff}
 
 	workdir, _ := os.Getwd()
 
@@ -306,10 +274,6 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 			Provider: cfg.DefaultProvider,
 			Driver:   client.Driver(),
 			Workdir:  workdir,
-		}
-
-		if options.Resume != nil {
-			meta.ResumedFrom = options.Resume.Meta.ID
 		}
 
 		writer, err := session.Start(options.SessionDir, time.Now(), meta)
@@ -339,17 +303,16 @@ func RunWith(ctx context.Context, cfg Config, task string, options RunOptions) e
 
 	outcome, err := tui.Run(ctx, client, meta, opts)
 
-	printDigest(os.Stderr, "zot", sessionID, outcome, summaryRec.Summary)
+	printDigest(os.Stderr, sessionID, outcome, summaryRec.Summary)
 
 	return err
 }
 
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
-// and - when the run was recorded - the session id and the exact command that
-// resumes it. Kept to stderr so it never mixes into a piped deliverable, and
+// and - when the run was recorded - the session id. Kept to stderr so it never mixes into a piped deliverable, and
 // skipped entirely when there is nothing to say (a run that never produced a
 // summary, e.g. a setup failure before the first turn).
-func printDigest(w io.Writer, app, sessionID string, outcome tui.Outcome, summary *agent.Summary) {
+func printDigest(w io.Writer, sessionID string, outcome tui.Outcome, summary *agent.Summary) {
 	if summary == nil {
 		return
 	}
@@ -362,10 +325,6 @@ func printDigest(w io.Writer, app, sessionID string, outcome tui.Outcome, summar
 		InputTokens:  summary.InputTokens,
 		OutputTokens: summary.OutputTokens,
 		Message:      outcome.Message,
-	}
-
-	if sessionID != "" {
-		digest.Resume = app + " --resume " + sessionID
 	}
 
 	fmt.Fprintf(w, "\n%s", tui.RenderDigest(digest))

@@ -107,32 +107,3 @@ func (r *Recorder) RecordResult(summary agent.Summary) error {
 		OutputTokens:  summary.OutputTokens,
 	})
 }
-
-// Messages converts a loaded session back into agent messages, ready to seed a
-// resumed run.
-func (s *Session) AgentMessages() []agent.Message {
-	messages := make([]agent.Message, 0, len(s.Messages))
-
-	for _, message := range s.Messages {
-		entry := agent.Message{Type: agent.MessageType(message.Type), Text: message.Text}
-
-		for _, image := range message.Images {
-			entry.Images = append(entry.Images, s.LoadImage(image))
-		}
-
-		if activity := message.Activity; activity != nil {
-			entry.Activity = &agent.Activity{
-				Kind:      agent.ActivityKind(activity.Kind),
-				ID:        activity.ID,
-				Name:      activity.Name,
-				Arguments: activity.Arguments,
-				Result:    activity.Result,
-				Failure:   activity.Failure,
-			}
-		}
-
-		messages = append(messages, entry)
-	}
-
-	return messages
-}

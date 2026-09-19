@@ -43,8 +43,8 @@ agent, is built on it with its own toolset and skills.
   the tests (its instructions tell it to); zot does not yet independently gate
   the outcome on a check of its own.
 - **Session logs** record every run to disk as it happens, so a run nobody
-  watched is still answerable afterwards - and so it can be picked up again with
-  `--resume` (see [configuration.md](configuration.md#sessions)).
+  watched is still answerable afterwards (see
+  [configuration.md](configuration.md#sessions)).
 
 `zot` itself is a read-only [Bubble Tea](https://github.com/charmbracelet/bubbletea)
 viewer over that run - it renders the event stream into a scrollable log and has

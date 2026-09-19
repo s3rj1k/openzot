@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/openzot/openzot/agent"
 	"github.com/openzot/openzot/internal/imaging"
@@ -157,86 +156,6 @@ func TestRecordedMessageKeepsTheImageOutOfTheLogLine(t *testing.T) {
 	}
 }
 
-func TestResumeRehydratesAnImageFromItsBlob(t *testing.T) {
-	writer, dir := openWriter(t)
-
-	recorder := NewRecorder(writer)
-
-	image := imaging.NewImage([]byte("original bytes"), "image/png", 20, 10)
-	image.Origin = "/tmp/shot.png"
-
-	if err := recorder.RecordMessage(agent.Message{
-		Type:   agent.TypeAttachment,
-		Text:   "Attached: /tmp/shot.png",
-		Images: []agent.Image{image},
-	}); err != nil {
-		t.Fatalf("RecordMessage: %v", err)
-	}
-
-	writer.Close()
-
-	loaded, err := Load(filepath.Join(dir, "20260822-120000.jsonl"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	messages := loaded.AgentMessages()
-
-	if len(messages) != 1 || len(messages[0].Images) != 1 {
-		t.Fatalf("resumed conversation lost the attachment: %+v", messages)
-	}
-
-	restored := messages[0].Images[0]
-
-	if string(restored.Bytes) != "original bytes" {
-		t.Errorf("restored bytes = %q, want the image the run actually sent", restored.Bytes)
-	}
-
-	if !restored.Ready() {
-		t.Error("a rehydrated image must be ready to send again")
-	}
-}
-
-func TestResumeSurvivesABlobThatIsGone(t *testing.T) {
-	writer, dir := openWriter(t)
-
-	recorder := NewRecorder(writer)
-
-	if err := recorder.RecordMessage(agent.Message{
-		Type:   agent.TypeAttachment,
-		Text:   "Attached: /tmp/shot.png (image/png, 20x10)",
-		Images: []agent.Image{imaging.NewImage([]byte("original bytes"), "image/png", 20, 10)},
-	}); err != nil {
-		t.Fatalf("RecordMessage: %v", err)
-	}
-
-	writer.Close()
-
-	// logs get pruned, copied and cached; the run must still resume
-	if err := os.RemoveAll(filepath.Join(dir, "20260822-120000"+BlobSuffix)); err != nil {
-		t.Fatalf("remove blobs: %v", err)
-	}
-
-	loaded, err := Load(filepath.Join(dir, "20260822-120000.jsonl"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	messages := loaded.AgentMessages()
-
-	if len(messages) != 1 {
-		t.Fatalf("got %d messages, want the attachment kept", len(messages))
-	}
-
-	if messages[0].Images[0].Ready() {
-		t.Error("an image with no bytes must not claim to be sendable")
-	}
-
-	if !strings.Contains(messages[0].Text, "/tmp/shot.png") {
-		t.Error("the text must still say what the model was shown")
-	}
-}
-
 func TestLoadImageRefusesBytesThatDoNotMatchTheDigest(t *testing.T) {
 	writer, dir := openWriter(t)
 
@@ -275,26 +194,5 @@ func TestAWriterWithNowhereToPutBlobsKeepsTheImageInline(t *testing.T) {
 
 	if len(stored.Bytes) != 0 {
 		t.Error("the payload must not be carried twice")
-	}
-}
-
-func TestSessionReadFromAReaderHasNoBlobsToLoad(t *testing.T) {
-	// a log parsed from a pipe has no path behind it, so an image cannot be
-	// rehydrated - it must degrade, not panic
-	session, err := Read(strings.NewReader(
-		`{"kind":"message","at":"` + time.Now().UTC().Format(time.RFC3339) +
-			`","message":{"type":"attachment","text":"Attached: shot.png","images":[{"media_type":"image/png","digest":"sha256:abc","source":"blob"}]}}`))
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-
-	messages := session.AgentMessages()
-
-	if len(messages) != 1 || len(messages[0].Images) != 1 {
-		t.Fatalf("the attachment did not survive parsing: %+v", messages)
-	}
-
-	if messages[0].Images[0].Ready() {
-		t.Error("an image with no blob directory behind it cannot be ready")
 	}
 }

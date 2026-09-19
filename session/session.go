@@ -1,8 +1,8 @@
 // Package session is the public face of openzot's session recording, the
-// durable log a run leaves behind so it can be inspected afterwards and resumed.
+// durable log a run leaves behind so it can be inspected afterwards.
 //
 // It re-exports the types from the internal session package, so an embedding
-// application like rook can record and resume runs without reaching into
+// application like rook can record and read runs without reaching into
 // openzot's internals - the same pattern the agent and tui packages already
 // follow.
 package session

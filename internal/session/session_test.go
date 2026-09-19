@@ -166,7 +166,7 @@ func TestBlankLinesAreIgnored(t *testing.T) {
 }
 
 // A record whose payload is missing is skipped rather than appended as an empty
-// message, so a malformed log cannot inject a blank turn into a resumed run.
+// message, so a malformed log cannot inject a blank turn into an export.
 func TestRecordsWithoutPayloadsAreSkipped(t *testing.T) {
 	session, err := Read(strings.NewReader(strings.Join([]string{
 		`{"kind":"meta"}`,
@@ -429,30 +429,6 @@ func TestActivityRoundTrips(t *testing.T) {
 	}
 }
 
-// Resuming has to record where it came from, or a chain of continued runs is
-// impossible to reconstruct afterwards.
-func TestResumedFromIsRecorded(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "second", Meta{Task: "t", ResumedFrom: "first"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	_ = writer.Close()
-
-	session, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if session.Meta.ResumedFrom != "first" {
-		t.Errorf("ResumedFrom = %q", session.Meta.ResumedFrom)
-	}
-}
-
-// Create takes the id it is given, but it still has to be able to make the
-// directory - an unwritable parent is reported rather than silently dropped.
 func TestCreateReportsAnUnusableDirectory(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "a-file")
 

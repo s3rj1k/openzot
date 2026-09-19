@@ -574,7 +574,7 @@ func (r *recordingRecorder) RecordResult(summary Summary) error {
 	return nil
 }
 
-// The recorder is what makes a run inspectable and resumable afterwards, so it
+// The recorder is what makes a run inspectable afterwards, so it
 // has to see the conversation the run actually ended with - not the one it was
 // handed, and not a stream of partial tokens.
 func TestRecorderSeesTheRun(t *testing.T) {
@@ -624,8 +624,8 @@ func TestRecorderSeesTheRun(t *testing.T) {
 		t.Errorf("the first recorded message should be the instruction, got %+v", recorder.messages[0])
 	}
 
-	// what is recorded has to match what the run ended with, or a resume
-	// continues a conversation the agent never had
+	// what is recorded has to match what the run ended with, or the log
+	// describes a conversation the agent never had
 	if len(recorder.messages) != len(exit.Messages) {
 		t.Errorf("recorded %d messages, run ended with %d", len(recorder.messages), len(exit.Messages))
 	}
@@ -655,8 +655,9 @@ func TestRecorderSeesTheRun(t *testing.T) {
 	}
 }
 
-// A resumed run is seeded with an earlier conversation. Those messages have to
-// be recorded once, so the new log stands alone as the full history.
+// The messages a run is seeded with have to be recorded once, so the log stands
+// alone as the full history and a session that dies in its first turn still says
+// what it was asked to do.
 func TestRecorderRecordsSeededMessagesOnce(t *testing.T) {
 	server := sseServer(t,
 		[]string{textFrame("ok"), stopFrame()},
@@ -667,13 +668,8 @@ func TestRecorderRecordsSeededMessagesOnce(t *testing.T) {
 
 	recorder := &recordingRecorder{}
 
-	seed := []Message{
-		{Type: TypeUser, Text: "the original task"},
-		{Type: TypeBot, Text: "an earlier answer"},
-	}
-
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Messages: seed, Text: []string{"carry on"}, Recorder: recorder})
+		ExecuteWithToolsOptions{Text: []string{"the original task", "carry on"}, Recorder: recorder})
 
 	_, exit := collect(t, events, errs)
 
@@ -681,12 +677,12 @@ func TestRecorderRecordsSeededMessagesOnce(t *testing.T) {
 		t.Fatalf("recorded %d messages, want the seed plus the run", len(recorder.messages))
 	}
 
-	if recorder.messages[0].Text != "the original task" || recorder.messages[1].Text != "an earlier answer" {
+	if recorder.messages[0].Text != "the original task" || recorder.messages[1].Text != "carry on" {
 		t.Errorf("the seeded conversation must be recorded first: %+v", recorder.messages[:2])
 	}
 
-	// no duplicates: a run whose log replayed its own seed would grow the
-	// conversation on every resume until it fell out of the context window
+	// no duplicates: a log that replayed its own seed would grow the
+	// conversation with every message it was told about
 	counts := map[string]int{}
 
 	for _, message := range recorder.messages {
@@ -768,10 +764,10 @@ func (r *lockedRecorder) snapshot() []Message {
 }
 
 // The session log promises that "a crashed run still leaves everything up to the
-// crash" and that replaying the messages is enough to continue. The conversation
+// crash". The conversation
 // was written only once the run had ended, so a run killed at iteration 500 left
-// a log holding the seed and nothing else, and --resume started the task again
-// from scratch - discarding hours of work in exactly the case the log exists for.
+// a log holding the seed and nothing else - losing the record of hours of work in
+// exactly the case the log exists for.
 func TestTheConversationIsRecordedAsTheRunGoes(t *testing.T) {
 	recorder := &lockedRecorder{}
 

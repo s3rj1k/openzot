@@ -27,11 +27,10 @@ written in the config or references a variable you export (`api_key:
 | Flag                                          | Effect                                                             |
 | --------------------------------------------- | ------------------------------------------------------------------ |
 | `--provider` / `--model`                       | which provider and model to run against                           |
-| `--dir`                                       | the directory the agent reads, writes and runs commands in; also accepted by `zot new`, which scaffolds the order under `<dir>/.zot/orders` (and drafts there with `--draft`) |
+| `--dir`                                       | the directory the agent reads, writes and runs commands in; also accepted by `zot new`, which creates the order under `<dir>/.zot/orders` |
 | `--max-iterations`                            | cap the agentic rounds; the default is deliberately large          |
-| `--resume` / `--session-dir` / `--no-session` | see [Sessions](#sessions)                                          |
+| `--session-dir` / `--no-session`              | see [Sessions](#sessions)                                          |
 | `--watch`                                     | keep running and watch a folder or glob for new orders - see [Watch mode](#watch-mode) |
-| `--records-dir`                               | where run records are written; defaults to `<dir>/.zot/records` - see [The book](#the-book) |
 | `--orders-dir`                                | where this project's orders live: what a bare `zot` runs, what a bare `--watch` watches, and where `zot new` files one. Defaults to `<dir>/.zot/orders` |
 | `--diff`                                      | show a syntax-highlighted diff under each write                    |
 | `--plain`                                     | stream unstyled output; auto-enabled when stdout is not a terminal |
@@ -85,71 +84,52 @@ report yet (`tps` before the first tokens, `task` before the agent has planned,
 
 ## The book
 
-A bare `zot`, run in a project, carries out that project's outstanding work:
+A bare `zot`, run in a project, runs that project's orders:
 
 ```bash
-zot new "add rate limiting to the API, with tests"
-# edit the acceptance criteria, then:
+zot new    # write an order in your editor
 zot
 ```
 
 That is the whole loop. Everything below is what it means.
 
-A project's work orders and the record of what has been run from them live
-together under one directory at its root:
+A project's work orders live under one directory at its root:
 
 ```
 <project>/.zot/
-    orders/<slug>.yaml            written by zot new
-    records/<slug>/<run-id>.yaml  written by a successful run
+    orders/<timestamp>.yaml       written by zot new
 ```
 
 One dotted directory, the way every other tool that keeps state in a repository
-does it. Two top-level `orders/` and `records/` folders claimed generic names in
-the root of somebody else's project, which is not zot's to take.
+does it. A top-level `orders/` folder would claim a generic name in the root of
+somebody else's project, which is not zot's to take.
 
-The two halves are not symmetric, and only one of them is a location zot
-chooses:
-
-- **Orders are read from anywhere.** An order is advisory input - what to do -
-  and may live wherever it is useful: in the repository being worked on, in a
-  shared folder of briefs, in a file some other process wrote. `zot <any
-  path>/order.yaml` runs exactly that, no book required. `.zot/orders/` is
-  where zot looks when you name nothing, and where `zot new` files one when you
-  have not said otherwise; `--orders-dir` moves both (`zot new --orders-dir
-  ~/briefs`), while `--dir` still says which project the order is *for* (and
-  which tree a `--draft` survey reads).
-- **Records are written where you point them.** `--records-dir` sets the ledger
-  root, and it defaults to `<dir>/.zot/records` - the book of the project being
-  worked on, not a directory beside whatever order file was named. The receipt
-  belongs with the work, not with the brief.
+Orders are read from anywhere. An order is advisory input - what to do - and may
+live wherever it is useful: in the repository being worked on, in a shared
+folder of briefs, in a file some other process wrote. `zot <any
+path>/order.yaml` runs exactly that, no book required. `.zot/orders/` is where
+zot looks when you name nothing, and where `zot new` files one when you have not
+said otherwise; `--orders-dir` moves both (`zot new --orders-dir ~/briefs`),
+while `--dir` still says which project the order is *for*.
 
 ```bash
-# file the brief in a shared folder, but draft it against this project
-zot new --draft --dir ~/work/api --orders-dir ~/briefs "add rate limiting"
+# file the brief in a shared folder of briefs
+zot new --orders-dir ~/briefs
 
-# the default: the brief is somebody else's, the receipt is this project's
-zot --dir ~/work/api ~/briefs/add-rate-limiting.yaml
-
-# one ledger for a fleet of projects
-zot --records-dir ~/zot-ledger ~/briefs/*.yaml
+# run it against a project
+zot --dir ~/work/api ~/briefs/1758300000.yaml
 ```
 
 An order may declare an optional `title:` - a short label for people, shown in
 the viewer instead of the order text. Without one the file name is used, its
 dashes read as spaces (`fix-the-flaky-test.yaml` becomes "Fix the flaky test"),
-so most orders need not set it. The title never reaches the agent: the objective
-is the contract, and a title is only how you recognise it on screen. `zot new
---draft` asks the model to propose one.
+so an order named for its moment shows its timestamp until you give it a title.
+The title never reaches the agent: the objective is the contract, and a title is
+only how you recognise it on screen.
 
-Doneness is derived from that ledger and never stored on the order: a settled
-record of the order's exact content means the order is skipped next time, and
-editing the order changes its hash and re-queues it. That is what makes a bare
-`zot` re-runnable - it runs the whole book every time and the ledger decides
-what is still outstanding, so there is no queue to drain and nothing to clean
-up. Because the ledger follows the project, the same order run against two
-different projects is two separate pieces of work with two separate histories -
-which is what it is.
+Nothing is remembered between runs. Every order runs from zero each time it is
+run, so a bare `zot` runs the whole book every time - an order you have
+finished with should leave the folder.
 
 ## Watch mode
 
@@ -174,11 +154,10 @@ zot --watch "~/inbox/*.yaml"
 zot --dir ~/work/api --watch
 ```
 
-Each order runs exactly as it would in a batch (`zot .zot/orders/*.yaml`): its
-own run, its own session log, its own recorded outcome in the ledger - one at a
-time, in filename order. The ledger applies, so an order that
-already ran is skipped, and editing an order re-queues it. An order whose last
-run did not conclude is continued automatically.
+Each order runs exactly as it would in a batch (`zot .zot/orders/*.yaml`): a
+fresh run with its own session log - one at a time, in filename order. Nothing
+remembers that an order ran, so one already in the folder runs again when the
+watch starts.
 
 A failed order is reported and the watch goes on - one bad afternoon must not
 end the factory - but nothing retries it behind your back: fix or edit the
@@ -203,14 +182,10 @@ zot sessions
 # read one
 cat ~/.local/state/zot/sessions/20260805-155859.jsonl | jq .
 
-# pick up where it stopped - the agent keeps everything it already knew, and
-# continues the order the session was started with
-zot --resume last
 ```
 
-`--resume` takes a session id, a path, or `last`. A resumed run writes its own
-log and records which session it continued, so a chain of continued runs stays
-reconstructable.
+A log is a record, not a save point: nothing reads it back into a run. Running
+the same order again starts from zero and writes a log of its own.
 
 ### Exporting sessions
 
@@ -227,13 +202,11 @@ zot sessions export
 # named sessions into a directory: <id>.jsonl each, screenshots under images/
 zot sessions export 20260805-155859 20260805-171012 --out ./trajectories
 
-# every finished chain in the session directory
+# every session in the session directory
 zot sessions export --all --out ./trajectories
 ```
 
-A session that continued earlier ones is exported as **one** trajectory - the
-last log carries the whole conversation - and its `chain` lists the sessions
-behind it. `messages` is the whole conversation - it is only ever appended to,
+`messages` is the whole conversation - it is only ever appended to,
 so the end state holds every turn that happened. Each message keeps zot's own `type` beside its `role`, and an assistant turn
 carries the model's `reasoning` when the provider surfaced it. Images the model
 was shown are copied next to the export and referenced by relative path; on

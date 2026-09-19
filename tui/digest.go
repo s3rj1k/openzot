@@ -30,20 +30,15 @@ func DigestStatus(reason string, code int) string {
 // It exists because the two places a run's ending shows up are both poor
 // records: the full-screen viewer runs in the alternate screen and takes its
 // stats with it when it restores the terminal, and the streaming renderer ends
-// on a prose line with no numbers at all. Neither tells an operator the one
-// thing they most need afterwards - the session to resume. The digest is a
-// small, fixed block that survives on the main screen and carries it.
+// on a prose line with no numbers at all. Neither tells an operator what the run
+// spent or where its record is. The digest is a small, fixed block that survives
+// on the main screen and carries both.
 type Digest struct {
 	// Status is the human-readable ending: "done", "failed", "cancelled".
 	Status string
 
 	// Session is the id of the recorded session, empty when none was written.
 	Session string
-
-	// Resume is the exact command that continues this session - "rook --resume
-	// <id>" - so the operator copies a line rather than assembling one. Empty
-	// when the run is not resumable (no session recorded).
-	Resume string
 
 	// Iterations and Calls are the run's agentic rounds and total tool calls.
 	Iterations int
@@ -68,7 +63,7 @@ type Digest struct {
 // ANSI: a block that survives being piped through `grep` or `awk` unharmed.
 //
 // Empty fields are omitted rather than shown blank, so a run with no session
-// simply has no session/resume rows.
+// simply has no session row.
 func RenderDigest(d Digest) string {
 	type row struct {
 		key   string
@@ -83,10 +78,6 @@ func RenderDigest(d Digest) string {
 
 	if d.Session != "" {
 		rows = append(rows, row{"session", d.Session})
-	}
-
-	if d.Resume != "" {
-		rows = append(rows, row{"resume", d.Resume})
 	}
 
 	rows = append(rows,
