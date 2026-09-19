@@ -14,7 +14,6 @@ import (
 	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/thread"
-	"github.com/openzot/openzot/internal/tokenizer"
 )
 
 // ToolHandler executes a tool call.
@@ -200,7 +199,6 @@ type Engine struct {
 	retryBackoff  time.Duration
 	checkpoints   []int
 
-	model       string
 	inputBudget int
 
 	// toolTokens caches the cost of the tool schemas, which are identical on
@@ -223,7 +221,7 @@ func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 		return 0
 	}
 
-	e.toolTokens = tokenizer.Count(e.model, string(encoded))
+	e.toolTokens = estimateTokens(string(encoded))
 
 	return e.toolTokens
 }
@@ -261,7 +259,6 @@ func New(options Options) (*Engine, error) {
 
 	return &Engine{
 		options:       options,
-		model:         model,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value
@@ -1041,7 +1038,7 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy
 
 	// reserve room for the system prompt and the tool schemas, both of which are
 	// sent on every request and neither of which the thread builder sees
-	reserved := tokenizer.Count(e.model, instructions) + e.toolSchemaTokens(tools)
+	reserved := estimateTokens(instructions) + e.toolSchemaTokens(tools)
 
 	budget := e.inputBudget - reserved
 
@@ -1072,7 +1069,7 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy
 			}
 
 			return thread.Usage{
-				Tokens: float64(tokenizer.CountMessage(e.model, text)),
+				Tokens: float64(estimateMessageTokens(text)),
 			}, nil
 		},
 	})
