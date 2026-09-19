@@ -59,10 +59,9 @@ zot
 
 `zot new` creates a small YAML order under `.zot/orders/` and opens it in your
 editor; write the objective and the acceptance criteria, then a bare `zot` runs
-the orders in the folder, each from zero. `zot --watch` turns
-the folder into a drop box. Any OpenAI-compatible endpoint works - a hosted
-service, a gateway, a local server - declare it under `providers:` and pick it
-with `--provider`.
+the orders in the folder, each from zero. Any OpenAI-compatible endpoint works -
+a hosted service, a gateway, a local server - declare it under `providers:` and
+pick it with `--provider`.
 
 Every run is logged beside its order as `.zot/orders/<name>.jsonl`: one JSON
 line per step, including the model's reasoning, appended as the run goes. Running

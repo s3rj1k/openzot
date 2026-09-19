@@ -78,7 +78,6 @@ func run() error {
 	plainFlag := pflag.Bool("plain", false, "stream unstyled output instead of the full-screen UI (auto-enabled when not a TTY)")
 	colorFlag := pflag.String("color", "", "colorize non-interactive output: auto, always, or never")
 	ordersFlag := pflag.String("orders-dir", "", "where this project's orders live, run by a bare `zot` (default: <dir>/"+order.BookDir+"/orders)")
-	watchFlag := pflag.Bool("watch", false, "stay up and run work orders as they arrive, instead of running once and exiting: bare --watch watches this project's orders directory, or name a folder or glob to watch instead")
 	pflag.Usage = usage
 	pflag.Parse()
 
@@ -92,9 +91,8 @@ func run() error {
 	}
 
 	// The other half of the book: where this project's own orders live. It is
-	// what a bare `zot` runs and what a bare `--watch` watches, so it is
-	// resolved here too - before the chdir, because a relative --orders-dir
-	// means what was typed.
+	// what a bare `zot` runs, so it is resolved here too - before the chdir,
+	// because a relative --orders-dir means what was typed.
 	ordersRoot := *ordersFlag
 	if ordersRoot == "" {
 		ordersRoot = order.OrdersDir(*dir)
@@ -104,46 +102,13 @@ func run() error {
 		ordersRoot = abs
 	}
 
-	// The watch target is resolved like an order path: against the invoking
-	// directory, while it is still current, so `zot --dir proj --watch orders`
-	// watches the folder that was named rather than one that happens to exist
-	// inside proj. Orders themselves are loaded the same way, in the other half.
-	var (
-		watchTarget string
-		orders      []order.Order
-	)
-
-	if *watchFlag {
-		// A watch has one target, not a batch of them: it is a place work
-		// arrives at, and two places would interleave two streams of runs into
-		// one screen. Bare --watch watches this project's own orders.
-		if len(pflag.Args()) > 1 {
-			return fmt.Errorf(
-				"--watch takes one folder or glob to watch; %q names several",
-				strings.Join(pflag.Args(), " "))
-		}
-
-		watchTarget = ordersRoot
-
-		if len(pflag.Args()) == 1 {
-			target, err := filepath.Abs(pflag.Args()[0])
-			if err != nil {
-				return fmt.Errorf("resolve --watch %q: %w", pflag.Args()[0], err)
-			}
-
-			watchTarget = target
-		}
-	} else {
-		// Orders are loaded - all of them, so a bad batch fails before any run
-		// starts - while the original working directory is still current,
-		// because their paths mean what the user typed, not what they happen to
-		// mean after the chdir below.
-		loaded, err := resolveOrders(pflag.Args(), ordersRoot)
-		if err != nil {
-			return err
-		}
-
-		orders = loaded
+	// Orders are loaded - all of them, so a bad batch fails before any run
+	// starts - while the original working directory is still current, because
+	// their paths mean what the user typed, not what they happen to mean after
+	// the chdir below.
+	orders, err := resolveOrders(pflag.Args(), ordersRoot)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := zot.Load(*configPath)
@@ -198,16 +163,6 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Watch mode: stay up and run every order the target yields, as it arrives.
-	// It shares the batch's per-order treatment (oneRun), so an order runs the
-	// same whether it was named on the command line or dropped into the folder
-	// after startup - and one failed order is one order's story, not the
-	// watch's.
-
-	if *watchFlag {
-		return startWatch(ctx, watchTarget, newWatchRunner(ctx, cfg, logs))
-	}
-
 	// Each order is its own run: a fresh conversation and its own session log,
 	// whatever ran before. The batch stops at the first order that does not
 	// end in success, because later orders usually assume the earlier ones
@@ -243,9 +198,8 @@ func run() error {
 	return nil
 }
 
-// oneRun is everything a single order's run needs. The batch loop and watch
-// mode both go through execute, so an order runs identically however it was
-// named: a fresh conversation, recorded in the task's session log.
+// oneRun is everything a single order's run needs: a fresh conversation,
+// recorded in the task's session log.
 type oneRun struct {
 	ctx context.Context
 	cfg zot.Config
@@ -258,12 +212,6 @@ type oneRun struct {
 	run func(context.Context, zot.Config, string, zot.RunOptions) error
 }
 
-// execute runs one order as its own run. Every run starts from zero: nothing of
-// an earlier run of the same order is read, continued or skipped.
-func (r oneRun) execute(o order.Order, quitOnDone bool) error {
-	return r.executeAt(o, quitOnDone, 0, 0)
-}
-
 // sessionFile names an order's log: the order's own name with .jsonl for its
 // extension, so the record of a task is the file beside the task. One file per
 // task, whatever the number of runs - each appends to it.
@@ -273,8 +221,10 @@ func sessionFile(orderPath string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base)) + ".jsonl"
 }
 
-// executeAt is execute with the order's position in a batch, which the viewer
-// shows as "order 2/5" so a long queue reports how much of itself is left.
+// executeAt runs one order as its own run. Every run starts from zero: nothing
+// of an earlier run of the same order is read, continued or skipped. The
+// order's position in a batch is shown by the viewer as "order 2/5", so a long
+// queue reports how much of itself is left.
 func (r oneRun) executeAt(o order.Order, quitOnDone bool, index, size int) error {
 	options := zot.RunOptions{
 		SessionPath: filepath.Join(r.logs, sessionFile(o.Path)),
@@ -287,7 +237,7 @@ func (r oneRun) executeAt(o order.Order, quitOnDone bool, index, size int) error
 
 		// intermediate orders auto-advance: a held final screen would stall the
 		// rest of the batch until a keypress nobody unattended will make. The
-		// last order holds for review as usual - watch mode holds none.
+		// last order holds for review as usual.
 		QuitOnDone: quitOnDone,
 	}
 
@@ -376,7 +326,7 @@ func listOrdersRoot(ordersRoot string) ([]string, error) {
 //
 // --dir exists because the order is written for a project the invoker may not
 // be standing in. --orders-dir files the order somewhere else again - a shared
-// folder of briefs, a drop box a watcher is pointed at.
+// folder of briefs.
 func newOrder(args []string, out io.Writer) error {
 	set := pflag.NewFlagSet("new", pflag.ContinueOnError)
 
@@ -559,7 +509,6 @@ Usage:
   zot [flags] [<order.yaml> ...]
   zot new [--dir <dir>] [--orders-dir <dir>]
   zot config
-  zot --watch [<folder-or-glob>]
 
 Examples:
   zot new
@@ -585,13 +534,6 @@ it is a record for you, with cat and jq.
 
 A batch runs each order as its own run, in sequence, and stops at the first
 order that does not end in success.
-
-Watch mode keeps zot up and runs work as it arrives instead of exiting when the
-batch ends. Bare zot --watch watches the orders directory; name a folder
-(zot --watch ~/inbox) or a glob (zot --watch "~/inbox/*.yaml") to watch that
-instead. Every *.yaml that shows up - including orders already sitting there -
-runs as its own run, one at a time; a failed order is reported and the watch
-goes on; Ctrl-C stops watching.
 
 Commands:
   new        create a blank work order under ./.zot/orders - under

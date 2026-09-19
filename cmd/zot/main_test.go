@@ -145,8 +145,8 @@ func TestNewOrderTakesNoProse(t *testing.T) {
 }
 
 // Where an order is filed and which project it is about are different
-// questions: --orders-dir files it in a shared folder of briefs (or a drop box
-// a watcher is pointed at) while --dir still says which project it is for.
+// questions: --orders-dir files it in a shared folder of briefs while --dir
+// still says which project it is for.
 func TestNewOrderWithOrdersDirFilesItThere(t *testing.T) {
 	invocation := t.TempDir()
 	project := t.TempDir()
@@ -1317,7 +1317,7 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 				},
 			}
 
-			if err := runs.execute(loaded, true); err != nil {
+			if err := runs.executeAt(loaded, true, 0, 0); err != nil {
 				t.Fatalf("execute: %v", err)
 			}
 
@@ -1384,7 +1384,7 @@ func TestABatchRunKnowsItsPosition(t *testing.T) {
 		return nil
 	}
 
-	if err := runs.execute(orders[0], false); err != nil {
+	if err := runs.executeAt(orders[0], false, 0, 0); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 
