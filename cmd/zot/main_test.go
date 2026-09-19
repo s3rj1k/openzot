@@ -1843,6 +1843,25 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	}
 }
 
+// shell acts on the machine, so a call the model did not finish writing is
+// refused, never mended into one that runs.
+func TestResolveNeverRepairsAShellCall(t *testing.T) {
+	cfg := testDefaults()
+	cfg.DefaultProvider = "p"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"p": {BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")},
+	}
+
+	_, opts, err := resolve(cfg, defaultInstructions)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if len(opts.Unrepaired) != 1 || opts.Unrepaired[0] != agent.ShellTool {
+		t.Errorf("Unrepaired = %v, want just the shell tool", opts.Unrepaired)
+	}
+}
+
 // The window is the operator's to state and zot keeps no table of what models
 // can take, so a model with none cannot run. Load-time validation says so first;
 // resolve holds the same rule for a config that skipped it.

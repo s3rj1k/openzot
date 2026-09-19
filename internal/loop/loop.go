@@ -29,6 +29,14 @@ type Options struct {
 	// Tools the model may call.
 	Tools []fantasy.AgentTool
 
+	// Unrepaired names the tools whose calls are never repaired. fantasy mends a
+	// call whose input does not parse - a missing brace, an unterminated string,
+	// a stray comma - so a small slip costs the model no turn. For a tool that
+	// acts on the machine that is the wrong trade: the mended input is one the
+	// model never finished writing. A call to one of these goes back to the model
+	// as it stands, with the reason.
+	Unrepaired []string
+
 	// OnConversation, when set, is called at each iteration boundary, and again
 	// just before each tool handler runs, with the conversation as it then
 	// stands. It exists so a caller can persist the conversation as the run goes

@@ -13,6 +13,9 @@ import (
 // caller does not set its own. See toolSet.truncate for why a bound exists.
 const DefaultMaxToolOutput = 100_000
 
+// ShellTool is the name of the tool that acts on the machine.
+const ShellTool = "shell"
+
 // DefaultTools returns the standard tool set, with the default output ceiling
 // and no skills.
 //
@@ -63,7 +66,7 @@ type shellInput struct {
 }
 
 func (s toolSet) shellTool() fantasy.AgentTool {
-	return fantasy.NewAgentTool("shell",
+	return fantasy.NewAgentTool(ShellTool,
 		"Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
 		func(ctx context.Context, in shellInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if in.Command == "" {

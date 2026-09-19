@@ -860,8 +860,13 @@ func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, agent
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
 	opts := agent.ExecuteWithToolsOptions{
-		Instructions:     instructions,
-		Tools:            agent.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
+		Instructions: instructions,
+		Tools:        agent.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
+
+		// shell acts on the machine, so a command the model did not finish
+		// writing is refused rather than repaired into one that runs
+		Unrepaired: []string{agent.ShellTool},
+
 		MaxIterations:    maxIterations,
 		MaxSettles:       cfg.Agent.MaxSettles,
 		MaxCalls:         cfg.Agent.MaxCalls,

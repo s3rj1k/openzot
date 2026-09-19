@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"charm.land/fantasy"
+	"charm.land/fantasy/jsonrepair"
 
 	"github.com/openzot/openzot/internal/thread"
 )
@@ -113,6 +115,25 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 	)
 }
 
+// repairToolCall is fantasy's own repair - mend the JSON - except for the tools
+// the engine was told never to repair, whose calls are refused as they stand.
+func (e *Engine) repairToolCall(_ context.Context, options fantasy.ToolCallRepairOptions) (*fantasy.ToolCallContent, error) {
+	call := options.OriginalToolCall
+
+	if slices.Contains(e.options.Unrepaired, call.ToolName) {
+		return nil, options.ValidationError
+	}
+
+	repaired, err := jsonrepair.RepairJSON(call.Input)
+	if err != nil || repaired == call.Input {
+		return nil, options.ValidationError
+	}
+
+	call.Input = repaired
+
+	return &call, nil
+}
+
 // runStep performs one model call and runs the tools it asks for, streaming its
 // output through emit and watching for a runaway.
 func (e *Engine) runStep(
@@ -139,6 +160,10 @@ func (e *Engine) runStep(
 
 		// one step and no more: whether to go round again is the engine's call
 		StopWhen: []fantasy.StopCondition{func([]fantasy.StepResult) bool { return true }},
+
+		// set on the call, not on the agent: Agent.Stream reads the repair function
+		// from the call alone
+		RepairToolCall: e.repairToolCall,
 
 		OnTextDelta:      state.onTextDelta,
 		OnReasoningDelta: state.onReasoningDelta,

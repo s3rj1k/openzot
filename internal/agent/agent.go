@@ -215,6 +215,11 @@ type ExecuteWithToolsOptions struct {
 	// Tools the model may call.
 	Tools []fantasy.AgentTool
 
+	// Unrepaired names the tools whose calls are never repaired: an input that
+	// does not read as it stands goes back to the model instead. See
+	// loop.Options.Unrepaired.
+	Unrepaired []string
+
 	// Recorder, when set, is handed every message and event as the run goes.
 	//
 	// The engine does not know what a session log is; it hands over what
@@ -341,6 +346,7 @@ func ExecuteWithTools(
 			Instructions:     options.Instructions,
 			Messages:         toLoopMessages(options),
 			Tools:            options.Tools,
+			Unrepaired:       options.Unrepaired,
 			MaxIterations:    options.MaxIterations,
 			MaxCalls:         options.MaxCalls,
 			MaxContinuations: options.MaxContinuations,

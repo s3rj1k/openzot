@@ -181,3 +181,42 @@ func TestACallThatNeverReachedATool(t *testing.T) {
 		t.Error("the refusal must be written down as a failure")
 	}
 }
+
+// A tool the engine was told never to repair is given no input the model did not
+// finish writing: a command cut off mid-string goes back to the model, and does
+// not run. The same slip in an ordinary tool is mended and the tool runs.
+func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
+	unfinished := `{"value": "rm -rf build`
+
+	for _, test := range []struct {
+		name       string
+		unrepaired []string
+		wantRan    int
+	}{
+		{"a listed tool is refused", []string{"echo"}, 0},
+		{"an unlisted tool is repaired and run", nil, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ran := 0
+
+			result := run(t, Options{ContextWindow: testWindow,
+				Client: stub(t,
+					[]string{toolCalls("tool_calls", [3]string{"c1", "echo", unfinished})},
+					[]string{text("done"), stop()},
+				),
+				Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
+				Unrepaired:    test.unrepaired,
+				Messages:      []Message{{Type: TypeUser, Text: "go"}},
+				MaxIterations: 5,
+			})
+
+			if ran != test.wantRan {
+				t.Errorf("the tool ran %d times, want %d", ran, test.wantRan)
+			}
+
+			if refused := mentionsAFailure(result.Messages); refused != (test.wantRan == 0) {
+				t.Errorf("a failure was recorded = %v, want %v", refused, test.wantRan == 0)
+			}
+		})
+	}
+}
