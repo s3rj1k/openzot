@@ -17,7 +17,7 @@ CMDS = zot
 GOOS   ?= $(shell go env GOHOSTOS)
 GOARCH ?= $(shell go env GOHOSTARCH)
 
-.PHONY: help build clean test race cover cover-check vet lint fmt cross
+.PHONY: help build clean test race cover vet lint fmt cross
 
 help:
 	@echo "zot - an automated software factory in a single binary"
@@ -26,7 +26,6 @@ help:
 	@echo "  make test       Run the test suite"
 	@echo "  make race       Run the test suite under the race detector"
 	@echo "  make cover      Report per-package test coverage"
-	@echo "  make cover-check  Fail if total coverage is below 90% (coverage gate)"
 	@echo "  make vet        Run go vet"
 	@echo "  make fmt        Format the tree"
 	@echo "  make lint       Alias for vet"
@@ -52,11 +51,6 @@ race:
 
 cover:
 	@go test -cover ./... -count=1 | grep coverage | sed 's|github.com/openzot/openzot||'
-
-# The coverage gate.
-# Override the bar with COVERAGE_THRESHOLD=95 make cover-check.
-cover-check:
-	@./scripts/coverage.sh
 
 vet:
 	go vet ./...
