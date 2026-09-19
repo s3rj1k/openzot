@@ -42,7 +42,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{config: resolved, model: model}, nil
+	return &Client{config: resolved, model: toolCallsModel{model}}, nil
 }
 
 // Config returns the resolved configuration.
@@ -50,23 +50,41 @@ func (c *Client) Config() ClientConfig {
 	return c.config
 }
 
-// Stream runs one model call. A failure to start it arrives as an error part,
-// the same way a failure mid-stream does, so a caller has one place to look.
-func (c *Client) Stream(ctx context.Context, call fantasy.Call) fantasy.StreamResponse {
-	return func(yield func(fantasy.StreamPart) bool) {
-		stream, err := c.model.Stream(ctx, call)
-		if err != nil {
-			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
+// toolCallsModel makes a turn that asks for tools a tool turn, whatever the
+// provider called its ending.
+//
+// fantasy runs the tools of a turn only when it finished as "tool_calls", but
+// endpoints in the wild finish a turn that carries tool calls as "stop", or as
+// something unrecognised. The calls are what the model asked for, and they are
+// run; only a turn cut short - by length, a content filter or an error - has
+// calls that cannot be trusted, and those stay as fantasy reports them.
+type toolCallsModel struct {
+	fantasy.LanguageModel
+}
 
-			return
-		}
+func (m toolCallsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+	stream, err := m.LanguageModel.Stream(ctx, call)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(yield func(fantasy.StreamPart) bool) {
+		asked := false
 
 		for part := range stream {
+			switch {
+			case part.Type == fantasy.StreamPartTypeToolCall:
+				asked = true
+			case part.Type == fantasy.StreamPartTypeFinish && asked &&
+				(part.FinishReason == fantasy.FinishReasonStop || part.FinishReason == fantasy.FinishReasonUnknown):
+				part.FinishReason = fantasy.FinishReasonToolCalls
+			}
+
 			if !yield(part) {
 				return
 			}
 		}
-	}
+	}, nil
 }
 
 // streamUsage reads a chunk's token counts. fantasy ignores a usage block that

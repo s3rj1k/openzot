@@ -423,7 +423,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 	var reported bool
 
 	for _, message := range result.Messages {
-		if strings.Contains(message.Text, "no such tool") {
+		if strings.Contains(message.Text, "tool not found") {
 			reported = true
 		}
 	}
@@ -742,15 +742,17 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		t.Fatalf("buildRequest: %v", err)
 	}
 
-	if request.Prompt[0].Role != fantasy.MessageRoleSystem {
-		t.Fatalf("first message = %q, want the system prompt", request.Prompt[0].Role)
+	for _, message := range request.messages {
+		if message.Role == fantasy.MessageRoleSystem {
+			t.Fatal("the system prompt travels with the agent, not in the conversation")
+		}
 	}
 
 	var hasUser bool
 
 	var kept int
 
-	for _, message := range request.Prompt[1:] {
+	for _, message := range request.messages {
 		if message.Role == fantasy.MessageRoleUser {
 			hasUser = true
 		}

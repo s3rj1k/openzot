@@ -92,6 +92,25 @@ func collect(client *Client, call fantasy.Call) turn {
 	return result
 }
 
+// Stream runs one model call. A failure to start it arrives as an error part,
+// the same way a failure mid-stream does, so a caller has one place to look.
+func (c *Client) Stream(ctx context.Context, call fantasy.Call) fantasy.StreamResponse {
+	return func(yield func(fantasy.StreamPart) bool) {
+		stream, err := c.model.Stream(ctx, call)
+		if err != nil {
+			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
+
+			return
+		}
+
+		for part := range stream {
+			if !yield(part) {
+				return
+			}
+		}
+	}
+}
+
 // hello is the smallest valid call.
 func hello() fantasy.Call {
 	return fantasy.Call{Prompt: fantasy.Prompt{fantasy.NewUserMessage("hi")}}

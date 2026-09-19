@@ -108,8 +108,8 @@ func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
 		t.Fatalf("calls = %+v", result.calls)
 	}
 
-	if arguments, err := decodeArguments(result.calls[0]); err != nil || len(arguments) != 0 {
-		t.Errorf("arguments = %v, %v, want an empty object", arguments, err)
+	if arguments := decodeInput(result.calls[0].Input); arguments == nil || len(arguments) != 0 {
+		t.Errorf("arguments = %v, want an empty object", arguments)
 	}
 }
 

@@ -274,8 +274,9 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 	}
 }
 
-// Malformed arguments are the model's mistake to correct. Invoking the handler
-// with a half-decoded map would be worse than not invoking it at all.
+// Arguments that cannot be read even after repair are the model's mistake to
+// correct. Invoking the handler with a guess would be worse than not invoking it
+// at all.
 func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 	invoked := 0
 
@@ -287,7 +288,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", `{"value": `)},
+			[]string{tool("call_1", "echo", `not json at all`)},
 			[]string{text("let me try that again"), stop()},
 		),
 		Tools:         tools,
@@ -304,6 +305,40 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 
 	if result.Reason != StopStop {
 		t.Errorf("Reason = %q, want the run to carry on", result.Reason)
+	}
+}
+
+// fantasy repairs what it can before a call is run - a missing closing brace or
+// quote, a trailing comma - so a model's small slips cost no turn. The tool sees
+// the repaired arguments.
+func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
+	invoked := 0
+
+	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+		invoked++
+
+		return "ok", nil
+	})}
+
+	result := run(t, Options{ContextWindow: testWindow,
+		Client: stub(t,
+			[]string{tool("call_1", "echo", `{"value": "abc`)},
+			[]string{text("done"), stop()},
+		),
+		Tools:         tools,
+		MaxIterations: 5,
+	})
+
+	if invoked != 1 {
+		t.Errorf("the handler ran %d times, want the repaired call to run once", invoked)
+	}
+
+	if mentionsAFailure(result.Messages) {
+		t.Error("a call that could be repaired must not be reported as a failure")
+	}
+
+	if result.Reason != StopStop {
+		t.Errorf("Reason = %q", result.Reason)
 	}
 }
 

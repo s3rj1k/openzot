@@ -168,9 +168,6 @@ type Engine struct {
 	// toolTokens caches the cost of the tool schemas, which are identical on
 	// every request of a run and would otherwise be re-counted each round.
 	toolTokens int
-
-	// tools is Options.Tools by name, for dispatch.
-	tools map[string]fantasy.AgentTool
 }
 
 // toolSchemaTokens is what the tool definitions cost on the wire.
@@ -220,15 +217,8 @@ func New(options Options) (*Engine, error) {
 		budget = MinInputTokens
 	}
 
-	tools := make(map[string]fantasy.AgentTool, len(options.Tools))
-
-	for _, tool := range options.Tools {
-		tools[tool.Info().Name] = tool
-	}
-
 	return &Engine{
 		options:       options,
-		tools:         tools,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value
@@ -422,6 +412,9 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 
 	tools := e.toolDefinitions()
 
+	state := &step{engine: e}
+	agent := e.newAgent(state)
+
 	started := time.Now()
 
 	// retries counts *consecutive* retriable provider failures, and is what the
@@ -476,7 +469,7 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			return e.finish(messages, budget, StopError, "could not assemble the request", err)
 		}
 
-		turn, err := e.runTurn(ctx, request, emit)
+		turn, err := e.runStep(ctx, agent, state, request, &messages, &budget, emit)
 
 		// Accumulate the provider's reported usage - the actual billed tokens - and
 		// surface the running total so a viewer can show real cost rather than an
@@ -576,19 +569,9 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 			budget.Empties = 0
 		}
 
-		// record what the model produced
-
-		if turn.Reasoning != "" {
-			messages = append(messages, Message{Type: TypeReasoning, Text: turn.Reasoning})
-
-			emit(Event{Kind: EventMessage, MessageType: TypeReasoning, Text: turn.Reasoning})
-		}
-
-		if turn.Text != "" {
-			messages = append(messages, Message{Type: TypeBot, Text: turn.Text})
-
-			emit(Event{Kind: EventMessage, MessageType: TypeBot, Text: turn.Text})
-		}
+		// record what the model produced - already done when the turn made tool
+		// calls, which is when it has to be, ahead of them
+		state.flush()
 
 		// a truncated answer is continued rather than accepted
 
@@ -627,12 +610,10 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 		}
 
 		if len(turn.ToolCalls) > 0 {
-			var stop *Result
-
-			messages, stop = e.dispatch(ctx, messages, turn.ToolCalls, &budget, emit)
-
-			if stop != nil {
-				return *stop
+			// the tools ran inside the step; what is left is the call budget
+			if state.callsExhausted {
+				return e.finish(messages, budget, StopCalls,
+					fmt.Sprintf("stopped after %d tool calls", budget.Calls), nil)
 			}
 
 			// the loop only checks for repetition once tools have run, because
@@ -701,98 +682,6 @@ func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
 	}
 }
 
-// turnResult is what one model call produced.
-type turnResult struct {
-	Text         string
-	Reasoning    string
-	ToolCalls    []fantasy.ToolCallContent
-	FinishReason fantasy.FinishReason
-
-	// InputTokens and OutputTokens are the prompt- and completion-token counts the
-	// provider reported for this turn (zero when it reported none). Provider counts,
-	// not the local estimate: they reflect what the provider actually processed,
-	// including any server-side prompt caching.
-	InputTokens  int
-	OutputTokens int
-}
-
-// runTurn performs a single model call, streaming its output through emit and
-// watching for a runaway.
-func (e *Engine) runTurn(ctx context.Context, call fantasy.Call, emit func(Event)) (turnResult, error) {
-	// A turn can end while the provider is still streaming - the runaway guard
-	// cuts a degenerate one short - so every exit from here cancels the stream,
-	// which closes the response body rather than leaving it open for the life
-	// of the process.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var (
-		text      strings.Builder
-		reasoning strings.Builder
-		result    turnResult
-	)
-
-	minChars := RunawayGuardMinChars
-
-	guard := thread.NewGuard(thread.GuardOptions{MinChars: &minChars})
-
-	for part := range e.options.Client.Stream(ctx, call) {
-		switch part.Type {
-		case fantasy.StreamPartTypeError:
-			return turnResult{}, part.Error
-
-		case fantasy.StreamPartTypeTextDelta:
-			text.WriteString(part.Delta)
-
-			emit(Event{Kind: EventToken, Text: part.Delta})
-
-			// the streaming guard cuts a degenerate turn short rather than
-			// letting it burn the whole output budget
-			if guard.Push(part.Delta) {
-				result.Text = text.String()
-				result.Reasoning = reasoning.String()
-				result.FinishReason = fantasy.FinishReasonStop
-
-				if reason := guard.Reason(); reason != nil {
-					emit(Event{Kind: EventRunaway, Text: reason.Text})
-				}
-
-				return result, nil
-			}
-
-		case fantasy.StreamPartTypeReasoningDelta:
-			reasoning.WriteString(part.Delta)
-
-			emit(Event{Kind: EventReasoningToken, Text: part.Delta})
-
-		case fantasy.StreamPartTypeToolCall:
-			result.ToolCalls = append(result.ToolCalls, fantasy.ToolCallContent{
-				ToolCallID: part.ID,
-				ToolName:   part.ToolCallName,
-				Input:      part.ToolCallInput,
-			})
-
-		case fantasy.StreamPartTypeFinish:
-			result.FinishReason = part.FinishReason
-
-			// the provider's own count, which reflects what it actually processed
-			// (server-side prompt caching and all) - never the local estimate
-			// fantasy reports the prompt without its cached part; zot has always
-			// counted the whole prompt, so the cached tokens are added back
-			if prompt := part.Usage.InputTokens + part.Usage.CacheReadTokens; prompt > 0 {
-				result.InputTokens = int(prompt)
-			}
-
-			result.OutputTokens = int(part.Usage.OutputTokens)
-		}
-	}
-
-	result.Text = text.String()
-	result.Reasoning = reasoning.String()
-
-	return result, nil
-}
-
 // terminalCall reports whether the model ended the run with a terminal tool.
 func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
 	if !e.settleMode() {
@@ -813,96 +702,11 @@ func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, stri
 
 // terminalDetail pulls the explanation out of a terminal call's arguments.
 func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
-	arguments, err := decodeArguments(call)
-	if err != nil {
-		return fallback
-	}
-
-	if value, ok := arguments[key].(string); ok && value != "" {
+	if value, ok := decodeInput(call.Input)[key].(string); ok && value != "" {
 		return value
 	}
 
 	return fallback
-}
-
-// dispatch executes the tools the model requested and appends the results.
-//
-// Each call becomes a request/response activity pair. The pairing is not
-// cosmetic: a provider rejects a turn whose tool result has no matching call, so
-// the two must be appended together and must survive trimming together.
-func (e *Engine) dispatch(
-	ctx context.Context,
-	messages []Message,
-	calls []fantasy.ToolCallContent,
-	budget *Budget,
-	emit func(Event),
-) ([]Message, *Result) {
-	for _, call := range calls {
-		if e.maxCalls > 0 && budget.Calls >= e.maxCalls {
-			result := e.finish(messages, *budget, StopCalls,
-				fmt.Sprintf("stopped after %d tool calls", budget.Calls), nil)
-
-			return messages, &result
-		}
-
-		budget.Calls++
-
-		name := call.ToolName
-
-		messages = append(messages, activityMessage(ActivityRequest, call, nil, ""))
-
-		tool, known := e.tools[name]
-
-		// decode before announcing, so the event carries usable arguments
-		arguments, decodeErr := decodeArguments(call)
-
-		emit(Event{Kind: EventToolCallStart, Tool: name, Args: arguments, Text: call.Input})
-
-		if !known {
-			failure := fmt.Sprintf("no such tool: %s", name)
-
-			emit(Event{Kind: EventToolCallError, Tool: name, Text: failure})
-
-			messages = append(messages, activityMessage(ActivityResponse, call, nil, failure))
-
-			continue
-		}
-
-		if decodeErr != nil {
-			emit(Event{Kind: EventToolCallError, Tool: name, Text: decodeErr.Error()})
-
-			messages = append(messages, activityMessage(ActivityResponse, call, nil, decodeErr.Error()))
-
-			continue
-		}
-
-		// the turn's reasoning, text and this request go to the caller before the
-		// handler runs: a shell call can outlast the run, and a run killed inside
-		// one must still leave what the model thought and asked for
-		e.handOver(messages)
-
-		response, err := tool.Run(ctx, fantasy.ToolCall{ID: call.ToolCallID, Name: name, Input: call.Input})
-
-		// a tool that ran and reported a problem is answered the same way as
-		// one that could not run: the model reads the failure and acts on it
-		if err == nil && response.IsError {
-			err = errors.New(response.Content)
-		}
-
-		if err != nil {
-			emit(Event{Kind: EventToolCallError, Tool: name, Text: err.Error()})
-
-			messages = append(messages, activityMessage(ActivityResponse, call, nil, err.Error()))
-
-			continue
-		}
-
-		emit(Event{Kind: EventToolCallEnd, Tool: name, Result: response.Content})
-
-		messages = append(messages, activityMessage(ActivityResponse, call, response.Content, ""))
-	}
-
-	return messages, nil
 }
 
 // handOver gives the conversation as it stands to the OnConversation hook.
@@ -1019,7 +823,7 @@ func (e *Engine) narrowInputBudget(limit ContextLimit, emit func(Event)) bool {
 }
 
 // buildRequest assembles the provider request, trimming the conversation to fit.
-func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy.Call, error) {
+func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (turnRequest, error) {
 	instructions := e.instructions()
 
 	// reserve room for the system prompt and the tool schemas, both of which are
@@ -1060,12 +864,10 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy
 		},
 	})
 	if err != nil {
-		return fantasy.Call{}, err
+		return turnRequest{}, err
 	}
 
-	chat := fantasy.Prompt{fantasy.NewSystemMessage(instructions)}
-
-	chat = append(chat, toPrompt(fromThreadMessages(built.Messages))...)
+	chat := toPrompt(fromThreadMessages(built.Messages))
 
 	// The thread builder keeps the largest suffix that fits, so the first
 	// message trimmed is the oldest - which is the run's opening user message.
@@ -1076,7 +878,7 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy
 	// user turn's existence.
 	hasUser := false
 
-	for _, message := range chat[1:] {
+	for _, message := range chat {
 		if message.Role == fantasy.MessageRoleUser {
 			hasUser = true
 
@@ -1085,16 +887,23 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (fantasy
 	}
 
 	if !hasUser {
-		rest := append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat[1:]...)
-		chat = append(chat[:1], rest...)
+		chat = append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat...)
 	}
 
-	call := fantasy.Call{Prompt: chat, Tools: tools}
+	// fantasy will not start a step from a conversation that ends on the model's
+	// own words. The engine never leaves one - every turn is followed by a tool
+	// result or a nudge - but a conversation it was handed might, and one more
+	// line to continue costs less than a run that cannot start.
+	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
+		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
+	}
+
+	call := turnRequest{messages: chat}
 
 	if e.options.MaxTokens != nil {
 		limit := int64(*e.options.MaxTokens)
 
-		call.MaxOutputTokens = &limit
+		call.maxOutput = &limit
 	}
 
 	return call, nil
