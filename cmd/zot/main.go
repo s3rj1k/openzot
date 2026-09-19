@@ -476,16 +476,15 @@ func listSessions(args []string) error {
 // exportSessions renders sessions as trajectories: the conversation in the
 // chat shape the rest of the ecosystem reads, with the run's outcome beside it.
 //
-// To stdout it is JSON Lines, one trajectory per line, images left where they
-// are. With --out it is a directory of `<id>.jsonl` files plus an `images/`
-// folder the trajectories point into - the shape a dataset is built from, and
-// one `cp -r` away from wherever it is going.
+// To stdout it is JSON Lines, one trajectory per line. With --out it is a
+// directory of `<id>.jsonl` files - the shape a dataset is built from, and one
+// `cp -r` away from wherever it is going.
 func exportSessions(args []string, stdout, stderr io.Writer) error {
 	set := pflag.NewFlagSet("sessions export", pflag.ContinueOnError)
 	set.SetOutput(stderr)
 
 	dir := set.String("session-dir", config.DefaultSessionDir(), "directory the sessions are read from")
-	out := set.String("out", "", "directory to write <id>.jsonl and images/ into (default: JSON Lines on stdout, without images)")
+	out := set.String("out", "", "directory to write <id>.jsonl into (default: JSON Lines on stdout)")
 	all := set.Bool("all", false, "export every session, instead of the ones named")
 
 	set.Usage = func() {
@@ -546,14 +545,7 @@ func exportSessions(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("sessions export: read %s: %w", path, err)
 		}
 
-		options := session.ExportOptions{}
-
-		if *out != "" {
-			options.ImageDir = filepath.Join(*out, "images")
-			options.RelativeTo = *out
-		}
-
-		trajectory, err := session.Export(last, options)
+		trajectory, err := session.Export(last)
 		if err != nil {
 			return fmt.Errorf("sessions export: %s: %w", last.Meta.ID, err)
 		}
@@ -575,8 +567,8 @@ func exportSessions(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("sessions export: %w", err)
 		}
 
-		fmt.Fprintf(stderr, "%s  %d messages, %d images -> %s\n",
-			trajectory.ID, len(trajectory.Messages), len(trajectory.Images), target)
+		fmt.Fprintf(stderr, "%s  %d messages -> %s\n",
+			trajectory.ID, len(trajectory.Messages), target)
 	}
 
 	return nil

@@ -199,7 +199,7 @@ analysis, evaluation or building a training dataset.
 # the last session, as one JSON line on stdout
 zot sessions export
 
-# named sessions into a directory: <id>.jsonl each, screenshots under images/
+# named sessions into a directory: <id>.jsonl each
 zot sessions export 20260805-155859 20260805-171012 --out ./trajectories
 
 # every session in the session directory
@@ -208,10 +208,9 @@ zot sessions export --all --out ./trajectories
 
 `messages` is the whole conversation - it is only ever appended to,
 so the end state holds every turn that happened. Each message keeps zot's own `type` beside its `role`, and an assistant turn
-carries the model's `reasoning` when the provider surfaced it. Images the model
-was shown are copied next to the export and referenced by relative path; on
-stdout the turn keeps only its text. The system prompt is not in the log and so
-not in the export - `task` is the brief the run was given.
+carries the model's `reasoning` when the provider surfaced it. The system
+prompt is not in the log and so not in the export - `task` is the brief the run
+was given.
 
 The log is appended and flushed line by line, so it is readable while the run is
 still going and a killed run still leaves everything up to the kill. Use

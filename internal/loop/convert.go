@@ -3,7 +3,6 @@ package loop
 import (
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/thread"
 )
 
@@ -158,10 +157,6 @@ func toPrompt(messages []Message) fantasy.Prompt {
 		case TypeInstructions:
 			prompt = append(prompt, fantasy.NewSystemMessage(message.Text))
 
-		case TypeAttachment:
-			// the one role an OpenAI-compatible endpoint accepts image parts on
-			prompt = append(prompt, fantasy.NewUserMessage(message.Text, imageParts(message.Images)...))
-
 		default:
 			prompt = append(prompt, fantasy.NewUserMessage(message.Text))
 		}
@@ -174,22 +169,6 @@ func toPrompt(messages []Message) fantasy.Prompt {
 	}
 
 	return prompt
-}
-
-// imageParts renders images as file parts. One whose bytes went missing is
-// skipped, and the message text still says it existed.
-func imageParts(images []imaging.Image) []fantasy.FilePart {
-	var parts []fantasy.FilePart
-
-	for _, image := range images {
-		if !image.Ready() {
-			continue
-		}
-
-		parts = append(parts, fantasy.FilePart{MediaType: image.MediaType, Data: image.Raw()})
-	}
-
-	return parts
 }
 
 // dropDangling removes assistant tool-call turns whose results are missing.

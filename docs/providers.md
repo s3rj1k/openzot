@@ -135,8 +135,7 @@ any model name.
 
 ### Overriding what a model can do
 
-A model entry can also correct what zot believes about the model. `vision` is a
-tri-state: unset defers to the catalogue, `true` and `false` decide.
+A model entry can also correct what zot believes about the model:
 
 ```yaml
 providers:
@@ -145,25 +144,13 @@ providers:
     api_key: $CORPORATE_MODEL_KEY
     models:
       stealth/ox-alpha:
-        vision: true       # zot has never heard of it, but it can be shown images
-        context: 200000
-      gpt-5.4:
-        vision: false      # this deployment strips image parts
+        context: 200000    # the serving endpoint's real ceiling
 ```
 
 | Key | Overrides |
 | --- | --- |
-| `vision` | whether the model can be shown images, which decides whether it is offered the `view` tool |
 | `context` | its total context window, in tokens |
 | `content_array` | send every message's content as an array of parts, for a self-hosted llama.cpp whose chat template rejects a bare string |
-
-**`vision` is the one worth knowing about.** The catalogue's default for an
-unrecognised model is *blind*, deliberately: a model wrongly assumed to take
-tools fails on its first turn, loudly and cheaply, while a model wrongly assumed
-to see is sent an attachment its endpoint rejects in the middle of a long
-unattended run - or silently drops, leaving it to describe a picture it never
-received. So an uncatalogued model is never offered `view`, and never told
-images exist, until you say otherwise here.
 
 ## Gateways and prefixed models
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/openzot/openzot/internal/imaging"
 )
 
 // DefaultMaxToolOutput is the byte ceiling on a single tool result when the
@@ -43,15 +42,6 @@ type ToolOptions struct {
 	// MaxOutput is the ceiling on a single tool result. Zero uses the default.
 	MaxOutput int
 
-	// Vision offers the model a tool for looking at images.
-	//
-	// Off by default, and deliberately expressed by leaving the tool out rather
-	// than by refusing calls to it: a tool the model cannot use is a tool it
-	// will try anyway, spending a round to find out. What a model can be shown
-	// is not something zot can discover at runtime, so the caller says - from
-	// the catalogue, or from what the operator configured for the model.
-	Vision bool
-
 	// EmbeddedSkills are skill bodies compiled into the binary, keyed by name,
 	// that the `read` tool serves when handed an embedded-skill:// URL. A caller that
 	// ships embedded skills passes their contents (SkillsResult.EmbeddedContents)
@@ -69,7 +59,7 @@ func DefaultToolsFor(options ToolOptions) Tools {
 		maxOutput = DefaultMaxToolOutput
 	}
 
-	s := toolSet{maxOutput: maxOutput, vision: options.Vision, embeddedSkills: options.EmbeddedSkills}
+	s := toolSet{maxOutput: maxOutput, embeddedSkills: options.EmbeddedSkills}
 
 	tools := Tools{
 		"read": {
@@ -158,21 +148,6 @@ func DefaultToolsFor(options ToolOptions) Tools {
 		},
 	}
 
-	if options.Vision {
-		tools["view"] = ToolDefinition{
-			Description: "Look at an image file - a screenshot, a diagram, a rendering - and see it rather than reason about its bytes. Use it to check that something you produced actually looks right.",
-			Parameters: FunctionParameters{
-				"type": "object",
-				"properties": map[string]any{
-					"path":   map[string]any{"type": "string", "description": "The image file to look at"},
-					"detail": map[string]any{"type": "string", "description": "Resolution hint: auto, low or high", "enum": []string{"auto", "low", "high"}},
-				},
-				"required": []string{"path"},
-			},
-			Handler: s.view,
-		}
-	}
-
 	return tools
 }
 
@@ -215,10 +190,6 @@ func progressHandler(_ context.Context, args map[string]any) (any, error) {
 // which a per-run or per-model override could not vary.
 type toolSet struct {
 	maxOutput int
-
-	// vision is whether this run's model can be shown images. read consults it
-	// to explain itself when it is handed one.
-	vision bool
 
 	// embeddedSkills are skill bodies compiled into the binary, keyed by name,
 	// that read serves when the path is an embedded-skill:// URL. Nil when none ship.
@@ -310,23 +281,12 @@ func (s toolSet) read(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 
-	// An image split on newlines is mojibake: thousands of replacement
+	// A binary file split on newlines is mojibake: thousands of replacement
 	// characters that cost the same context as real content and tell the model
-	// nothing. Say what the file is instead, and where to go from there - which
-	// depends on whether this model can be shown one at all.
-	if mediaType := imaging.MediaType(content); mediaType != "" {
-		description := fmt.Sprintf("%s is a %s image, %d bytes", path, mediaType, len(content))
-
-		if width, height, ok := imaging.Dimensions(content); ok {
-			description = fmt.Sprintf("%s is a %s image, %dx%d, %d bytes", path, mediaType, width, height, len(content))
-		}
-
-		if s.vision {
-			return description + ". Use view to look at it.", nil
-		}
-
-		return description + ". This model cannot be shown images, so read cannot render it; " +
-			"inspect it with a command instead if you need to know what it contains.", nil
+	// nothing. Say what the file is instead.
+	if looksBinary(content) {
+		return fmt.Sprintf("%s is a binary file, %d bytes; inspect it with a command instead if you need to know what it contains.",
+			path, len(content)), nil
 	}
 
 	lines := strings.Split(string(content), "\n")
@@ -357,54 +317,18 @@ func (s toolSet) read(_ context.Context, args map[string]any) (any, error) {
 	return s.truncate(b.String()), nil
 }
 
-// view attaches an image to the conversation.
-//
-// The handler returns the bytes and nothing else: it does no I/O beyond reading
-// the file, so it stays testable, and it knows nothing about session logs - the
-// recorder is what decides where the bytes are kept. Normalisation happens here
-// rather than at the wire because the digest, the blob and what the model is
-// shown must all be the same object, and downscaling later would make them
-// three different ones.
-func (s toolSet) view(_ context.Context, args map[string]any) (any, error) {
-	path, err := stringArg(args, "path")
-	if err != nil {
-		return nil, err
+// binarySniffBytes is how much of a file read looks at to decide it is binary.
+const binarySniffBytes = 8000
+
+// looksBinary reports whether content is a binary file rather than text. A NUL
+// byte in the opening of a file does not occur in text in any encoding read is
+// asked to show, and is present in every common binary format.
+func looksBinary(content []byte) bool {
+	if len(content) > binarySniffBytes {
+		content = content[:binarySniffBytes]
 	}
 
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if imaging.MediaType(content) == "" {
-		return nil, fmt.Errorf("%s is not an image; use read for text files", path)
-	}
-
-	normalized, err := imaging.Normalize(content, imaging.DefaultMaxEdge)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-
-	image := imaging.NewImage(normalized.Data, normalized.MediaType, normalized.Width, normalized.Height)
-	image.Origin = path
-
-	if detail, _ := args["detail"].(string); detail == "auto" || detail == "low" || detail == "high" {
-		image.Detail = detail
-	}
-
-	text := fmt.Sprintf("attached %s (%s", path, image.MediaType)
-
-	if image.Width > 0 && image.Height > 0 {
-		text += fmt.Sprintf(", %dx%d", image.Width, image.Height)
-	}
-
-	text += ")"
-
-	if normalized.Resized {
-		text += fmt.Sprintf("; reduced from the file on disk to fit %dpx", imaging.DefaultMaxEdge)
-	}
-
-	return ToolResult{Text: text, Images: []imaging.Image{image}}, nil
+	return bytes.IndexByte(content, 0) >= 0
 }
 
 func (s toolSet) write(_ context.Context, args map[string]any) (any, error) {

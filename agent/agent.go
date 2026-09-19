@@ -32,7 +32,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/loop"
 )
@@ -128,10 +127,6 @@ const (
 
 	// TypeActivity is one half of a tool-call pair; the call itself is in Meta.
 	TypeActivity = loop.TypeActivity
-
-	// TypeAttachment carries images a tool produced, in the one role the wire
-	// accepts them on.
-	TypeAttachment = loop.TypeAttachment
 
 	// TypeInstructions is system context.
 	TypeInstructions = loop.TypeInstructions
@@ -263,11 +258,6 @@ type Message struct {
 	// `map[string]any` would make every read a type assertion that can fail
 	// silently and every key a runtime spelling test.
 	Activity *Activity `json:"activity,omitempty"`
-
-	// Images are what the model is shown alongside Text, on a TypeAttachment
-	// message. A tool produces them by returning a ToolResult; the engine
-	// attaches them, because the wire will not take them on a tool result.
-	Images []Image `json:"images,omitempty"`
 }
 
 // Activity is one half of a tool-call pair. See the loop package for detail.
@@ -293,25 +283,8 @@ type FunctionParameters = map[string]any
 
 // ToolHandler executes a tool call and returns its result.
 //
-// The result is usually a string, or anything JSON-encodable. Return a
-// ToolResult to hand back something a tool result cannot carry on the wire -
-// today, images.
+// The result is usually a string, or anything JSON-encodable.
 type ToolHandler func(ctx context.Context, args map[string]any) (any, error)
-
-// ToolResult is what a handler returns when a tool produces more than text.
-// Text is what the model reads as the result; Images are attached to the
-// conversation after the turn's tool results, because no OpenAI-compatible
-// endpoint accepts image parts on a tool message.
-type ToolResult = loop.ToolResult
-
-// Image is one image shown to a model. Build one with NewImage.
-type Image = imaging.Image
-
-// NewImage describes encoded image bytes: it computes the content digest and
-// the token estimate that the engine, the log and the budget all quote.
-func NewImage(data []byte, mediaType string, width, height int) Image {
-	return imaging.NewImage(data, mediaType, width, height)
-}
 
 // ToolDefinition describes a tool the model may call.
 type ToolDefinition struct {
@@ -690,7 +663,6 @@ func fromLoopMessages(messages []loop.Message) []Message {
 			Type:     message.Type,
 			Text:     message.Text,
 			Activity: message.Activity,
-			Images:   message.Images,
 		})
 	}
 

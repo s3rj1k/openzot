@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-
-	"github.com/openzot/openzot/internal/imaging"
 )
 
 // activity builds one half of a tool-call pair.
@@ -174,41 +172,6 @@ func TestToPromptEncodesStructuredResults(t *testing.T) {
 	}
 }
 
-// An attachment goes out as a user message carrying its images as file parts,
-// and an image whose bytes went missing is left out while the text stays.
-func TestToPromptAttachesReadyImages(t *testing.T) {
-	ready := imaging.NewImage([]byte("png-bytes"), "image/png", 4, 3)
-	gone := imaging.Image{MediaType: "image/png", Digest: "sha256:gone"}
-
-	prompt := toPrompt([]Message{{
-		Type:   TypeAttachment,
-		Text:   "Attached: shot.png",
-		Images: []imaging.Image{ready, gone},
-	}})
-
-	if len(prompt) != 1 || prompt[0].Role != fantasy.MessageRoleUser {
-		t.Fatalf("an attachment must be one user message: %+v", prompt)
-	}
-
-	var files []fantasy.FilePart
-
-	for _, part := range prompt[0].Content {
-		if file, ok := part.(fantasy.FilePart); ok {
-			files = append(files, file)
-		}
-	}
-
-	if len(files) != 1 || string(files[0].Data) != "png-bytes" || files[0].MediaType != "image/png" {
-		t.Errorf("files = %+v, want only the image whose bytes exist", files)
-	}
-
-	if textOf(prompt[0]) != "Attached: shot.png" {
-		t.Errorf("text = %q, want the description kept", textOf(prompt[0]))
-	}
-}
-
-// An activity message that describes no call is not renderable: there is no
-// tool to name and no id to reference, so it must not reach the wire.
 func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	cases := []Message{
 		{Type: TypeActivity},

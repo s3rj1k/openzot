@@ -1,14 +1,9 @@
 package session
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
-
-	"github.com/openzot/openzot/internal/imaging"
 )
 
 // Trajectory is a session rendered for consumption outside zot: the
@@ -19,9 +14,8 @@ import (
 // The shape is the OpenAI messages convention because it is what training and
 // evaluation tooling already loads: a file of these is a dataset, not a format
 // somebody has to write a parser for. Where zot knows more than that shape can
-// hold - which of its own message types a turn was, the model's reasoning, the
-// images a tool produced - it is carried in additive fields a loader that does
-// not know them simply drops.
+// hold - which of its own message types a turn was, the model's reasoning - it is
+// carried in additive fields a loader that does not know them simply drops.
 type Trajectory struct {
 	// ID is the session this trajectory was exported from.
 	ID string `json:"id"`
@@ -47,10 +41,6 @@ type Trajectory struct {
 	// happened - the conversation is only ever appended to.
 	Messages []ChatMessage `json:"messages"`
 
-	// Images lists the image files this trajectory refers to, relative to the
-	// trajectory file, in the order they were first shown.
-	Images []string `json:"images,omitempty"`
-
 	// Events counts what happened by kind - iterations, nudges, retries - for
 	// filtering without walking the conversation.
 	Events map[string]int `json:"events,omitempty"`
@@ -65,9 +55,8 @@ type ChatMessage struct {
 	// says more than the role does.
 	Type string `json:"type"`
 
-	// Content is a string, or a list of ContentPart when the turn carries
-	// images beside its text.
-	Content any `json:"content"`
+	// Content is the turn's text.
+	Content string `json:"content"`
 
 	// Reasoning is the model's scratchpad for the turn, when the provider
 	// surfaced it.
@@ -94,34 +83,11 @@ type FunctionCall struct {
 	Arguments string `json:"arguments"`
 }
 
-// ContentPart is one piece of a multi-part turn.
-type ContentPart struct {
-	Type string `json:"type"`
-
-	// Text is set on a "text" part.
-	Text string `json:"text,omitempty"`
-
-	// Image is the path of an "image" part, relative to the trajectory file.
-	Image string `json:"image,omitempty"`
-}
-
-// ExportOptions shape an export.
-type ExportOptions struct {
-	// ImageDir is where image blobs are copied to; empty keeps images out of
-	// the export (their turns keep the text that described them). Paths in the
-	// trajectory are written relative to RelativeTo, which defaults to
-	// ImageDir's parent.
-	ImageDir   string
-	RelativeTo string
-}
-
 // Export renders a session as a trajectory.
-func Export(s *Session, options ExportOptions) (*Trajectory, error) {
+func Export(s *Session) (*Trajectory, error) {
 	if s == nil {
 		return nil, fmt.Errorf("session: nothing to export")
 	}
-
-	exporter := &exporter{options: options}
 
 	trajectory := &Trajectory{
 		ID:        s.Meta.ID,
@@ -142,23 +108,9 @@ func Export(s *Session, options ExportOptions) (*Trajectory, error) {
 		trajectory.Events[event.Kind]++
 	}
 
-	trajectory.Messages = exporter.convert(s, s.Messages)
-	trajectory.Images = exporter.images
-
-	if exporter.err != nil {
-		return trajectory, exporter.err
-	}
+	trajectory.Messages = convert(s.Messages)
 
 	return trajectory, nil
-}
-
-// exporter carries the state one export accumulates across conversations: the
-// images already copied, so a screenshot shown in three turns is one file.
-type exporter struct {
-	options ExportOptions
-	images  []string
-	copied  map[string]string
-	err     error
 }
 
 // convert renders one conversation.
@@ -168,7 +120,7 @@ type exporter struct {
 // wants them as one assistant message. Consecutive assistant-side records are
 // folded into one message until something else - a tool result, a user turn -
 // closes it.
-func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
+func convert(messages []Message) []ChatMessage {
 	var (
 		out     []ChatMessage
 		pending *ChatMessage
@@ -199,10 +151,6 @@ func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
 			flush()
 			out = append(out, ChatMessage{Role: "user", Type: message.Type, Content: message.Text})
 
-		case "attachment":
-			flush()
-			out = append(out, ChatMessage{Role: "user", Type: message.Type, Content: e.parts(s, message)})
-
 		case "reasoning":
 			turn := assistant("bot")
 
@@ -217,7 +165,7 @@ func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
 
 			// a second answer in one turn does not happen; if a log holds one,
 			// it is a new turn
-			if text, _ := turn.Content.(string); text != "" || len(turn.ToolCalls) > 0 {
+			if turn.Content != "" || len(turn.ToolCalls) > 0 {
 				flush()
 				turn = assistant("bot")
 			}
@@ -267,84 +215,6 @@ func (e *exporter) convert(s *Session, messages []Message) []ChatMessage {
 	flush()
 
 	return out
-}
-
-// parts renders an attachment's text and images.
-func (e *exporter) parts(s *Session, message Message) []ContentPart {
-	parts := []ContentPart{{Type: "text", Text: message.Text}}
-
-	for _, image := range message.Images {
-		if path := e.store(s, image); path != "" {
-			parts = append(parts, ContentPart{Type: "image", Image: path})
-		}
-	}
-
-	return parts
-}
-
-// store copies an image out of the session's blobs and returns the path to
-// write in its place, empty when there is nothing to copy or nowhere to put it.
-//
-// A missing blob is not an error: the attachment's text is written to stand on
-// its own. A blob that cannot be copied is - the export was asked for images
-// and could not deliver one, which the caller should hear about.
-func (e *exporter) store(s *Session, image imaging.Image) string {
-	if e.options.ImageDir == "" {
-		return ""
-	}
-
-	loaded := s.LoadImage(image)
-
-	if len(loaded.Bytes) == 0 && loaded.Data != "" {
-		if data, err := base64.StdEncoding.DecodeString(loaded.Data); err == nil {
-			loaded.Bytes = data
-		}
-	}
-
-	if len(loaded.Bytes) == 0 {
-		return ""
-	}
-
-	name := blobName(loaded)
-
-	if e.copied == nil {
-		e.copied = map[string]string{}
-	}
-
-	if path, ok := e.copied[name]; ok {
-		return path
-	}
-
-	if err := os.MkdirAll(e.options.ImageDir, 0o700); err != nil {
-		e.err = fmt.Errorf("create image directory: %w", err)
-
-		return ""
-	}
-
-	target := filepath.Join(e.options.ImageDir, name)
-
-	if err := os.WriteFile(target, loaded.Bytes, 0o600); err != nil {
-		e.err = fmt.Errorf("write image %s: %w", name, err)
-
-		return ""
-	}
-
-	base := e.options.RelativeTo
-	if base == "" {
-		base = filepath.Dir(e.options.ImageDir)
-	}
-
-	path, err := filepath.Rel(base, target)
-	if err != nil {
-		path = target
-	}
-
-	path = filepath.ToSlash(path)
-
-	e.copied[name] = path
-	e.images = append(e.images, path)
-
-	return path
 }
 
 // toolContent renders what a tool returned the way the model read it: a string

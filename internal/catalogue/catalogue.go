@@ -18,15 +18,6 @@ type Model struct {
 
 	// MaxOutputTokens bounds a single response.
 	MaxOutputTokens int
-
-	// SupportsVision reports whether the model can be shown images.
-	//
-	// The safe assumption is that it cannot. A model wrongly assumed to see is
-	// sent an attachment its endpoint rejects mid-run - or worse, silently
-	// drops, leaving the model to describe a picture it never received. So the
-	// zero value is false, the table names only the models known to see, and an
-	// uncatalogued model is blind until its config says otherwise.
-	SupportsVision bool
 }
 
 // DefaultContextWindow is assumed for models the catalogue has not heard of.
@@ -67,59 +58,59 @@ var Default = Model{
 var models = map[string]Model{
 	// ---------------------------------------------------------------- OpenAI
 
-	"gpt-5.6-sol":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.6-terra": {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.6-luna":  {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.5":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.4":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.4-pro":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.4-mini":  {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.4-nano":  {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.2":       {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5.1":       {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5":         {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5-mini":    {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"gpt-5-nano":    {ContextWindow: 400_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"o4-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
-	"o3-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
-	"o3":            {ContextWindow: 200_000, MaxOutputTokens: 100_000, SupportsVision: true},
+	"gpt-5.6-sol":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.6-terra": {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.6-luna":  {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.5":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.4":       {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.4-pro":   {ContextWindow: 1_050_000, MaxOutputTokens: 128_000},
+	"gpt-5.4-mini":  {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5.4-nano":  {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5.2":       {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5.1":       {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5":         {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5-mini":    {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"gpt-5-nano":    {ContextWindow: 400_000, MaxOutputTokens: 128_000},
+	"o4-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000},
+	"o3-mini":       {ContextWindow: 200_000, MaxOutputTokens: 100_000},
+	"o3":            {ContextWindow: 200_000, MaxOutputTokens: 100_000},
 
 	// ------------------------------------------------------------- Anthropic
 
-	"claude-5-opus":     {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-5-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-5-haiku":    {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude-4.8-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-4.7-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-4.6-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-4.6-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 128_000, SupportsVision: true},
-	"claude-4.5-opus":   {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude-4.5-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude-4.5-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude-4.1-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
-	"claude-4-opus":     {ContextWindow: 200_000, MaxOutputTokens: 8_192, SupportsVision: true},
-	"claude-4-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 8_192, SupportsVision: true},
+	"claude-5-opus":     {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-5-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-5-haiku":    {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"claude-4.8-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-4.7-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-4.6-opus":   {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-4.6-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
+	"claude-4.5-opus":   {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"claude-4.5-sonnet": {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"claude-4.5-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"claude-4.1-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000},
+	"claude-4-opus":     {ContextWindow: 200_000, MaxOutputTokens: 8_192},
+	"claude-4-sonnet":   {ContextWindow: 1_000_000, MaxOutputTokens: 8_192},
 
 	// @note broad fallbacks, so an unrecognised Claude release lands somewhere
 	// sensible rather than on the default
 
-	"claude-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
-	"claude-sonnet": {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"claude":        {ContextWindow: 200_000, MaxOutputTokens: 32_000, SupportsVision: true},
+	"claude-opus":   {ContextWindow: 200_000, MaxOutputTokens: 32_000},
+	"claude-sonnet": {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"claude-haiku":  {ContextWindow: 200_000, MaxOutputTokens: 64_000},
+	"claude":        {ContextWindow: 200_000, MaxOutputTokens: 32_000},
 
 	// ---------------------------------------------------------------- Google
 
-	"gemini-3.6-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"gemini-3.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"gemini-3.1-pro":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"gemini-3.1-flash-lite": {ContextWindow: 1_000_000, MaxOutputTokens: 65_000, SupportsVision: true},
-	"gemini-3-flash":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
-	"gemini-3-pro":          {ContextWindow: 1_048_576, MaxOutputTokens: 65_536, SupportsVision: true},
-	"gemini-2.5-pro":        {ContextWindow: 1_048_576, MaxOutputTokens: 8_192, SupportsVision: true},
-	"gemini-2.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 65_536, SupportsVision: true},
-	"gemini-2.5-flash-lite": {ContextWindow: 1_048_576, MaxOutputTokens: 65_535, SupportsVision: true},
-	"gemini":                {ContextWindow: 1_000_000, MaxOutputTokens: 64_000, SupportsVision: true},
+	"gemini-3.6-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"gemini-3.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"gemini-3.1-pro":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"gemini-3.1-flash-lite": {ContextWindow: 1_000_000, MaxOutputTokens: 65_000},
+	"gemini-3-flash":        {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
+	"gemini-3-pro":          {ContextWindow: 1_048_576, MaxOutputTokens: 65_536},
+	"gemini-2.5-pro":        {ContextWindow: 1_048_576, MaxOutputTokens: 8_192},
+	"gemini-2.5-flash":      {ContextWindow: 1_000_000, MaxOutputTokens: 65_536},
+	"gemini-2.5-flash-lite": {ContextWindow: 1_048_576, MaxOutputTokens: 65_535},
+	"gemini":                {ContextWindow: 1_000_000, MaxOutputTokens: 64_000},
 	"gemma-4-31b":           {ContextWindow: 262_144, MaxOutputTokens: 65_536},
 	"gemma":                 {ContextWindow: 262_144, MaxOutputTokens: 65_536},
 
@@ -129,7 +120,6 @@ var models = map[string]Model{
 	"glm-5.2":       {ContextWindow: 1_000_000, MaxOutputTokens: 128_000},
 	"glm-5.1":       {ContextWindow: 202_000, MaxOutputTokens: 64_000},
 	"glm-5-turbo":   {ContextWindow: 202_800, MaxOutputTokens: 128_000},
-	"glm-5v-turbo":  {ContextWindow: 200_000, MaxOutputTokens: 128_000, SupportsVision: true},
 	"glm-5":         {ContextWindow: 202_800, MaxOutputTokens: 64_000},
 	"glm-4.7-flash": {ContextWindow: 200_000, MaxOutputTokens: 128_000},
 	"glm-4.7":       {ContextWindow: 200_000, MaxOutputTokens: 40_000},
@@ -183,12 +173,12 @@ var models = map[string]Model{
 
 	// --------------------------------------------------------------------- xAI
 
-	"grok-4.5": {ContextWindow: 500_000, MaxOutputTokens: 128_000, SupportsVision: true},
+	"grok-4.5": {ContextWindow: 500_000, MaxOutputTokens: 128_000},
 	"grok":     {ContextWindow: 256_000, MaxOutputTokens: 32_768},
 
 	// ------------------------------------------------------------------- Meta
 
-	"llama-4": {ContextWindow: 1_000_000, MaxOutputTokens: 16_384, SupportsVision: true},
+	"llama-4": {ContextWindow: 1_000_000, MaxOutputTokens: 16_384},
 	"llama-3": {ContextWindow: 128_000, MaxOutputTokens: 8_192},
 	"llama":   {ContextWindow: 128_000, MaxOutputTokens: 8_192},
 

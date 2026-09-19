@@ -2,11 +2,7 @@ package session
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/openzot/openzot/internal/imaging"
 )
 
 // A session exported for training reads as one chat conversation: the
@@ -46,7 +42,7 @@ func TestExportFoldsATurnIntoTheChatShape(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	trajectory, err := Export(loaded, ExportOptions{})
+	trajectory, err := Export(loaded)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -131,91 +127,6 @@ func TestExportFoldsATurnIntoTheChatShape(t *testing.T) {
 	}
 }
 
-// A screenshot the model was shown is part of the trajectory: with an image
-// directory the blob is copied out and the attachment turn points at it by a
-// path relative to the export; without one the turn keeps its text and nothing
-// else. The same image shown twice is one file.
-func TestExportCarriesImages(t *testing.T) {
-	dir := t.TempDir()
-
-	writer, err := Create(dir, "20260822-110000", Meta{Task: "look"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	png := []byte("\x89PNG\r\n\x1a\nnot really a png")
-	image := imaging.Image{MediaType: "image/png", Digest: imaging.Digest(png), Bytes: png, Size: len(png)}
-
-	stored, err := writer.StoreImage(image)
-	if err != nil {
-		t.Fatalf("StoreImage: %v", err)
-	}
-
-	for range 2 {
-		if err := writer.Message(Message{Type: "attachment", Text: "screenshot of the game", Images: []imaging.Image{stored}}); err != nil {
-			t.Fatalf("Message: %v", err)
-		}
-	}
-
-	if err := writer.Result(Result{Reason: "success"}); err != nil {
-		t.Fatalf("Result: %v", err)
-	}
-
-	loaded, err := Load(writer.Path())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	// without an image directory: text only
-	plain, err := Export(loaded, ExportOptions{})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	if parts := plain.Messages[0].Content.([]ContentPart); len(parts) != 1 || parts[0].Type != "text" {
-		t.Errorf("content without images = %+v", parts)
-	}
-
-	if len(plain.Images) != 0 {
-		t.Errorf("images without a directory = %v", plain.Images)
-	}
-
-	// with one: the blob is copied and referenced relative to the export root
-	out := filepath.Join(t.TempDir(), "export")
-
-	withImages, err := Export(loaded, ExportOptions{ImageDir: filepath.Join(out, "images"), RelativeTo: out})
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	if len(withImages.Images) != 1 {
-		t.Fatalf("images = %v, want one (shown twice, stored once)", withImages.Images)
-	}
-
-	path := withImages.Images[0]
-
-	if filepath.Dir(path) != "images" || filepath.Ext(path) != ".png" {
-		t.Errorf("image path = %q, want images/<digest>.png", path)
-	}
-
-	copied, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(path)))
-	if err != nil {
-		t.Fatalf("copied image: %v", err)
-	}
-
-	if string(copied) != string(png) {
-		t.Errorf("copied bytes differ")
-	}
-
-	for _, message := range withImages.Messages {
-		parts := message.Content.([]ContentPart)
-
-		if len(parts) != 2 || parts[1].Type != "image" || parts[1].Image != path {
-			t.Errorf("attachment content = %+v", parts)
-		}
-	}
-}
-
 func TestExportRendersAStructuredToolResult(t *testing.T) {
 	session := &Session{Meta: Meta{ID: "x"}, Messages: []Message{
 		{Type: "activity", Activity: &Activity{
@@ -224,7 +135,7 @@ func TestExportRendersAStructuredToolResult(t *testing.T) {
 		{Type: "activity", Activity: &Activity{Kind: "response", ID: "c1", Name: "shell", Result: map[string]any{"stdout": "a\n"}}},
 	}}
 
-	trajectory, err := Export(session, ExportOptions{})
+	trajectory, err := Export(session)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

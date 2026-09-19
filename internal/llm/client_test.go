@@ -428,31 +428,6 @@ func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 	}
 }
 
-// Images already arrive as parts and must survive the reshaping untouched.
-func TestContentArrayLeavesImagePartsAlone(t *testing.T) {
-	var seen request
-
-	client := serve(t, seen.capture, func(c *Config) { c.ContentArray = true })
-
-	collect(client, fantasy.Call{Prompt: fantasy.Prompt{
-		fantasy.NewUserMessage("look", fantasy.FilePart{MediaType: "image/png", Data: []byte{1, 2, 3}}),
-	}})
-
-	parts, _ := seen.messages()[0]["content"].([]any)
-
-	var kinds []string
-
-	for _, part := range parts {
-		kinds = append(kinds, part.(map[string]any)["type"].(string))
-	}
-
-	if strings.Join(kinds, ",") != "text,image_url" {
-		t.Errorf("part types = %v, want the text and the image", kinds)
-	}
-}
-
-// The endpoint is the operator's and so is the credential. Whatever the SDK
-// would pick up from the environment must never reach it.
 func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-from-the-environment")
 	t.Setenv("OPENAI_ORG_ID", "org-ambient")

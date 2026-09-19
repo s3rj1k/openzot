@@ -16,7 +16,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/openzot/openzot/agent"
-	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/tui"
 )
 
@@ -82,38 +81,9 @@ type ModelConfig struct {
 	// to detect. Zero uses the catalogue.
 	Context int `yaml:"context"`
 
-	// Vision overrides whether the catalogue believes this model can be shown
-	// images. Unset defers to the catalogue, which is why it is a pointer: "not
-	// stated" and "stated as false" are different answers, and only the second
-	// should be able to turn the capability off.
-	//
-	// The catalogue cannot know about a private deployment, a gateway that
-	// strips capabilities on the way through, or a model released after this
-	// binary was built. An uncatalogued model is assumed blind, so a model that
-	// can in fact see needs saying so here before it is offered a tool for
-	// looking.
-	Vision *bool `yaml:"vision"`
-
 	// ContentArray sends every message's content as an array of parts, for
 	// endpoints whose chat template rejects the bare string.
 	ContentArray bool `yaml:"content_array"`
-}
-
-// Capabilities applies this model's overrides to what the catalogue believes:
-// whether it can see, and how large its window is.
-//
-// The resolution order is the same one Context follows: an explicit setting
-// wins, otherwise the catalogue, otherwise its conservative default.
-func (m ModelConfig) Capabilities(base catalogue.Model) catalogue.Model {
-	if m.Vision != nil {
-		base.SupportsVision = *m.Vision
-	}
-
-	if m.Context > 0 {
-		base.ContextWindow = m.Context
-	}
-
-	return base
 }
 
 // ProviderDriver resolves which implementation a provider uses. Empty is the

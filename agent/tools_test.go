@@ -91,6 +91,82 @@ func TestReadRangeIsLineNumbered(t *testing.T) {
 	}
 }
 
+// A binary file split on newlines is thousands of replacement characters that
+// cost the same context as real content and tell the model nothing. read says
+// what the file is instead - whatever the format, since a PNG, a database and a
+// compiled binary all fail the same way.
+func TestReadReportsABinaryFileInsteadOfItsBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shot.png")
+
+	// the PNG signature, then a NUL, as in every real one
+	if err := os.WriteFile(path, []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR and more"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	part, err := call(t, DefaultTools(), "read", map[string]any{
+		"path": path, "startLine": float64(1), "endLine": float64(50),
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	text := part.(string)
+
+	if !strings.Contains(text, "binary file") || !strings.Contains(text, path) {
+		t.Errorf("read of a binary file = %q, want it named as one", text)
+	}
+
+	if strings.Contains(text, "IHDR") || strings.ContainsRune(text, '\x00') {
+		t.Errorf("read leaked the file's bytes:\n%q", text)
+	}
+}
+
+// Text with an accent, an emoji or CJK in it is not binary: the guard looks for
+// a NUL byte, which text never holds, not for anything outside ASCII.
+func TestReadStillReadsNonASCIIText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unicode.txt")
+
+	if err := os.WriteFile(path, []byte("café\n日本語\n🚀\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	part, err := call(t, DefaultTools(), "read", map[string]any{
+		"path": path, "startLine": float64(1), "endLine": float64(3),
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	for _, want := range []string{"café", "日本語", "🚀"} {
+		if !strings.Contains(part.(string), want) {
+			t.Errorf("read lost %q:\n%s", want, part)
+		}
+	}
+}
+
+// A NUL past the part of the file looked at does not make it binary: the check
+// is a bounded sniff, so a large text file is not scanned end to end.
+func TestReadOnlySniffsTheStartOfAFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "long.txt")
+
+	body := strings.Repeat("a line of text\n", 1000) + "\x00 late nul\n"
+
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	part, err := call(t, DefaultTools(), "read", map[string]any{
+		"path": path, "startLine": float64(1), "endLine": float64(2),
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if strings.Contains(part.(string), "binary file") {
+		t.Errorf("a text file with a late NUL was called binary:\n%s", part)
+	}
+}
+
 // The range is required, not optional: an optional range invites whole-file
 // reads, and one large file can overflow a small context window and be
 // rejected wholesale.

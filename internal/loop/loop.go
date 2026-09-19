@@ -12,7 +12,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/openzot/openzot/internal/catalogue"
-	"github.com/openzot/openzot/internal/imaging"
 	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/thread"
 	"github.com/openzot/openzot/internal/tokenizer"
@@ -153,19 +152,6 @@ const (
 	// TypeInstructions is system context - the instructions that shape the run.
 	// Always ordered ahead of everything else.
 	TypeInstructions MessageType = "instructions"
-
-	// TypeAttachment carries what a tool produced but a tool result cannot
-	// hold - today, images.
-	//
-	// It exists because the wire will not take the obvious arrangement: an
-	// OpenAI-compatible endpoint rejects image parts on a tool result, so an
-	// image has to travel as its own message, in the one role that accepts it.
-	// A type of its own rather than TypeUser because nothing in an unattended
-	// run should claim a human said something, and because trimming needs to
-	// find these cheaply - images are the first thing worth dropping from a
-	// long history, and the message's text is written to stand alone once they
-	// are gone.
-	TypeAttachment MessageType = "attachment"
 )
 
 // Message is one entry in the conversation.
@@ -176,12 +162,6 @@ type Message struct {
 	// Activity is the tool call this message carries, on a TypeActivity
 	// message. Nil on every other type.
 	Activity *Activity `json:"activity,omitempty"`
-
-	// Images are what the model is shown alongside Text, on a TypeAttachment
-	// message. The bytes are not serialised with the message - see
-	// imaging.Image - so a message read back from a log carries the shape of
-	// its images and the recorder rehydrates the bytes from their blobs.
-	Images []imaging.Image `json:"images,omitempty"`
 }
 
 // Result is the outcome of a run.
@@ -892,11 +872,6 @@ func (e *Engine) dispatch(
 	budget *Budget,
 	emit func(Event),
 ) ([]Message, *Result) {
-	// images the turn's tools produced, held back until every call has been
-	// answered: a tool result may not carry them, and a user message wedged
-	// between two tool results would invalidate the turn
-	var attached []attachment
-
 	for _, call := range calls {
 		if e.maxCalls > 0 && budget.Calls >= e.maxCalls {
 			result := e.finish(messages, *budget, StopCalls,
@@ -949,91 +924,9 @@ func (e *Engine) dispatch(
 		emit(Event{Kind: EventToolCallEnd, Tool: name, Result: output})
 
 		messages = append(messages, activityMessage(ActivityResponse, call, output, ""))
-
-		if result, ok := output.(ToolResult); ok {
-			for _, image := range result.Images {
-				attached = append(attached, attachment{tool: name, call: call.ToolCallID, image: image})
-			}
-		}
-	}
-
-	if message, ok := attachmentMessage(attached); ok {
-		messages = append(messages, message)
 	}
 
 	return messages, nil
-}
-
-// maxAttachmentsPerTurn bounds how many images one turn may attach.
-//
-// A tool loop that attached everything it was handed could spend a context
-// window in a single turn - a handful of screenshots is thousands of tokens -
-// and the model cannot see that happening. The extras are named in the text so
-// the drop is visible rather than silent.
-const maxAttachmentsPerTurn = 8
-
-// attachment pairs an image with the call that produced it, so the message that
-// carries it can say where it came from.
-type attachment struct {
-	tool  string
-	call  string
-	image imaging.Image
-}
-
-// attachmentMessage renders a turn's images as the one message that carries
-// them.
-//
-// The text is written to stand alone. It is what the model reads if the images
-// are trimmed away, and what remains in a log whose blobs were deleted - in
-// every one of those cases the conversation should still say that an image
-// existed and what it was.
-func attachmentMessage(attached []attachment) (Message, bool) {
-	if len(attached) == 0 {
-		return Message{}, false
-	}
-
-	dropped := 0
-
-	if len(attached) > maxAttachmentsPerTurn {
-		dropped = len(attached) - maxAttachmentsPerTurn
-		attached = attached[:maxAttachmentsPerTurn]
-	}
-
-	var (
-		lines  []string
-		images []imaging.Image
-	)
-
-	for _, item := range attached {
-		lines = append(lines, describeAttachment(item))
-		images = append(images, item.image)
-	}
-
-	text := "Attached: " + strings.Join(lines, "; ")
-
-	if dropped > 0 {
-		text += fmt.Sprintf(" (%d further image(s) not attached: a turn may attach at most %d)",
-			dropped, maxAttachmentsPerTurn)
-	}
-
-	return Message{Type: TypeAttachment, Text: text, Images: images}, true
-}
-
-// describeAttachment is one image's standalone description.
-func describeAttachment(item attachment) string {
-	image := item.image
-
-	origin := image.Origin
-
-	if origin == "" {
-		origin = item.tool
-	}
-
-	if image.Width > 0 && image.Height > 0 {
-		return fmt.Sprintf("%s (%s, %dx%d)", origin, image.MediaType, image.Width, image.Height)
-	}
-
-	return fmt.Sprintf("%s (%s)", origin, image.MediaType)
 }
 
 // activityMessage renders one half of a tool-call pair.

@@ -5,10 +5,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-
-	"gopkg.in/yaml.v3"
-
-	"github.com/openzot/openzot/internal/catalogue"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -680,69 +676,5 @@ providers:
 	}
 	if got := cfg.Providers["openai"].APIKey; got != "sk-proxy" {
 		t.Errorf("openai key = %q, want the explicitly configured one", got)
-	}
-}
-
-func TestModelCapabilitiesDeferToTheCatalogueWhenUnset(t *testing.T) {
-	base := catalogue.Model{SupportsVision: true, ContextWindow: 200_000}
-
-	got := ModelConfig{}.Capabilities(base)
-
-	if got != base {
-		t.Errorf("Capabilities changed %+v to %+v with nothing set", base, got)
-	}
-}
-
-func TestModelCapabilitiesTurnSightOnAndOff(t *testing.T) {
-	base := catalogue.Model{}
-
-	on := true
-	off := false
-
-	if got := (ModelConfig{Vision: &on}).Capabilities(base); !got.SupportsVision {
-		t.Error("vision: true must let a model zot has not catalogued be shown images")
-	}
-
-	seeing := catalogue.Model{SupportsVision: true}
-
-	if got := (ModelConfig{Vision: &off}).Capabilities(seeing); got.SupportsVision {
-		t.Error("vision: false must be able to turn off what the catalogue believes")
-	}
-
-}
-
-func TestModelCapabilitiesApplyTheContextOverrideToo(t *testing.T) {
-	base := catalogue.Model{ContextWindow: 1_000_000}
-
-	if got := (ModelConfig{Context: 32_000}).Capabilities(base); got.ContextWindow != 32_000 {
-		t.Errorf("context window = %d, want the override", got.ContextWindow)
-	}
-
-	if got := (ModelConfig{}).Capabilities(base); got.ContextWindow != 1_000_000 {
-		t.Errorf("context window = %d, want the catalogue's when unset", got.ContextWindow)
-	}
-}
-
-func TestModelCapabilitiesParseFromYAML(t *testing.T) {
-	var parsed struct {
-		Models map[string]ModelConfig `yaml:"models"`
-	}
-
-	source := "models:\n  stealth/ox-alpha:\n    vision: true\n  blinkered:\n    vision: false\n  quiet: {}\n"
-
-	if err := yaml.Unmarshal([]byte(source), &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if parsed.Models["stealth/ox-alpha"].Vision == nil || !*parsed.Models["stealth/ox-alpha"].Vision {
-		t.Error("vision: true must parse as an explicit yes")
-	}
-
-	if parsed.Models["blinkered"].Vision == nil || *parsed.Models["blinkered"].Vision {
-		t.Error("vision: false must parse as an explicit no, not as absent")
-	}
-
-	if parsed.Models["quiet"].Vision != nil {
-		t.Error("an unstated capability must stay unstated, so the catalogue decides")
 	}
 }

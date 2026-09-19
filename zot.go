@@ -23,7 +23,6 @@ import (
 
 	"github.com/openzot/openzot/agent"
 
-	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/tui"
@@ -386,19 +385,9 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 	contextWindow := 0
 	contentArray := false
 
-	// What the model can do: the catalogue's answer, then whatever the operator
-	// stated for this model. An uncatalogued model resolves to the conservative
-	// default - tools yes, images no - so a model zot has never heard of is
-	// never offered a tool for looking at pictures it may not be able to see.
-	capabilities := catalogue.Lookup(model)
-
 	if mc, ok := providerConfig.Models[model]; ok {
 		if mc.Model != "" {
 			model = mc.Model
-
-			// the override names a real model, so start from what the catalogue
-			// knows about that one before applying the rest
-			capabilities = catalogue.Lookup(model)
 		}
 		if mc.MaxIterations > 0 {
 			maxIterations = mc.MaxIterations
@@ -411,8 +400,6 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 		}
 
 		contentArray = mc.ContentArray
-
-		capabilities = mc.Capabilities(capabilities)
 	}
 
 	instructions := cfg.Agent.Instructions
@@ -448,7 +435,6 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 		Instructions: instructions,
 		Tools: agent.DefaultToolsFor(agent.ToolOptions{
 			MaxOutput: cfg.Agent.MaxToolOutput,
-			Vision:    capabilities.SupportsVision,
 		}),
 		Skills:           skills.Skills,
 		MaxIterations:    maxIterations,
