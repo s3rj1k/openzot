@@ -21,7 +21,7 @@ func isInteractive() bool {
 }
 
 // runPlain streams the agent's activity as plain, unstyled lines. It is the
-// explicit --plain path; automatic non-TTY output uses runStream so an ANSI-aware
+// explicit ui.plain path; automatic non-TTY output uses runStream so an ANSI-aware
 // consumer can opt into colors without becoming an interactive terminal.
 func runPlain(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
 	return runStream(ctx, client, meta, opts, false)

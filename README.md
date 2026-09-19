@@ -61,7 +61,7 @@ zot
 editor; write the objective and the acceptance criteria, then a bare `zot` runs
 the orders in the folder, each from zero. Any OpenAI-compatible endpoint works -
 a hosted service, a gateway, a local server - declare it under `providers:` and
-pick it with `--provider`.
+name it with `default_provider`.
 
 Every run is logged beside its order as `.zot/orders/<name>.jsonl`: one JSON
 line per step, including the model's reasoning, appended as the run goes. Running

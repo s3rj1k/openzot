@@ -73,12 +73,7 @@ func run() error {
 	}
 
 	configPath := pflag.String("config", "", "path to zot config (default: "+config.DefaultConfigPath()+", optional)")
-	provider := pflag.String("provider", "", "provider to run against, by the name it is given under providers: in the config (default: default_provider)")
-	model := pflag.String("model", "", "override the model name (default: agent.model from the config)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
-	maxIter := pflag.Int("max-iterations", 0, "override the safety cap on agent iterations")
-	plainFlag := pflag.Bool("plain", false, "stream unstyled output instead of the full-screen UI (auto-enabled when not a TTY)")
-	colorFlag := pflag.String("color", "", "colorize non-interactive output: auto, always, or never")
 	ordersFlag := pflag.String("orders-dir", "", "where this project's orders live, run by a bare `zot` (default: <dir>/"+order.BookDir+"/orders)")
 	pflag.Usage = usage
 	pflag.Parse()
@@ -117,19 +112,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
-	passed := map[string]bool{}
-
-	pflag.Visit(func(f *pflag.Flag) { passed[f.Name] = true })
-
-	applyOverrides(&cfg, overrides{
-		Provider:      *provider,
-		Model:         *model,
-		MaxIterations: *maxIter,
-		Plain:         *plainFlag,
-		Color:         *colorFlag,
-		Passed:        passed,
-	})
 
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -423,71 +405,6 @@ func openInEditor(path string) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	return cmd.Run()
-}
-
-// overrides are the command-line values that take precedence over the config
-// file and the environment.
-type overrides struct {
-	Provider      string
-	Model         string
-	MaxIterations int
-	Plain         bool
-	Color         string
-
-	// Passed names the flags actually given, so a boolean can tell "false
-	// because it was passed" from "false because it was never set". Without it
-	// an unset --plain would silently turn off a mode the config had enabled.
-	Passed map[string]bool
-}
-
-// applyOverrides layers command-line values over a loaded configuration.
-func applyOverrides(cfg *config.Config, o overrides) {
-	if o.Provider != "" {
-		cfg.DefaultProvider = o.Provider
-	}
-
-	if o.Model != "" {
-		cfg.Agent.Model = o.Model
-	}
-
-	if o.MaxIterations > 0 {
-		cfg.Agent.MaxIterations = o.MaxIterations
-	}
-
-	// A per-model max_iterations is applied when the run resolves, after this,
-	// and would otherwise leave the config file beating the command line: the
-	// engine would stop at the model's cap while the viewer counted up to the
-	// flag's. An explicitly passed --max-iterations is the operator's last word,
-	// so the model's own cap goes.
-	if o.Passed["max-iterations"] {
-		clearModelIterations(cfg)
-	}
-
-	if o.Passed["plain"] {
-		cfg.UI.Plain = o.Plain
-	}
-	if o.Color != "" {
-		cfg.UI.Color = o.Color
-	}
-}
-
-// clearModelIterations drops the per-model iteration cap for the model the run
-// will actually use, so nothing is left to override the command line later. The
-// provider and model have already been overridden by the time this is called, so
-// it looks up the pair the run resolves to.
-func clearModelIterations(cfg *config.Config) {
-	provider, ok := cfg.Providers[cfg.DefaultProvider]
-	if !ok {
-		return
-	}
-
-	model, ok := provider.Models[cfg.Agent.Model]
-	if !ok {
-		return
-	}
-	model.MaxIterations = 0
-
-	provider.Models[cfg.Agent.Model] = model
 }
 
 func firstNonEmpty(values ...string) string {
@@ -861,7 +778,7 @@ func resolve(cfg config.Config, defaultInstructions string) (*agent.Client, agen
 
 	if cfg.DefaultProvider == "" {
 		return nil, empty, errors.New(
-			"no provider selected: declare one under providers: in the config and name it with default_provider (or --provider)")
+			"no provider selected: declare one under providers: in the config and name it with default_provider")
 	}
 
 	providerConfig, ok := cfg.Providers[cfg.DefaultProvider]

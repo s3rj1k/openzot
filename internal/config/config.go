@@ -33,8 +33,8 @@ type Config struct {
 	// mid-run, by the operator or by the agent itself, surface on the model's
 	// next turn.
 	SkillDirectories []string `yaml:"-"`
-	// DefaultProvider names the entry in Providers used when --provider is not
-	// given. There is no built-in default: a run needs one named.
+	// DefaultProvider names the entry in Providers used by every run. There is
+	// no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`
 	// Providers are the named model-provider connections a run can target. None
 	// are built in; each is declared here with a base_url and an api_key.
@@ -336,7 +336,7 @@ func ScrubProviderSecrets(cfg Config) {
 // Validate checks the fully-merged configuration.
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
-		return fmt.Errorf("agent.model must be set (in the config, or with --model): zot has no default model")
+		return fmt.Errorf("agent.model must be set in the config: zot has no default model")
 	}
 	if c.Agent.MaxIterations <= 0 {
 		return fmt.Errorf("agent.max_iterations must be a positive number")
@@ -365,7 +365,7 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.DefaultProvider) == "" {
 		return fmt.Errorf(
-			"no provider selected: declare one under providers: in the config and name it with default_provider (or --provider) - zot has no built-in providers")
+			"no provider selected: declare one under providers: in the config and name it with default_provider - zot has no built-in providers")
 	}
 	if _, ok := c.Providers[c.DefaultProvider]; !ok {
 		return fmt.Errorf("provider %q is not configured (declare it under providers: with a base_url and api_key)", c.DefaultProvider)

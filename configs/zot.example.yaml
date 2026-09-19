@@ -90,7 +90,7 @@ agent:
   # outcome - is appended to it: a run has no input channel to ask through.
   # instructions: ''
 
-# Presentation. Plain and color are also command-line flags.
+# Presentation.
 ui:
   # Force unstyled output instead of the full-screen viewer. Without a terminal
   # Zot streams automatically, so an ordinary pipeline needs no flag.
@@ -114,7 +114,7 @@ ui:
 
 # Providers are the named inference connections a run can target: direct model
 # services, local servers, or gateways. None are built in - every one is declared
-# here. Pick one per run with --provider; otherwise default_provider is used.
+# here. default_provider names the one every run uses.
 default_provider: mygateway
 
 providers:
@@ -129,8 +129,8 @@ providers:
     base_url: 'https://gateway.internal.example.com/v1'
     api_key: '$GATEWAY_KEY'
 
-    # The models this provider serves. Required: agent.model and --model must
-    # name one of these keys, and every entry must state its context window.
+    # The models this provider serves. Required: agent.model must name
+    # one of these keys, and every entry must state its context window.
     # Each entry can alias the provider's real model ID and override its run
     # settings.
     models:

@@ -417,103 +417,45 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 }
 
 // The CLI uses pflag (GNU-style), so a flag may appear AFTER the positional
-// order paths: `zot orders/a.yaml --plain` parses --plain as a flag and keeps
+// order paths: `zot orders/a.yaml --dir proj` parses --dir as a flag and keeps
 // the paths intact. The stdlib flag package stopped at the first non-flag,
-// folding --plain into the positionals - this locks the behaviour that
+// folding the flag into the positionals - this locks the behaviour that
 // motivated the switch.
 func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
-
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
-	plain := set.Bool("plain", false, "")
+	dir := set.String("dir", ".", "")
 
-	if err := set.Parse([]string{"do", "the", "thing", "--plain"}); err != nil {
+	if err := set.Parse([]string{"a.yaml", "b.yaml", "--dir", "proj"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
-	if !*plain {
-		t.Error("--plain given after the task must be parsed as a flag, not swallowed into it")
+	if *dir != "proj" {
+		t.Errorf("--dir given after the orders = %q, want it parsed as a flag", *dir)
 	}
 
-	if got := strings.Join(set.Args(), " "); got != "do the thing" {
-		t.Errorf("positional task = %q, want the words before the flag", got)
+	if got := strings.Join(set.Args(), " "); got != "a.yaml b.yaml" {
+		t.Errorf("positional orders = %q, want the paths before the flag", got)
 	}
 }
 
-// Command-line values win over the file and the environment - but a boolean that
-// was never passed must not overwrite one the config enabled.
-func TestApplyOverrides(t *testing.T) {
-	base := func() config.Config {
-		cfg := config.Defaults()
-		cfg.UI.Plain = true
+// Everything the config can say, the config alone says: a flag that duplicated a
+// key would be a second place to look for what a run was told.
+func TestConfigKeysAreNotFlags(t *testing.T) {
+	withArgs(t, "--config", filepath.Join(t.TempDir(), "missing.yaml"), orderFile(t, "a task"))
 
-		return cfg
+	_, _ = captureStderr(t, func() error { return run() })
+
+	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color"} {
+		if pflag.CommandLine.Lookup(name) != nil {
+			t.Errorf("--%s is a flag, but the config already says it", name)
+		}
 	}
 
-	t.Run("scalars override when set", func(t *testing.T) {
-		cfg := base()
-
-		applyOverrides(&cfg, overrides{
-			Provider:      "groq",
-			Model:         "glm-5.2",
-			MaxIterations: 12,
-			Color:         "always",
-		})
-
-		if cfg.DefaultProvider != "groq" {
-			t.Errorf("provider = %q", cfg.DefaultProvider)
+	for _, name := range []string{"config", "dir", "orders-dir"} {
+		if pflag.CommandLine.Lookup(name) == nil {
+			t.Errorf("--%s should stay a flag: the config cannot say it", name)
 		}
-
-		if cfg.Agent.Model != "glm-5.2" {
-			t.Errorf("model = %q", cfg.Agent.Model)
-		}
-
-		if cfg.Agent.MaxIterations != 12 {
-			t.Errorf("max iterations = %d", cfg.Agent.MaxIterations)
-		}
-
-		if cfg.UI.Color != "always" {
-			t.Errorf("color = %q", cfg.UI.Color)
-		}
-	})
-
-	t.Run("empty scalars leave the config alone", func(t *testing.T) {
-		cfg := base()
-
-		before := cfg.Agent.Model
-
-		applyOverrides(&cfg, overrides{})
-
-		if cfg.Agent.Model != before {
-			t.Errorf("model = %q, want %q untouched", cfg.Agent.Model, before)
-		}
-
-		if cfg.Agent.MaxIterations <= 0 {
-			t.Error("a zero max-iterations must not clear the configured value")
-		}
-	})
-
-	t.Run("an unpassed boolean does not turn a configured one off", func(t *testing.T) {
-		cfg := base()
-
-		applyOverrides(&cfg, overrides{Plain: false})
-
-		if !cfg.UI.Plain {
-			t.Error("--plain was never passed; the configured value must stand")
-		}
-	})
-
-	t.Run("a passed boolean does override", func(t *testing.T) {
-		cfg := base()
-
-		applyOverrides(&cfg, overrides{
-			Plain:  false,
-			Passed: map[string]bool{"plain": true},
-		})
-
-		if cfg.UI.Plain {
-			t.Error("--plain=false was passed and must win")
-		}
-	})
+	}
 }
 
 // editConfig is the setup path: it must create the config from the template on
@@ -900,74 +842,6 @@ providers:
 			t.Fatalf("got %d logs - the second order must never have run", len(logs))
 		}
 	})
-}
-
-// An explicitly passed --max-iterations is the operator's last word. A per-model
-// max_iterations is applied when the run resolves - after the command line has
-// been layered into the config - so the file used to quietly win: `zot
-// --max-iterations 4` against a model capped at 1 stopped after a single
-// iteration. Counting provider calls is the only honest way to ask which limit
-// the engine enforced.
-func TestExplicitMaxIterationsBeatsAPerModelCap(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var requests atomic.Int32
-
-	// never finishes on its own: every turn is a non-terminal tool call, so the
-	// run ends only when it runs out of iterations
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		step := requests.Add(1)
-
-		fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c%d","type":"function","function":{"name":"tasks","arguments":"{\"tasks\":[{\"title\":\"step %d\",\"status\":\"in_progress\"}]}"}}]},"finish_reason":"tool_calls"}]}`,
-			step, step))
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
-
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-
-	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
-agent:
-  model: capped
-  max_iterations: 9
-ui:
-  plain: true
-default_provider: local
-providers:
-  local:
-    driver: openai
-    base_url: %s
-    api_key: test-key
-    models:
-      capped:
-        model: test-model
-        max_iterations: 1
-        context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	withArgs(t, "--config", configPath, "--dir", t.TempDir(), "--max-iterations", "4", orderFile(t, "a task"))
-
-	// exhausting the iteration budget is how this run ends, so the error is the
-	// expected outcome - what matters is the budget it exhausted
-	_, err := captureStdout(t, run)
-	if err == nil {
-		t.Fatal("a run that never records an outcome must end on its iteration cap")
-	}
-
-	if !strings.Contains(err.Error(), "stopped after 4 iterations") {
-		t.Errorf("run stopped with %v, want the command-line cap of 4 to be the one enforced", err)
-	}
-
-	if got := requests.Load(); got != 4 {
-		t.Errorf("the run made %d provider calls, want the 4 the command line allowed", got)
-	}
 }
 
 // A model with no context window is refused before any request, and the error

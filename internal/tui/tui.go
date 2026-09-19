@@ -76,7 +76,7 @@ type Meta struct {
 // Along with any error it returns the run's recorded Outcome, so a caller can
 // report how it ended without scraping the screen.
 func Run(ctx context.Context, client *agent.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
-	// --plain is an explicit request for an unstyled transcript. Without a
+	// ui.plain is an explicit request for an unstyled transcript. Without a
 	// terminal, stream too, but keep ANSI styling when the consumer declared
 	// that it supports color (a browser terminal is the main example).
 	if meta.Plain {
