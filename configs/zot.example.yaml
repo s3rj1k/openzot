@@ -2,9 +2,9 @@
 #
 # zot has no built-in providers and no default model: before a run can start,
 # declare a provider under `providers:` (at the bottom), name it with
-# default_provider, and set agent.model. Every other field is optional. Copy
-# this file to ~/.config/zot/config.yaml (or pass it with --config) and adjust
-# as needed.
+# default_provider, set agent.model, and list that model under the provider with
+# its context window. Every other field is optional. Copy this file to
+# ~/.config/zot/config.yaml (or pass it with --config) and adjust as needed.
 #
 # Credentials: put the key DIRECTLY in a provider's api_key, or reference an
 # environment variable with $VAR - either works. Nothing is read from a
@@ -12,9 +12,9 @@
 # for, so each provider says which one it uses.
 
 agent:
-  # Model name that drives the agent, as the selected provider names it. There
-  # is no default. Make sure default_provider below actually serves it: a model
-  # and a provider that cannot talk to each other fail as a provider error
+  # Model that drives the agent: a key under the selected provider's `models:`.
+  # There is no default. Make sure default_provider below actually serves it: a
+  # model and a provider that cannot talk to each other fail as a provider error
   # rather than a configuration one, which is much harder to read.
   model: "my-model"
 
@@ -81,9 +81,8 @@ agent:
 
   # There is no context-management setting: as the conversation approaches the
   # model's context window the oldest messages are dropped to fit it. Nothing is
-  # summarised. If the window is smaller than zot assumes, set `context` on the
-  # model (under providers) so trimming fits the endpoint before it rejects a
-  # request.
+  # summarised. The window is the `context` every model states under providers,
+  # so trimming fits the endpoint before it rejects a request.
 
   # Optional override of the built-in system prompt. Leave blank to use the
   # default fully-autonomous instructions. Whatever you put here, zot's
@@ -130,20 +129,23 @@ providers:
     base_url: 'https://gateway.internal.example.com/v1'
     api_key: '$GATEWAY_KEY'
 
-    # Optional custom model list. When present, --model must name one of these
-    # keys. Each entry can alias the provider's real model ID and override its
-    # run settings. Omit the block to accept any model name.
-    # models:
-    #   fast:
-    #     model: 'gpt-5.4-mini'
-    #     max_iterations: 50
-    #     # real context window of the serving endpoint, in tokens - the escape
-    #     # hatch for a model whose endpoint ceiling is smaller than its card
-    #     # (trimming then fits the endpoint before it rejects the request)
-    #     context: 32000
-    #     # send every message's content as an array of parts, for llama.cpp
-    #     # templates that reject a bare string
-    #     content_array: true
+    # The models this provider serves. Required: agent.model and --model must
+    # name one of these keys, and every entry must state its context window.
+    # Each entry can alias the provider's real model ID and override its run
+    # settings.
+    models:
+      my-model:
+        # The model's total context window, in tokens. Required. zot keeps no
+        # table of what models can take, so state the real ceiling of the
+        # endpoint being served, which can be smaller than the model's card.
+        # Trimming keeps the conversation within it.
+        context: 128000
+        # the real model ID, when this key is only an alias for it
+        # model: 'gpt-5.4-mini'
+        # max_iterations: 50
+        # send every message's content as an array of parts, for llama.cpp
+        # templates that reject a bare string
+        # content_array: true
 
   # A local server needs no key.
   # local:

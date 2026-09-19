@@ -219,7 +219,7 @@ var contextLimitPatterns = []*regexp.Regexp{
 
 // maximumContextPattern pulls the real window out of the rejection. When a
 // provider refuses a prompt for length it states the actual limit, and that is
-// ground truth in a way the catalogue is not.
+// ground truth in a way the configured window may not be.
 var maximumContextPattern = regexp.MustCompile(`(?i)maximum context length is\s+(\d+)\s+tokens`)
 
 // usedTokensPattern pulls out what the rejected request actually cost.

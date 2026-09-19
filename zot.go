@@ -379,25 +379,30 @@ func resolve(cfg Config, defaultInstructions string) (*agent.Client, agent.Execu
 	driver := config.ProviderDriver(providerConfig)
 	credential := config.ProviderCredential(providerConfig)
 
-	contextWindow := 0
-	contentArray := false
-
-	if mc, ok := providerConfig.Models[model]; ok {
-		if mc.Model != "" {
-			model = mc.Model
-		}
-		if mc.MaxIterations > 0 {
-			maxIterations = mc.MaxIterations
-		}
-		if mc.APIKey != "" {
-			credential = mc.APIKey
-		}
-		if mc.Context > 0 {
-			contextWindow = mc.Context
-		}
-
-		contentArray = mc.ContentArray
+	// Every model is declared, with its own context window. Validate says so at
+	// load; this is the same rule for an embedder that skips it, because a run
+	// with no window has nothing to decide how much of a conversation to keep.
+	mc, ok := providerConfig.Models[model]
+	if !ok || mc.Context <= 0 {
+		return nil, empty, fmt.Errorf(
+			"model %q needs a context window: list it under providers.%s.models with context set",
+			model, cfg.DefaultProvider)
 	}
+
+	if mc.Model != "" {
+		model = mc.Model
+	}
+
+	if mc.MaxIterations > 0 {
+		maxIterations = mc.MaxIterations
+	}
+
+	if mc.APIKey != "" {
+		credential = mc.APIKey
+	}
+
+	contextWindow := mc.Context
+	contentArray := mc.ContentArray
 
 	instructions := cfg.Agent.Instructions
 	if instructions == "" {

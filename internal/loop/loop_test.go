@@ -15,6 +15,10 @@ import (
 	"github.com/openzot/openzot/internal/llm"
 )
 
+// testWindow is the context window every test engine is given. A window is
+// required, and this one is large enough that no test trims by accident.
+const testWindow = 1_000_000
+
 // stub serves scripted turns over the OpenAI-compatible wire format, so the loop
 // can be driven without a model.
 func stub(t *testing.T, turns ...[]string) *llm.Client {
@@ -115,7 +119,7 @@ func echoTool(calls *int) map[string]ToolDefinition {
 }
 
 func TestNewAppliesDefaults(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()})})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -148,7 +152,7 @@ func TestNewAppliesDefaults(t *testing.T) {
 }
 
 func TestNewRequiresAClient(t *testing.T) {
-	if _, err := New(Options{}); err == nil {
+	if _, err := New(Options{ContextWindow: testWindow}); err == nil {
 		t.Fatal("an engine without a client must not be constructed")
 	}
 }
@@ -156,7 +160,7 @@ func TestNewRequiresAClient(t *testing.T) {
 func TestIterationBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
@@ -178,7 +182,7 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 func TestCallBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
@@ -197,7 +201,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 }
 
 func TestEmptyTurnsAreBounded(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxEmpties: 2,
@@ -213,7 +217,7 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 }
 
 func TestTruncatedOutputIsContinued(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("half an answ"), truncated()},
 			[]string{text("er, continued"), stop()},
@@ -245,7 +249,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 }
 
 func TestTruncationIsBounded(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{text("x"), truncated()}),
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 2,
@@ -259,7 +263,7 @@ func TestTruncationIsBounded(t *testing.T) {
 func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{"q":"same"}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
@@ -278,7 +282,7 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 }
 
 func TestSettleModeRequiresATerminalCall(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("All done, the task is completed."), stop()},
 			[]string{tool("c9", SuccessTool, `{"summary":"really done"}`)},
@@ -301,7 +305,7 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 }
 
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxSettles: 5,
@@ -321,13 +325,13 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 // renders as "done" - a mission the model gave up on was reported to scripts,
 // schedules and the session log as a success.
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
-	settled := run(t, Options{
+	settled := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c1", SuccessTool, `{"summary":"shipped it"}`)}),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
-	failed := run(t, Options{
+	failed := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxSettles: 5,
@@ -347,7 +351,7 @@ func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 }
 
 func TestSettleModeGivesUpEventually(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{text("I believe I am finished."), stop()}),
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxSettles: 2,
@@ -360,7 +364,7 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 
 // Outside settle mode a plain stop is a legitimate ending.
 func TestPlainStopEndsWithoutSettleMode(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("here you go"), stop()}),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
@@ -371,7 +375,7 @@ func TestPlainStopEndsWithoutSettleMode(t *testing.T) {
 }
 
 func TestCancellationStopsTheRun(t *testing.T) {
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("hi"), stop()}),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
@@ -391,7 +395,7 @@ func TestCancellationStopsTheRun(t *testing.T) {
 }
 
 func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "missing", `{}`)},
 			[]string{text("recovered"), stop()},
@@ -427,7 +431,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 		},
 	}
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "boom", `{}`)},
 			[]string{text("noted"), stop()},
@@ -450,7 +454,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 }
 
 func TestEventsAreEmitted(t *testing.T) {
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("hello"), stop()}),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
@@ -480,7 +484,7 @@ func TestEventsAreEmitted(t *testing.T) {
 }
 
 func TestInstructionsRendersSkillsAndSettleInstruction(t *testing.T) {
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:       stub(t, []string{stop()}),
 		Instructions: "you are an agent",
 		Skills: func() []Skill {
@@ -511,7 +515,7 @@ func TestInstructionsRendersSkillsAndSettleInstruction(t *testing.T) {
 func TestInstructionsReflectsLiveSkillChanges(t *testing.T) {
 	skills := []Skill{{Name: "recon", Description: "map the target", Path: "/skills/recon/SKILL.md"}}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:       stub(t, []string{stop()}),
 		Instructions: "you are an agent",
 		Skills:       func() []Skill { return skills },
@@ -534,7 +538,7 @@ func TestInstructionsReflectsLiveSkillChanges(t *testing.T) {
 }
 
 func TestInstructionsOmitsSkillsBlockWhenNil(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()}), Instructions: "plain"})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Instructions: "plain"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -545,7 +549,7 @@ func TestInstructionsOmitsSkillsBlockWhenNil(t *testing.T) {
 }
 
 func TestInstructionsOmitsSettleInstructionWhenOff(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()}), Instructions: "plain"})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Instructions: "plain"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -556,7 +560,7 @@ func TestInstructionsOmitsSettleInstructionWhenOff(t *testing.T) {
 }
 
 func TestToolDefinitionsAddTerminalToolsInSettleMode(t *testing.T) {
-	options := Options{
+	options := Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
 		Tools:      map[string]ToolDefinition{"echo": {Name: "echo"}},
 		MaxSettles: 5,
@@ -600,7 +604,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 		tools[name] = ToolDefinition{Name: name}
 	}
 
-	engine, err := New(Options{Client: stub(t, []string{stop()}), Tools: tools})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Tools: tools})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -671,7 +675,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:        client,
 		Messages:      []Message{{Type: TypeUser, Text: "go"}},
 		MaxIterations: 1,
@@ -699,32 +703,45 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	}
 }
 
-// An uncatalogued model is assumed to have a large window, so an endpoint
-// whose real ceiling is smaller rejects the request outright - and an
-// endpoint that reports overflow opaquely gives the reactive recovery nothing
-// to detect. The operator's declared window must therefore beat the catalogue,
-// so budgeting (and with it trimming) fits the endpoint that actually serves
-// the run.
-func TestContextWindowOverrideBeatsTheCatalogue(t *testing.T) {
+// The window is the operator's to state: there is no table of what models can
+// take, and a serving endpoint's real ceiling can be smaller than any model's
+// card. Budgeting - and with it trimming - follows the window that was given.
+func TestTheInputBudgetFollowsTheConfiguredWindow(t *testing.T) {
 	client := stub(t, []string{stop()})
 
-	assumed, err := New(Options{Client: client})
+	large, err := New(Options{Client: client, ContextWindow: 200_000})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	capped, err := New(Options{Client: client, ContextWindow: 32_000})
+	small, err := New(Options{Client: client, ContextWindow: 32_000})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if capped.inputBudget >= assumed.inputBudget {
-		t.Errorf("input budget = %d, want it below the catalogue's %d", capped.inputBudget, assumed.inputBudget)
+	if small.inputBudget >= large.inputBudget {
+		t.Errorf("input budget = %d for the small window, want it below the large window's %d",
+			small.inputBudget, large.inputBudget)
 	}
 
 	// the output reserve still applies: the whole window is never given to input
-	if capped.inputBudget >= 32_000 {
-		t.Errorf("input budget = %d, want an output reserve inside the declared window", capped.inputBudget)
+	if small.inputBudget >= 32_000 || large.inputBudget >= 200_000 {
+		t.Errorf("input budgets %d and %d must leave room for the answer inside their windows",
+			small.inputBudget, large.inputBudget)
+	}
+}
+
+// A run with no window has nothing to decide how much of a conversation to keep,
+// and guessing one is exactly what the operator is asked not to leave to zot.
+func TestNewRefusesARunWithoutAWindow(t *testing.T) {
+	client := stub(t, []string{stop()})
+
+	for _, window := range []int{0, -1} {
+		if _, err := New(Options{Client: client, ContextWindow: window}); err == nil {
+			t.Errorf("a context window of %d was accepted", window)
+		} else if !strings.Contains(err.Error(), "context") {
+			t.Errorf("the error should say a context window is missing: %v", err)
+		}
 	}
 }
 

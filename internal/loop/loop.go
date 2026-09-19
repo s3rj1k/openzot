@@ -11,7 +11,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/catalogue"
 	"github.com/openzot/openzot/internal/llm"
 	"github.com/openzot/openzot/internal/thread"
 )
@@ -118,9 +117,9 @@ type Options struct {
 	LimitCheckpoints []int
 
 	// ContextWindow overrides the model's total context window, in tokens.
-	// Zero uses the catalogue. The operator's escape hatch for an endpoint
-	// whose real ceiling is smaller than the model's card and whose overflow
-	// error is too opaque for the reactive recovery to detect.
+	// Required: New refuses a run without it. There is no built-in table of what
+	// each model can take - the operator states it, because only the operator
+	// knows the real ceiling of the endpoint being served.
 	ContextWindow int
 }
 
@@ -232,6 +231,10 @@ func New(options Options) (*Engine, error) {
 		return nil, errors.New("loop: no provider client")
 	}
 
+	if options.ContextWindow <= 0 {
+		return nil, errors.New("loop: no context window: set context on the model in the config")
+	}
+
 	pick := func(value, fallback int) int {
 		if value > 0 {
 			return value
@@ -240,18 +243,10 @@ func New(options Options) (*Engine, error) {
 		return fallback
 	}
 
-	model := options.Client.Config().Model
-
-	budget := catalogue.InputBudget(model)
-
-	if options.ContextWindow > 0 {
-		// the operator's stated window beats the catalogue: it exists because
-		// the endpoint's real ceiling disagrees with the model's card
-		budget = catalogue.Model{
-			ContextWindow:   options.ContextWindow,
-			MaxOutputTokens: options.ContextWindow / 4,
-		}.InputBudget()
-	}
+	// Three quarters of the window is input; the rest is the room the answer
+	// needs. Not all of it: a request that fills the window leaves the model
+	// nowhere to write.
+	budget := options.ContextWindow - options.ContextWindow/4
 
 	if budget < MinInputTokens {
 		budget = MinInputTokens
@@ -997,10 +992,10 @@ func cycleDetail(heuristic string) string {
 // down - if not there is nothing left to try, and the rejection is a real
 // failure.
 //
-// The provider's stated window beats the local estimate. A rejection is
-// precisely the case where the catalogue was wrong - an uncatalogued model, or a
-// provider serving a smaller variant - so believing the error is what makes the
-// retry fit instead of guessing again. A rejection that states no window, or one
+// The provider's stated window beats the configured one. A rejection is
+// precisely the case where the configured window was wrong - a serving endpoint
+// with a smaller ceiling than the operator stated - so believing the error is
+// what makes the retry fit instead of guessing again. A rejection that states no window, or one
 // no lower than the budget already in force, still has to shrink something or
 // the retry would send the identical request: the budget steps down by a quarter
 // instead, until it reaches the floor the instructions and tool schemas need.

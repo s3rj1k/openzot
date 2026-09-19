@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +23,10 @@ func validConfig(tweak func(*Config)) Config {
 	c := Config{
 		Agent:           Agent{Model: "m", MaxIterations: 1},
 		DefaultProvider: "openai",
-		Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "x"}},
+		Providers: map[string]ProviderConfig{"openai": {
+			BaseURL: "https://gw.example.com/v1", APIKey: "x",
+			Models: map[string]ModelConfig{"m": {Context: 100_000}},
+		}},
 	}
 	if tweak != nil {
 		tweak(&c)
@@ -244,20 +248,75 @@ func TestValidate(t *testing.T) {
 		t.Error("expected an error for a driver other than openai")
 	}
 	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{Driver: "openai", BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+		c.Providers["openai"] = ProviderConfig{
+			Driver: "openai", BaseURL: "https://gw.example.com/v1", APIKey: "x",
+			Models: map[string]ModelConfig{"m": {Context: 100_000}},
+		}
 	}).Validate(); err != nil {
 		t.Errorf("the openai driver was rejected: %v", err)
 	}
 	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
+		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
 	}).Validate(); err == nil {
-		t.Error("expected a custom provider model list to reject an unlisted model")
+		t.Error("expected the model list to reject an unlisted model")
 	}
 	if err := validConfig(func(c *Config) {
 		c.Agent.Model = "allowed"
-		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4"}}}
+		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
 	}).Validate(); err != nil {
-		t.Errorf("custom provider model was rejected: %v", err)
+		t.Errorf("a declared model was rejected: %v", err)
+	}
+}
+
+// The context window is the only source of what a model can take: there is no
+// table to fall back on, so a model without one cannot run, and the error says
+// which model and what to set.
+func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
+	for _, window := range []int{0, -1} {
+		err := validConfig(func(c *Config) {
+			c.Providers["openai"] = ProviderConfig{
+				BaseURL: "https://gw.example.com/v1", APIKey: "x",
+				Models: map[string]ModelConfig{"m": {Context: window}},
+			}
+		}).Validate()
+		if err == nil {
+			t.Fatalf("a context of %d was accepted", window)
+		}
+
+		for _, want := range []string{"providers.openai.models.m", "context is required"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q should mention %q", err, want)
+			}
+		}
+	}
+
+	// not only the selected model: a listed model with no window is a mistake
+	// whether or not this run uses it
+	err := validConfig(func(c *Config) {
+		c.Providers["openai"] = ProviderConfig{
+			BaseURL: "https://gw.example.com/v1", APIKey: "x",
+			Models: map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: "gpt-5.4"}},
+		}
+	}).Validate()
+	if err == nil || !strings.Contains(err.Error(), "providers.openai.models.spare") {
+		t.Errorf("an unused model with no context should still be refused, got %v", err)
+	}
+}
+
+// With no model list there is nowhere to state a window, so the model cannot run
+// at all. Silently accepting any model name is what a built-in table allowed.
+func TestValidateRefusesAProviderThatDeclaresNoModels(t *testing.T) {
+	err := validConfig(func(c *Config) {
+		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+	}).Validate()
+	if err == nil {
+		t.Fatal("a provider with no models was accepted")
+	}
+
+	for _, want := range []string{"declares no models", "context window"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
 	}
 }
 
@@ -404,7 +463,10 @@ func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 		t.Error("a provider named after a former built-in still needs a base_url")
 	}
 
-	cfg.Providers["groq"] = ProviderConfig{BaseURL: "https://gw.example.com/v1"}
+	cfg.Providers["groq"] = ProviderConfig{
+		BaseURL: "https://gw.example.com/v1",
+		Models:  map[string]ModelConfig{"m": {Context: 100_000}},
+	}
 
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("a provider with its own endpoint is valid: %v", err)
@@ -491,7 +553,10 @@ func TestMaxTimeIsValidated(t *testing.T) {
 		return Config{
 			Agent:           Agent{Model: "m", MaxIterations: 10},
 			DefaultProvider: "openai",
-			Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "k"}},
+			Providers: map[string]ProviderConfig{"openai": {
+				BaseURL: "https://gw.example.com/v1", APIKey: "k",
+				Models: map[string]ModelConfig{"m": {Context: 100_000}},
+			}},
 		}
 	}
 
@@ -569,7 +634,10 @@ func TestLimitCheckpointsAreValidated(t *testing.T) {
 		return Config{
 			Agent:           Agent{Model: "m", MaxIterations: 10, LimitCheckpoints: cp},
 			DefaultProvider: "openai",
-			Providers:       map[string]ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "k"}},
+			Providers: map[string]ProviderConfig{"openai": {
+				BaseURL: "https://gw.example.com/v1", APIKey: "k",
+				Models: map[string]ModelConfig{"m": {Context: 100_000}},
+			}},
 		}
 	}
 

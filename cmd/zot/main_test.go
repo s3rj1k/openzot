@@ -622,6 +622,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)
 
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
@@ -717,6 +720,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -792,6 +798,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, url)), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -911,6 +920,7 @@ providers:
       capped:
         model: test-model
         max_iterations: 1
+        context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -930,6 +940,39 @@ providers:
 
 	if got := requests.Load(); got != 4 {
 		t.Errorf("the run made %d provider calls, want the 4 the command line allowed", got)
+	}
+}
+
+// A model with no context window is refused before any request, and the error
+// names the model and the key to set: there is no table to guess from.
+func TestRunRefusesAModelWithNoContextWindow(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	if err := os.WriteFile(configPath, []byte(`
+agent:
+  model: my-model
+default_provider: local
+providers:
+  local:
+    base_url: http://127.0.0.1:1
+    models:
+      my-model:
+        model: some-real-id
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	withArgs(t, "--config", configPath, orderFile(t, "a task"))
+
+	err := run()
+	if err == nil {
+		t.Fatal("a model with no context window must not run")
+	}
+
+	for _, want := range []string{"providers.local.models.my-model", "context is required"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
 	}
 }
 
@@ -1055,6 +1098,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)
 
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
@@ -1160,6 +1206,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1248,6 +1297,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1296,6 +1348,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}

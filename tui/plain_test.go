@@ -136,7 +136,7 @@ func TestRunPlainTranscript(t *testing.T) {
 
 	meta := Meta{AppName: "zot", Task: "run the tests", Model: "test-model", Provider: "openai", Workdir: "/tmp/work"}
 
-	options := agent.ExecuteWithToolsOptions{
+	options := agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Tools: agent.Tools{
 			"shell": {
 				Description: "run a command",
@@ -184,7 +184,7 @@ func TestRunPlainReturnsAnErrorOnFailure(t *testing.T) {
 
 	output, err := capture(t, func() error {
 		return runPlainErr(context.Background(), client, meta,
-			agent.ExecuteWithToolsOptions{MaxSettles: 1})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow, MaxSettles: 1})
 	})
 
 	if err == nil {
@@ -211,7 +211,7 @@ func TestRunPlainRendersADeclaredFailureAsAnOutcome(t *testing.T) {
 	meta := Meta{Task: "deploy", Model: "m", Provider: "b", Workdir: "/w"}
 
 	output, err := capture(t, func() error {
-		return runPlainErr(context.Background(), client, meta, agent.ExecuteWithToolsOptions{})
+		return runPlainErr(context.Background(), client, meta, agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 	})
 
 	// still a non-zero ending for the shell
@@ -236,7 +236,7 @@ func TestRunPlainReportsToolErrors(t *testing.T) {
 		[]string{plainSuccess("recovered")},
 	)
 
-	options := agent.ExecuteWithToolsOptions{
+	options := agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Tools: agent.Tools{
 			"boom": {
 				Description: "fails",
@@ -284,7 +284,7 @@ func TestRunPlainSurfacesProviderFailures(t *testing.T) {
 	_, runErr := capture(t, func() error {
 		return runPlainErr(context.Background(), client,
 			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w"},
-			agent.ExecuteWithToolsOptions{})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 	})
 
 	if runErr == nil {
@@ -298,7 +298,7 @@ func TestRunUsesThePlainPathWithoutATerminal(t *testing.T) {
 	meta := Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w", Plain: true, Color: "always"}
 
 	output, err := capture(t, func() error {
-		_, err := Run(context.Background(), client, meta, agent.ExecuteWithToolsOptions{})
+		_, err := Run(context.Background(), client, meta, agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 
 		return err
 	})
@@ -318,7 +318,7 @@ func TestRunUsesThePlainPathWithoutATerminal(t *testing.T) {
 	output, err = capture(t, func() error {
 		return runErr(context.Background(), plainServer(t, []string{plainSuccess("again")}),
 			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w"},
-			agent.ExecuteWithToolsOptions{})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -339,7 +339,7 @@ func TestRunUsesAColoredStreamWithoutInteractiveControls(t *testing.T) {
 	output, err := capture(t, func() error {
 		return runErr(context.Background(), client,
 			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w", Color: "always"},
-			agent.ExecuteWithToolsOptions{})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -389,7 +389,7 @@ func TestRunPropagatesFailures(t *testing.T) {
 	_, err := capture(t, func() error {
 		return runErr(context.Background(), client,
 			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w", Plain: true},
-			agent.ExecuteWithToolsOptions{MaxSettles: 1})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow, MaxSettles: 1})
 	})
 
 	if err == nil {
@@ -424,7 +424,7 @@ func TestRunReturnsTheRecordedOutcome(t *testing.T) {
 
 		outcome, runErr = runPlain(context.Background(), client,
 			Meta{Task: "t", Model: "m", Provider: "b", Workdir: "/w"},
-			agent.ExecuteWithToolsOptions{})
+			agent.ExecuteWithToolsOptions{ContextWindow: testWindow})
 
 		return runErr
 	})
@@ -466,7 +466,7 @@ func TestPlainHeaderPrefersTheTitle(t *testing.T) {
 			output, _ := capture(t, func() error {
 				_ = runPlainErr(context.Background(), client,
 					Meta{Task: task, Title: test.title, Model: "m", Provider: "b", Workdir: "/w", Plain: true},
-					agent.ExecuteWithToolsOptions{MaxSettles: 1})
+					agent.ExecuteWithToolsOptions{ContextWindow: testWindow, MaxSettles: 1})
 
 				return nil
 			})

@@ -10,7 +10,7 @@ import (
 // must reset it, so two unrelated repetitions far apart in a long run do not add
 // up to a false StopCycle. (Regressed once: the counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()})})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 // argument-heavy call (writing a big file) must be counted, or a thread the
 // estimate thinks fits gets rejected by the provider.
 func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()})})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
 func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// every turn is empty (no content, finish=stop); settle mode is on, and the
 	// empty budget is tighter than the settle budget
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
 		MaxSettles: 5,
 		MaxEmpties: 2,
@@ -140,7 +140,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 	client := stub(t, []string{text("all done"), usageFrame(100, 40)})
 
-	result := run(t, Options{Client: client})
+	result := run(t, Options{ContextWindow: testWindow, Client: client})
 
 	if result.Budget.InputTokens != 100 || result.Budget.OutputTokens != 40 {
 		t.Errorf("run must accumulate provider usage, got in=%d out=%d",
@@ -154,7 +154,7 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 // cumulative, so a run could die to its third stall hundreds of iterations after
 // the first.)
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{stop()},                       // empty: 1/3
 			[]string{tool("call_1", "echo", "{}")}, // productive - resets

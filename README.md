@@ -46,6 +46,9 @@ providers:
   mygateway:
     base_url: https://gateway.example.com/v1
     api_key: '$GATEWAY_KEY'
+    models:
+      my-model:
+        context: 128000   # the model's context window, in tokens - required
 ```
 
 ```bash

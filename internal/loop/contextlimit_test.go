@@ -83,7 +83,7 @@ func longConversation(turns int) []Message {
 func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	client, requests := contextLimitOnce(t)
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   client,
 		Messages: longConversation(40),
 	})
@@ -91,7 +91,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	// the catalogue's guess, far above the 8192 the provider states
+	// the configured window, far above the 8192 the provider states
 	engine.inputBudget = 40_000
 
 	result := engine.Run(context.Background(), nil)
@@ -122,7 +122,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 
 	original := longConversation(40)
 
-	engine, err := New(Options{Client: client, Messages: original})
+	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: original})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := New(Options{Client: client, Messages: longConversation(4)})
+	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: longConversation(4)})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := New(Options{Client: client})
+	engine, err := New(Options{ContextWindow: testWindow, Client: client})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         longConversation(40),
 		MaxContinuations: 3,
@@ -267,7 +267,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:       client,
 		Messages:     []Message{{Type: TypeUser, Text: "go"}},
 		RetryBackoff: -1, // the retry itself is under test, not its pacing
@@ -314,7 +314,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   client,
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
 	})
@@ -334,7 +334,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 }
 
 // When a provider rejects for length it states the real window. That is ground
-// truth in a way the local catalogue is not, so the retry budgets against it
+// truth in a way the configured window may not be, so the retry budgets against it
 // rather than guessing again.
 func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	requests := 0
@@ -373,7 +373,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   client,
 		Messages: longConversation(40),
 	})
@@ -381,7 +381,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	// the catalogue's guess is wildly optimistic for this model
+	// the configured window is wildly optimistic for this endpoint
 	before := engine.inputBudget
 
 	result := engine.Run(context.Background(), nil)
@@ -430,7 +430,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		BaseURL:  server.URL,
 	})
 
-	engine, err := New(Options{Client: client, Messages: longConversation(40)})
+	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: longConversation(40)})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

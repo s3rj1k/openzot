@@ -29,7 +29,7 @@ import (
 func TestATimeBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		// a stub that calls a tool forever
 		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:         echoTool(&calls),
@@ -50,7 +50,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 
 // With no time cap, a run is never stopped for time - the default is unbounded.
 func TestTimeIsUnboundedByDefault(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{text("done"), stop()}),
 		MaxIterations: 5,
 	})
@@ -64,7 +64,7 @@ func TestTimeIsUnboundedByDefault(t *testing.T) {
 func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
 			[]string{tool("call_2", "echo", "{}")},
@@ -91,7 +91,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 // Being cut off mid-answer is not progress, and it is the only thing the
 // continuation budget is there to bound.
 func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("half an ans"), truncated()},
 			[]string{text("wer"), stop()},
@@ -110,7 +110,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	calls := 0
 
 	// tool calls forever, with a continuation budget of one
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(&calls),
 		MaxIterations:    4,
@@ -127,7 +127,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	}
 
 	// and the other way round: truncated forever, with plenty of iterations
-	result = run(t, Options{
+	result = run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{text("more"), truncated()}),
 		MaxIterations:    50,
 		MaxContinuations: 3,
@@ -168,7 +168,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := run(t, Options{
+			result := run(t, Options{ContextWindow: testWindow,
 				Client:           stub(t, test.turns...),
 				Tools:            test.tools,
 				MaxIterations:    3,
@@ -193,7 +193,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 func TestASingleIterationIsOneModelCall(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 1,
@@ -222,7 +222,7 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 // non-positive value means exactly that.
 func TestBudgetDefaults(t *testing.T) {
 	for _, value := range []int{0, -1, -1000} {
-		engine, err := New(Options{
+		engine, err := New(Options{ContextWindow: testWindow,
 			Client:        stub(t, []string{stop()}),
 			MaxCalls:      value,
 			MaxIterations: value,
@@ -257,7 +257,7 @@ func TestBudgetDefaults(t *testing.T) {
 func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 500,
@@ -291,7 +291,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 		},
 	}
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", `{"value": `)},
 			[]string{text("let me try that again"), stop()},
@@ -326,7 +326,7 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 		},
 	}
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
 			[]string{text("understood"), stop()},
@@ -357,7 +357,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 		},
 	}
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("call_1", "echo", "{}")},
 			[]string{text("done"), stop()},
@@ -376,7 +376,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 // A finish reason zot has no special handling for - content_filter is the one
 // providers actually send - must not derail the run.
 func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t, []string{
 			text("I cannot help with that"),
 			`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`,
@@ -396,7 +396,7 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 // A turn that claims tool calls and carries none is a provider bug. It has to
 // degrade to an empty turn rather than panic on the missing payload.
 func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t, []string{
 			`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
 		}),
@@ -458,7 +458,7 @@ func countActivities(messages []Message) (requests, responses int) {
 // rather than being cut off mid-task. Here the iteration budget is 10 and the
 // checkpoints are 50% and 80%, so the model must be warned at iteration 5 and 8.
 func TestIterationCheckpointsFireAsTheLimitApproaches(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(new(int)),
 		MaxIterations:    10,
@@ -486,7 +486,7 @@ func TestIterationCheckpointsFireAsTheLimitApproaches(t *testing.T) {
 // Tool-call checkpoints fire against the call budget, independently of
 // iterations - a single iteration can burn many calls.
 func TestCallCheckpointsFire(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(new(int)),
 		MaxCalls:         10,
@@ -511,7 +511,7 @@ func TestCallCheckpointsFire(t *testing.T) {
 // An unbounded limit has nothing to approach, so it never fires a checkpoint -
 // only the finite iteration backstop does.
 func TestUnboundedLimitsHaveNoCheckpoints(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(new(int)),
 		MaxIterations:    6,
@@ -529,7 +529,7 @@ func TestUnboundedLimitsHaveNoCheckpoints(t *testing.T) {
 
 // An explicit empty checkpoint list turns the notices off entirely.
 func TestCheckpointsCanBeDisabled(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(new(int)),
 		MaxIterations:    6,
@@ -547,7 +547,7 @@ func TestCheckpointsCanBeDisabled(t *testing.T) {
 // Each checkpoint fires at most once, even though the run passes it on many
 // subsequent iterations.
 func TestEachCheckpointFiresOnce(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
 		Tools:            echoTool(new(int)),
 		MaxIterations:    20,
@@ -592,7 +592,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	started := time.Now()
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 3,
@@ -643,7 +643,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 5,
@@ -683,7 +683,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 // restore the tight retry loop. Asserted on the constructed engine because
 // reaching it behaviourally costs a second of wall clock per retry.
 func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
-	engine, err := New(Options{Client: stub(t, []string{stop()})})
+	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -693,7 +693,7 @@ func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
 	}
 
 	// and a caller can still opt out, which is what keeps these tests fast
-	engine, err = New(Options{Client: stub(t, []string{stop()}), RetryBackoff: -1})
+	engine, err = New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), RetryBackoff: -1})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -776,7 +776,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	started := time.Now()
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:     client,
 		Messages:   []Message{{Type: TypeUser, Text: "go"}},
 		MaxSettles: 5,
@@ -858,7 +858,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	started := time.Now()
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 3,
@@ -938,7 +938,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	started := time.Now()
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
@@ -1023,7 +1023,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	started := time.Now()
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 10,
@@ -1057,7 +1057,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 // life looked exactly like a hang (a live provider held a stream for three
 // silent minutes and returned nothing - and the viewer showed nothing).
 func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
-	engine, err := New(Options{
+	engine, err := New(Options{ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{stop()},
 			[]string{text("recovered"), stop()},
@@ -1144,7 +1144,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 
 	calls := 0
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
@@ -1189,7 +1189,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 		t.Fatalf("llm.New: %v", err)
 	}
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},
 		MaxContinuations: 3,
@@ -1254,7 +1254,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 
 	const recoveries = 20
 
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:   client,
 		Tools:    echoTool(&calls),
 		Messages: []Message{{Type: TypeUser, Text: "go"}},
@@ -1334,7 +1334,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 	calls := 0
 
 	// the tightest useful consecutive bound - fail fast on a stuck provider
-	result := run(t, Options{
+	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
 		Messages:         []Message{{Type: TypeUser, Text: "go"}},

@@ -16,6 +16,10 @@ import (
 	"github.com/openzot/openzot/agent"
 )
 
+// testWindow is the context window every test engine is given. A window is
+// required, and this one is large enough that no test trims by accident.
+const testWindow = 1_000_000
+
 // runAgent is the seam between the engine and the screen. It is a pure pump,
 // and the thing worth proving about a pump is that nothing goes missing: every
 // event reaches the program, an error reaches it too, and the stream always
@@ -153,7 +157,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{
+	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Text: []string{"do the thing"},
 	}, make(chan struct{}))
 
@@ -216,7 +220,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{
+	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Text: []string{"do the thing"},
 
 		// a persistent outage is retried with a growing backoff; this test is
@@ -253,7 +257,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(ctx, program, client, agent.ExecuteWithToolsOptions{Text: []string{"do the thing"}}, make(chan struct{}))
+	runAgent(ctx, program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"do the thing"}}, make(chan struct{}))
 
 	stop()
 
@@ -315,7 +319,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		return m, nil
 	}
 
-	if _, err := runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{
+	if _, err := runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Text: []string{"do the thing"},
 	}, start); err == nil {
 		t.Error("quitting mid-run should report that the run did not finish")
@@ -401,7 +405,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		return p.Run()
 	}
 
-	_, _ = runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{
+	_, _ = runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Text:     []string{"do the thing"},
 		Recorder: recorder,
 	}, start, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())

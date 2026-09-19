@@ -385,9 +385,10 @@ type ExecuteWithToolsOptions struct {
 	// deliberately.
 	MaxTokens *int
 
-	// ContextWindow overrides the model's total context window, in tokens, for
-	// a serving endpoint whose real ceiling is smaller than the model's card.
-	// Zero uses the catalogue.
+	// ContextWindow is the model's total context window, in tokens. Required:
+	// a run refuses to start without it, because it is what decides how much of
+	// a long conversation is kept, and only the operator knows the real ceiling
+	// of the endpoint being served.
 	ContextWindow int
 }
 

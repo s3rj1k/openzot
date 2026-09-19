@@ -107,6 +107,9 @@ providers:
     driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `
 	if err := os.WriteFile(configPath, []byte(cfgYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -209,6 +212,9 @@ providers:
     driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -421,6 +427,9 @@ providers:
     driver: openai
     base_url: %s
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `, server.URL)
 
 	if err := os.WriteFile(configPath, []byte(cfgYAML), 0o644); err != nil {

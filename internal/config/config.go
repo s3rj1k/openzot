@@ -54,15 +54,15 @@ type ProviderConfig struct {
 	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
 	// secret need be written to disk. Required unless base_url is loopback.
 	APIKey string `yaml:"api_key"`
-	// Models is an optional custom model list for this provider. When omitted,
-	// any model name is accepted and described by the built-in catalogue. When
-	// present, its keys are the selectable names and each entry may alias or
-	// override that model.
+	// Models is the list of models this provider serves. Required: a model that
+	// is not listed here cannot be run, because every model must state its own
+	// context window. Its keys are the selectable names, and each entry may
+	// alias or override the real model id.
 	Models map[string]ModelConfig `yaml:"models"`
 }
 
-// ModelConfig is a custom model definition under a provider. Any field set here
-// overrides the run's defaults when the model is selected.
+// ModelConfig is a model definition under a provider. Context is required; any
+// other field set here overrides the run's defaults when the model is selected.
 type ModelConfig struct {
 	// Model is the underlying model id to send. Lets a custom name alias a real
 	// model; leave empty to use the selected name as-is.
@@ -73,12 +73,11 @@ type ModelConfig struct {
 	// where one gateway fronts several providers, each wanting its own key.
 	// Supports "$ENV_VAR".
 	APIKey string `yaml:"api_key"`
-	// Context overrides the model's total context window, in tokens. The
-	// escape hatch for a serving endpoint whose real ceiling is smaller than
-	// the model's card - an uncatalogued model is assumed large, so a small
-	// upstream rejects the request outright, and an
-	// upstream that reports overflow opaquely gives the recovery path nothing
-	// to detect. Zero uses the catalogue.
+	// Context is the model's total context window, in tokens. Required, and the
+	// only source of it: zot keeps no table of what models can take, because
+	// the real ceiling belongs to the endpoint being served, which can be
+	// smaller than the model's card. It decides how much of a long conversation
+	// is kept before each request.
 	Context int `yaml:"context"`
 
 	// ContentArray sends every message's content as an array of parts, for
@@ -106,7 +105,6 @@ func ProviderCredential(provider ProviderConfig) string {
 }
 
 // ProviderModels returns the model names a provider was configured with, sorted.
-// Empty means no custom list: any model name is accepted.
 func ProviderModels(provider ProviderConfig) []string {
 	names := make([]string, 0, len(provider.Models))
 	for name := range provider.Models {
@@ -372,11 +370,13 @@ func (c Config) Validate() error {
 	if _, ok := c.Providers[c.DefaultProvider]; !ok {
 		return fmt.Errorf("provider %q is not configured (declare it under providers: with a base_url and api_key)", c.DefaultProvider)
 	}
-	if provider := c.Providers[c.DefaultProvider]; len(provider.Models) > 0 {
-		if _, ok := provider.Models[c.Agent.Model]; !ok {
-			return fmt.Errorf("model %q is not configured for provider %q (available: %s)",
-				c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(provider), ", "))
-		}
+	if provider := c.Providers[c.DefaultProvider]; len(provider.Models) == 0 {
+		return fmt.Errorf(
+			"provider %q declares no models: list %q under providers.%s.models, with its context window",
+			c.DefaultProvider, c.Agent.Model, c.DefaultProvider)
+	} else if _, ok := provider.Models[c.Agent.Model]; !ok {
+		return fmt.Errorf("model %q is not configured for provider %q (available: %s)",
+			c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(provider), ", "))
 	}
 	for name, provider := range c.Providers {
 		if driver := ProviderDriver(provider); driver != DriverOpenAI {
@@ -389,6 +389,16 @@ func (c Config) Validate() error {
 		// load
 		if provider.BaseURL == "" {
 			return fmt.Errorf("providers.%s: base_url is not set", name)
+		}
+
+		// Every model states its own window, in sorted order so the first
+		// error is the same one every time.
+		for _, model := range ProviderModels(provider) {
+			if provider.Models[model].Context <= 0 {
+				return fmt.Errorf(
+					"providers.%s.models.%s: context is required - set the model's context window, in tokens",
+					name, model)
+			}
 		}
 	}
 	return nil

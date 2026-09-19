@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+// testWindow is the context window every test engine is given. A window is
+// required, and this one is large enough that no test trims by accident.
+const testWindow = 1_000_000
+
 // sseServer stands in for a provider. Each element of turns is one complete
 // response, served in order, so a test can script a multi-round conversation.
 func sseServer(t *testing.T, turns ...[]string) *httptest.Server {
@@ -124,7 +128,7 @@ func TestExecuteWithToolsPlainAnswer(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"hi"}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"hi"}})
 
 	all, exit := collect(t, events, errs)
 
@@ -157,7 +161,7 @@ func TestExecuteWithToolsFailureExitsNonZero(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"hi"}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"hi"}})
 
 	_, exit := collect(t, events, errs)
 
@@ -198,7 +202,7 @@ func TestExecuteWithToolsRunsATool(t *testing.T) {
 	}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"echo ping"}, Tools: tools})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"echo ping"}, Tools: tools})
 
 	all, exit := collect(t, events, errs)
 
@@ -241,7 +245,7 @@ func TestSettleModeIgnoresProse(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"do it"}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"do it"}})
 
 	_, exit := collect(t, events, errs)
 
@@ -266,7 +270,7 @@ func TestSettleModeGivesUp(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"do it"}, MaxSettles: 2})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"do it"}, MaxSettles: 2})
 
 	_, exit := collect(t, events, errs)
 
@@ -285,7 +289,7 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"say nothing"}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"say nothing"}})
 
 	_, exit := collect(t, events, errs)
 
@@ -312,7 +316,7 @@ func TestRepeatedToolResultsStopTheRun(t *testing.T) {
 	}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"search"}, Tools: tools, MaxIterations: 30})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"search"}, Tools: tools, MaxIterations: 30})
 
 	_, exit := collect(t, events, errs)
 
@@ -333,7 +337,7 @@ func TestUnknownToolIsReportedNotFatal(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, Tools: Tools{}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: Tools{}})
 
 	all, exit := collect(t, events, errs)
 
@@ -401,7 +405,7 @@ func TestToolArgumentsSurviveFragmentation(t *testing.T) {
 	}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, Tools: tools})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: tools})
 
 	collect(t, events, errs)
 
@@ -420,7 +424,7 @@ func TestSettlementIsNotOptional(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, MaxSettles: 1})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, MaxSettles: 1})
 
 	_, exit := collect(t, events, errs)
 
@@ -460,7 +464,7 @@ func TestTerminalToolsAreAlwaysOffered(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}})
 
 	collect(t, events, errs)
 
@@ -599,7 +603,7 @@ func TestRecorderSeesTheRun(t *testing.T) {
 	recorder := &recordingRecorder{}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"echo ping"}, Tools: tools, Recorder: recorder})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"echo ping"}, Tools: tools, Recorder: recorder})
 
 	_, exit := collect(t, events, errs)
 
@@ -669,7 +673,7 @@ func TestRecorderRecordsSeededMessagesOnce(t *testing.T) {
 	recorder := &recordingRecorder{}
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"the original task", "carry on"}, Recorder: recorder})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"the original task", "carry on"}, Recorder: recorder})
 
 	_, exit := collect(t, events, errs)
 
@@ -711,7 +715,7 @@ func TestARecorderThatFailsDoesNotBreakTheRun(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"hi"}, Recorder: failingRecorder{}})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"hi"}, Recorder: failingRecorder{}})
 
 	_, exit := collect(t, events, errs)
 
@@ -802,7 +806,7 @@ func TestTheConversationIsRecordedAsTheRunGoes(t *testing.T) {
 	defer server.Close()
 
 	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, Tools: tools, Recorder: recorder})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: tools, Recorder: recorder})
 
 	collect(t, events, errs)
 
@@ -863,7 +867,7 @@ func TestAnAbandonedConsumerDoesNotLeakTheRun(t *testing.T) {
 	defer cancel()
 
 	events, errs := ExecuteWithTools(ctx, newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, Tools: tools})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: tools})
 
 	// the run is genuinely under way before the consumer walks away
 	<-events
@@ -902,7 +906,7 @@ func TestACancelledRunStillDeliversTheExitEvent(t *testing.T) {
 	defer cancel()
 
 	events, errs := ExecuteWithTools(ctx, newTestClient(t, server),
-		ExecuteWithToolsOptions{Text: []string{"go"}, Tools: tools})
+		ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"go"}, Tools: tools})
 
 	var (
 		sawExit bool
@@ -941,7 +945,7 @@ func TestUsageEventsAreRecordedWithTheirNumbers(t *testing.T) {
 
 	recorder := &textRecorder{}
 
-	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server), ExecuteWithToolsOptions{
+	events, errs := ExecuteWithTools(context.Background(), newTestClient(t, server), ExecuteWithToolsOptions{ContextWindow: testWindow,
 		Text:     []string{"go"},
 		Recorder: recorder,
 	})

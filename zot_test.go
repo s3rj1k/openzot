@@ -132,21 +132,21 @@ func TestCredentialResolutionLayers(t *testing.T) {
 	}{
 		{
 			name:   "a provider api_key",
-			config: "    api_key: sk-provider\n",
+			config: "    api_key: sk-provider\n    models:\n      gpt-4:\n        context: 100000\n",
 			want:   "Bearer sk-provider",
 			model:  "gpt-4",
 		},
 		{
 			name:   "a $VAR reference, so no secret is on disk",
 			env:    map[string]string{"MY_PROVIDER_KEY": "sk-from-env"},
-			config: "    api_key: $MY_PROVIDER_KEY\n",
+			config: "    api_key: $MY_PROVIDER_KEY\n    models:\n      gpt-4:\n        context: 100000\n",
 			want:   "Bearer sk-from-env",
 			model:  "gpt-4",
 		},
 		{
 			name: "a per-model key overrides the provider's",
 			config: "    api_key: sk-provider\n" +
-				"    models:\n      gpt-4:\n        api_key: sk-for-gpt4\n",
+				"    models:\n      gpt-4:\n        api_key: sk-for-gpt4\n        context: 100000\n",
 			want:  "Bearer sk-for-gpt4",
 			model: "gpt-4",
 		},
@@ -222,6 +222,18 @@ providers:
 
 // testDefaults is the built-in configuration with the one thing it deliberately
 // lacks: a model to run.
+// declared is the model list a provider needs to run the named models: each
+// with a context window, since a model without one cannot run.
+func declared(names ...string) map[string]config.ModelConfig {
+	models := make(map[string]config.ModelConfig, len(names))
+
+	for _, name := range names {
+		models[name] = config.ModelConfig{Context: 100_000}
+	}
+
+	return models
+}
+
 func testDefaults() config.Config {
 	cfg := config.Defaults()
 	cfg.Agent.Model = "glm-5.2"
@@ -290,6 +302,7 @@ providers:
     models:
       default:
         model: Qwen3.8-27B
+        context: 100000
 %s`, server.URL, test.extra))
 
 			cfg, err := Load(path)
@@ -326,7 +339,7 @@ providers:
 func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg := testDefaults()
 	cfg.DefaultProvider = "myprovider"
-	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test"}}
+	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test", Models: declared("glm-5.2")}}
 
 	_, _, err := resolve(cfg, DefaultInstructions)
 	if err == nil {
@@ -336,6 +349,39 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	// the error has to be actionable: it names the field to set
 	if !strings.Contains(err.Error(), "base_url") {
 		t.Errorf("error = %q, want it to name what is missing", err)
+	}
+}
+
+// The window is the operator's to state and zot keeps no table of what models
+// can take, so a model with none cannot run. Load-time validation says so first;
+// this is the same rule for an embedder that never calls it.
+func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
+	cases := map[string]map[string]config.ModelConfig{
+		"the model is not declared":     declared("some-other-model"),
+		"no models are declared at all": nil,
+		"the window is zero":            {"glm-5.2": {Model: "glm-5.2"}},
+		"the window is negative":        {"glm-5.2": {Context: -1}},
+	}
+
+	for name, models := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := testDefaults()
+			cfg.DefaultProvider = "local"
+			cfg.Providers = map[string]config.ProviderConfig{
+				"local": {BaseURL: "http://127.0.0.1:1", Models: models},
+			}
+
+			_, _, err := resolve(cfg, DefaultInstructions)
+			if err == nil {
+				t.Fatal("a model with no context window resolved")
+			}
+
+			for _, want := range []string{"glm-5.2", "context window", "providers.local.models"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q should mention %q", err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -354,10 +400,16 @@ providers:
   alpha:
     base_url: https://alpha.example.com/v1
     api_key: $ALPHA_KEY
+    models:
+      some-model:
+        context: 100000
   beta:
     driver: openai
     base_url: https://beta.example.com/v1
     api_key: sk-beta
+    models:
+      some-model:
+        context: 100000
 `))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -464,7 +516,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 			BaseURL: "https://gw.example.com/v1",
 			APIKey:  "sk-test",
 			Models: map[string]config.ModelConfig{
-				"capped": {Model: "gpt-5", MaxIterations: 40},
+				"capped": {Model: "gpt-5", MaxIterations: 40, Context: 100_000},
 			},
 		},
 	}
@@ -488,7 +540,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	// the default is a 1,000,000 backstop rather than a budget, so there is
 	// nothing worth counting towards and the denominator stays hidden
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
-	cfg.Providers["openai"].Models["capped"] = config.ModelConfig{Model: "gpt-5"}
+	cfg.Providers["openai"].Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
 
 	_, opts, err = resolve(cfg, DefaultInstructions)
 	if err != nil {
@@ -535,7 +587,7 @@ func TestRunEndToEnd(t *testing.T) {
 	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k"},
+		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
 	}
 
 	original := os.Stdout
@@ -636,7 +688,7 @@ func stubProvider(t *testing.T) config.Config {
 	cfg.UI.Plain = true
 	cfg.DefaultProvider = "local"
 	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k"},
+		"local": {Driver: "openai", BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
 	}
 
 	return cfg
@@ -1038,6 +1090,9 @@ providers:
     driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -1076,6 +1131,9 @@ providers:
     driver: openai
     base_url: http://127.0.0.1:1
     api_key: test-key
+    models:
+      test-model:
+        context: 100000
 `)
 
 	project := t.TempDir()
@@ -1126,7 +1184,7 @@ providers:
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
 	cfg.DefaultProvider = "openai"
-	cfg.Providers = map[string]config.ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "sk-test"}}
+	cfg.Providers = map[string]config.ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "sk-test", Models: declared("glm-5.2")}}
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
