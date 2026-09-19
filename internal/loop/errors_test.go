@@ -57,11 +57,13 @@ func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
 	reset := &url.Error{Op: "Post", URL: "http://gw", Err: &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}
 
 	for name, err := range map[string]error{
-		"a stream cut short": &fantasy.ProviderError{Message: "stream transport error", Cause: io.ErrUnexpectedEOF},
-		"a bare EOF":         fmt.Errorf("read: %w", io.EOF),
-		"a connection reset": reset,
-		"a stall":            fmt.Errorf("%w: nothing arrived for 10m", errStreamStalled),
-		"a wrapped stall":    fmt.Errorf("run: %w", fmt.Errorf("%w: nothing arrived", errStreamStalled)),
+		"a stream cut short":  &fantasy.ProviderError{Message: "stream transport error", Cause: io.ErrUnexpectedEOF},
+		"a bare EOF":          fmt.Errorf("read: %w", io.EOF),
+		"a connection reset":  reset,
+		"a stall":             fmt.Errorf("%w: nothing arrived for 10m", errStreamStalled),
+		"a wrapped stall":     fmt.Errorf("run: %w", fmt.Errorf("%w: nothing arrived", errStreamStalled)),
+		"a broken pipe":       &url.Error{Op: "Post", URL: "http://gw", Err: &net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPIPE)}},
+		"a closed connection": &url.Error{Op: "Post", URL: "http://gw", Err: &net.OpError{Op: "write", Err: net.ErrClosed}},
 	} {
 		if !IsRetriable(err) {
 			t.Errorf("%s should be retriable: %v", name, err)

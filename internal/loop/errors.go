@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -47,7 +48,9 @@ func IsProviderError(err error) bool {
 // says so with x-should-retry. Anything else - a 4xx caused by the request itself,
 // such as a bad key or a model the provider does not have - would only burn the
 // budget. What fantasy's errors do not cover are the failures that never became a
-// provider answer: a connection reset, a bare EOF, and zot's own stall.
+// provider answer: a connection reset or closed under the request (however far
+// the request had got - a peer that hangs up mid-write surfaces as a broken pipe
+// or a closed connection, not a reset), a bare EOF, and zot's own stall.
 //
 // 429 is deliberately excluded, though fantasy would retry it. A rate limit needs
 // Retry-After backoff, not a tight retry loop, and retrying it aggressively makes
@@ -69,6 +72,8 @@ func IsRetriable(err error) bool {
 
 	return errors.Is(err, io.EOF) ||
 		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, net.ErrClosed) ||
 		errors.Is(err, errStreamStalled)
 }
 
