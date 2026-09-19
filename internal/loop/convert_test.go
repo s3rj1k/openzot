@@ -185,26 +185,3 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 		}
 	}
 }
-
-// The cycle heuristics read a map shape, because their corpus is
-// JSON captured from the TypeScript implementation. A conversion that loses the
-// call silently stops detecting loops.
-func TestThreadRoundTripPreservesTheCall(t *testing.T) {
-	original := []Message{activity(ActivityResponse, "c1", "search", `{"q":"x"}`, "none")}
-
-	round := fromThreadMessages(toThreadMessages(original))
-
-	if len(round) != 1 || round[0].Activity == nil {
-		t.Fatalf("round trip lost the activity: %+v", round)
-	}
-
-	got := round[0].Activity
-
-	if got.Kind != ActivityResponse || got.ID != "c1" || got.Name != "search" {
-		t.Errorf("round trip = %+v", got)
-	}
-
-	if got.Arguments != `{"q":"x"}` || got.Result != "none" {
-		t.Errorf("round trip lost the payload: %+v", got)
-	}
-}

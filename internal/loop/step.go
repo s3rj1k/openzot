@@ -11,8 +11,6 @@ import (
 	"charm.land/fantasy/jsonrepair"
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
-
-	"github.com/openzot/openzot/internal/thread"
 )
 
 // errRunaway is what the streaming guard ends a degenerate turn with. It is
@@ -60,8 +58,8 @@ type step struct {
 	turn      turnResult
 	text      strings.Builder
 	reasoning strings.Builder
-	guard     *thread.Guard
-	runaway   *thread.GuardReason
+	guard     *runawayGuard
+	runaway   *guardReason
 
 	// flushed is whether the turn's reasoning and words are in the conversation
 	// yet. They go in before the first tool call of the turn does, and are
@@ -89,7 +87,7 @@ func (s *step) reset(messages *[]Message, budget *Budget, emit func(Event)) {
 		messages: messages,
 		budget:   budget,
 		emit:     emit,
-		guard:    thread.NewGuard(thread.GuardOptions{MinChars: &minChars}),
+		guard:    newRunawayGuard(guardOptions{MinChars: &minChars}),
 		started:  map[string]bool{},
 	}
 }

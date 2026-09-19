@@ -1,16 +1,6 @@
 package loop
 
-import (
-	"charm.land/fantasy"
-
-	"github.com/openzot/openzot/internal/thread"
-)
-
-// Conversions between the loop's message shape and the ones the subsystems use.
-//
-// They are kept in one file rather than scattered because getting a conversion
-// wrong is silent: the thread heuristics need type and meta to spot a loop, and
-// a conversion that drops meta simply stops detecting anything.
+import "charm.land/fantasy"
 
 // EventKind identifies what happened.
 type EventKind string
@@ -53,40 +43,6 @@ type Event struct {
 	// persist the failing exchange the moment it happens rather than waiting
 	// for the run to end - which a kill would never reach.
 	Failure error
-}
-
-func toThreadMessages(messages []Message) []thread.Message {
-	converted := make([]thread.Message, 0, len(messages))
-
-	for _, message := range messages {
-		entry := thread.Message{"type": string(message.Type), "text": message.Text}
-
-		// the heuristics compare a map shape, because their corpus is JSON
-		// captured from the TypeScript implementation
-		if meta := message.Activity.threadMeta(); meta != nil {
-			entry["meta"] = meta
-		}
-
-		converted = append(converted, entry)
-	}
-
-	return converted
-}
-
-func fromThreadMessages(messages []thread.Message) []Message {
-	converted := make([]Message, 0, len(messages))
-
-	for _, message := range messages {
-		entry := Message{Type: MessageType(message.Type()), Text: message.Text()}
-
-		if meta, ok := message.Meta(); ok {
-			entry.Activity = activityFromMeta(meta)
-		}
-
-		converted = append(converted, entry)
-	}
-
-	return converted
 }
 
 // toPrompt renders the conversation into the prompt a model call carries.

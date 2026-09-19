@@ -11,8 +11,6 @@ import (
 
 	"charm.land/fantasy"
 	"charm.land/fantasy/schema"
-
-	"github.com/openzot/openzot/internal/thread"
 )
 
 // Options configures a run.
@@ -761,7 +759,7 @@ func activityMessage(kind ActivityKind, call fantasy.ToolCallContent, result any
 // checkCycle looks for repetition and nudges the model, or stops the run once
 // nudging has failed enough times.
 func (e *Engine) checkCycle(messages []Message, budget *Budget) ([]Message, *Result) {
-	detected := thread.DescribeThreadCycle(toThreadMessages(messages), thread.CycleOptions{})
+	detected := describeCycle(messages)
 
 	if detected == "" {
 		// a round that is not cyclic breaks the run of repetitions: the budget
@@ -855,40 +853,13 @@ func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (turnReq
 		budget = MinInputTokens / 2
 	}
 
-	built, err := thread.BuildThread(thread.BuildOptions{
-		Messages:  toThreadMessages(messages),
-		MaxTokens: float64(budget),
+	// keep the most recent exchange whatever it costs, so a large tool result
+	// cannot starve the turn that has to interpret it
+	kept := fit(messages, budget, 2, messageCost)
 
-		// keep the most recent exchange whatever it costs, so a large tool
-		// result cannot starve the turn that has to interpret it
-		MinMessages: 2,
+	chat := toPrompt(kept)
 
-		Estimate: func(message thread.Message) (thread.Usage, error) {
-			// A tool call carries almost all its cost outside the text - the name,
-			// arguments and result live in the meta - so a request half (no text at
-			// all) would be priced as empty and a write of a whole file would look
-			// free to the trimmer, letting a thread that "fits" get rejected. Count
-			// text plus the serialised meta, exactly as the source estimator does.
-			text := message.Text()
-
-			if meta, ok := message.Meta(); ok {
-				if encoded, err := json.Marshal(meta); err == nil {
-					text += string(encoded)
-				}
-			}
-
-			return thread.Usage{
-				Tokens: float64(estimateMessageTokens(text)),
-			}, nil
-		},
-	})
-	if err != nil {
-		return turnRequest{}, err
-	}
-
-	chat := toPrompt(fromThreadMessages(built.Messages))
-
-	// The thread builder keeps the largest suffix that fits, so the first
+	// Fitting keeps the largest suffix that fits, so the first
 	// message trimmed is the oldest - which is the run's opening user message.
 	// A conversation with no user turn at all is invalid to strict providers:
 	// they reject the whole request, deterministically, from that iteration on

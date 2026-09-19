@@ -1,17 +1,35 @@
-package thread
+package loop
 
 import (
 	"strings"
 	"unicode"
 )
 
+// The runaway detectors look for a model stuck cycling the same words, inside a
+// single block of text: the streaming guard while a turn is still being
+// generated, and the backstop that scans a committed message.
+
+// clamp resolves an optional setting: unset yields fallback, set yields the
+// value floored at minimum.
+func clamp(value *int, minimum, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+
+	if *value < minimum {
+		return minimum
+	}
+
+	return *value
+}
+
 // runawayTextRunTailLimit bounds how much of a committed message the backstop
 // inspects, so its cost does not grow with message length.
 const runawayTextRunTailLimit = 4000
 
-// TextRunOptions tunes HasRepeatedTextRun. The zero value is the production
+// textRunOptions tunes hasRepeatedTextRun. The zero value is the production
 // default.
-type TextRunOptions struct {
+type textRunOptions struct {
 	// MinUnits is the number of trailing sentence-like units required before a
 	// runaway is even considered. Short repetitive snippets end on their own.
 	// Clamped to at least 2.
@@ -27,11 +45,11 @@ type TextRunOptions struct {
 	MaxUniqueRatio *float64
 }
 
-func (o TextRunOptions) minUnits() int {
+func (o textRunOptions) minUnits() int {
 	return clamp(o.MinUnits, 2, 8)
 }
 
-func (o TextRunOptions) window() int {
+func (o textRunOptions) window() int {
 	minUnits := o.minUnits()
 
 	fallback := 64
@@ -42,7 +60,7 @@ func (o TextRunOptions) window() int {
 	return clamp(o.Window, minUnits, fallback)
 }
 
-func (o TextRunOptions) maxUniqueRatio() float64 {
+func (o textRunOptions) maxUniqueRatio() float64 {
 	if o.MaxUniqueRatio != nil && *o.MaxUniqueRatio > 0 && *o.MaxUniqueRatio <= 1 {
 		return *o.MaxUniqueRatio
 	}
@@ -85,13 +103,13 @@ func segmentNormalizedUnits(text string) []string {
 	return units
 }
 
-// HasRepeatedTextRun reports a runaway repetition inside a single block of text -
+// hasRepeatedTextRun reports a runaway repetition inside a single block of text -
 // a model stuck cycling the same handful of sentences.
 //
 // Unlike the thread-level heuristics this works within one message, so it
 // catches a turn that loops in its own reasoning without ever emitting a tool
 // call - which the thread-level checks never see.
-func HasRepeatedTextRun(text string, options TextRunOptions) bool {
+func hasRepeatedTextRun(text string, options textRunOptions) bool {
 	if text == "" {
 		return false
 	}
@@ -150,9 +168,9 @@ const (
 	minDistinctLineLeads = 3
 )
 
-// GuardOptions tunes the incremental repetition guard. The zero value is the
+// guardOptions tunes the incremental repetition guard. The zero value is the
 // production default.
-type GuardOptions struct {
+type guardOptions struct {
 	// Ngram is how many consecutive words make a tracked phrase. Longer phrases
 	// recur by chance less often. Clamped to at least 2.
 	Ngram *int
@@ -176,8 +194,8 @@ type GuardOptions struct {
 	MinChars *int
 }
 
-// GuardReason explains a trip.
-type GuardReason struct {
+// guardReason explains a trip.
+type guardReason struct {
 	// Phrase is the normalised form that recurred - stable for grouping.
 	Phrase string `json:"phrase"`
 
@@ -196,13 +214,13 @@ type GuardReason struct {
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
 
-// Guard is an incremental runaway-repetition detector.
+// runawayGuard is an incremental runaway-repetition detector.
 //
-// Where HasRepeatedTextRun re-scans a whole block, Guard maintains a rolling
+// Where hasRepeatedTextRun re-scans a whole block, runawayGuard maintains a rolling
 // window of normalised words and a running count of every phrase in it. Each
 // pushed chunk costs O(1) amortised, so it can run on every streamed token and
 // latch within a few repeats - long before the heavier backstop would react.
-type Guard struct {
+type runawayGuard struct {
 	ngram          int
 	window         int
 	maxRepeats     int
@@ -222,11 +240,11 @@ type Guard struct {
 	totalChars    int
 
 	tripped bool
-	reason  GuardReason
+	reason  guardReason
 }
 
-// NewGuard creates a repetition guard.
-func NewGuard(options GuardOptions) *Guard {
+// newRunawayGuard creates a repetition guard.
+func newRunawayGuard(options guardOptions) *runawayGuard {
 	ngram := clamp(options.Ngram, 2, 4)
 
 	windowFallback := 48
@@ -254,7 +272,7 @@ func NewGuard(options GuardOptions) *Guard {
 
 	minChars := clamp(options.MinChars, 0, 0)
 
-	return &Guard{
+	return &runawayGuard{
 		ngram:          ngram,
 		window:         window,
 		maxRepeats:     maxRepeats,
@@ -268,7 +286,7 @@ func NewGuard(options GuardOptions) *Guard {
 // hapaxRatio is the fraction of the window seen exactly once - the novelty
 // signal separating a progressing list (many distinct keys) from a stuck loop
 // (the same few words). Only ever called at a candidate trip.
-func (g *Guard) hapaxRatio() float64 {
+func (g *runawayGuard) hapaxRatio() float64 {
 	hapax := 0
 
 	for _, count := range g.wordCount {
@@ -284,7 +302,7 @@ func (g *Guard) hapaxRatio() float64 {
 // the same line so has one or two; a progressing enumeration keeps starting
 // lines with new keys. This rescues lists whose long shared suffix sinks the
 // hapax ratio.
-func (g *Guard) distinctLineLeads() int {
+func (g *runawayGuard) distinctLineLeads() int {
 	leads := map[string]struct{}{}
 
 	for index, word := range g.words {
@@ -296,7 +314,7 @@ func (g *Guard) distinctLineLeads() int {
 	return len(leads)
 }
 
-func (g *Guard) addWord(word, original string, newlines int) {
+func (g *runawayGuard) addWord(word, original string, newlines int) {
 	g.words = append(g.words, word)
 	g.originals = append(g.originals, original)
 	g.newlinesBefore = append(g.newlinesBefore, newlines)
@@ -328,7 +346,7 @@ func (g *Guard) addWord(word, original string, newlines int) {
 
 			if !enumerated {
 				if !g.tripped {
-					g.reason = GuardReason{
+					g.reason = guardReason{
 						Phrase:      gram,
 						Count:       next,
 						Text:        strings.Join(g.originals[len(g.originals)-g.ngram:], " "),
@@ -383,7 +401,7 @@ func normalizeWord(raw string) string {
 
 // Push feeds streamed text into the guard and reports whether a runaway has been
 // detected. Once tripped it stays tripped.
-func (g *Guard) Push(text string) bool {
+func (g *runawayGuard) Push(text string) bool {
 	if g.tripped {
 		return true
 	}
@@ -432,7 +450,7 @@ func (g *Guard) Push(text string) bool {
 }
 
 // Reason returns why the guard tripped, or nil while it has not.
-func (g *Guard) Reason() *GuardReason {
+func (g *runawayGuard) Reason() *guardReason {
 	if !g.tripped {
 		return nil
 	}

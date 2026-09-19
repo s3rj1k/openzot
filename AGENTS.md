@@ -3,7 +3,7 @@
 zot is an autonomous coding agent in a single Go binary. The engine runs
 in-process and talks straight to any OpenAI-compatible model provider - no hosted
 service. `cmd/zot` is the CLI and the run orchestration; `internal/` holds the
-engine (the loop with its model client, the tools it offers, thread assembly,
+engine (the loop with its model client and conversation fitting, the tools it offers,
 session logs) and the `tui` viewer. Nothing is importable - zot is a binary, not a library - and
 it supports Linux only: no other platform is built, tested or worked around.
 

@@ -1,4 +1,4 @@
-package thread
+package loop
 
 import (
 	"os"
@@ -39,12 +39,12 @@ type notPortable struct {
 var notPortableCases = []notPortable{
 	{
 		ID:          "hasRepeatedSuffix/e577bc4f1b53",
-		Replacement: "TestCycleCircularMeta",
-		Why: "Asserts the heuristic tolerates a self-referential meta field. Go has no equivalent " +
+		Replacement: "TestCycleCircularResult",
+		Why: "Asserts the heuristic tolerates a self-referential payload. Go has no equivalent " +
 			"hazard on this path - marshalling a cycle returns an error rather than recursing " +
-			"forever - but the underlying question still applies: does a malformed meta abort the " +
-			"run. The replacement builds a map containing itself and asserts the check answers " +
-			"instead of panicking.",
+			"forever - but the underlying question still applies: does a malformed tool result " +
+			"abort the run. The replacement builds a result containing itself and asserts the " +
+			"check answers instead of panicking.",
 	},
 	{
 		ID:          "hasRepeatedResultRun/a5c8fa462b6e",

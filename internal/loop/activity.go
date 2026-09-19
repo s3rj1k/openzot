@@ -93,11 +93,7 @@ func (a *Activity) ResultText() string {
 		return ""
 	}
 
-	value := a.Result
-
-	if a.Failure != "" {
-		value = map[string]any{"error": a.Failure}
-	}
+	value := a.output()
 
 	if value == nil {
 		return ""
@@ -113,74 +109,4 @@ func (a *Activity) ResultText() string {
 	}
 
 	return string(encoded)
-}
-
-// threadMeta renders the activity back into the map shape the thread
-// heuristics read.
-//
-// internal/thread works on `map[string]any` messages because its corpus is
-// JSON captured from the TypeScript implementation, and the cycle heuristics
-// compare that structure directly. Rather than reshape the corpus - which would
-// break the guarantee that zot's heuristics answer exactly as the original's -
-// the typed activity is rendered into that shape at the boundary.
-func (a *Activity) threadMeta() map[string]any {
-	if a == nil {
-		return nil
-	}
-
-	function := map[string]any{"name": a.Name, "arguments": a.Arguments}
-
-	if a.Kind == ActivityResponse {
-		if a.Failure != "" {
-			function["result"] = map[string]any{"error": a.Failure}
-		} else {
-			function["result"] = a.Result
-		}
-	}
-
-	meta := map[string]any{"activity": map[string]any{
-		"type":     string(a.Kind),
-		"id":       a.ID,
-		"function": function,
-	}}
-
-	return meta
-}
-
-// activityFromMeta is threadMeta's inverse: it reads an activity back out of the
-// map shape internal/thread works in, so the messages the thread builder
-// returns become typed again before they are rendered into a prompt.
-func activityFromMeta(meta map[string]any) *Activity {
-	raw, ok := meta["activity"].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	activity := &Activity{}
-
-	kind, _ := raw["type"].(string)
-	activity.Kind = ActivityKind(kind)
-	activity.ID, _ = raw["id"].(string)
-
-	if function, ok := raw["function"].(map[string]any); ok {
-		activity.Name, _ = function["name"].(string)
-
-		switch arguments := function["arguments"].(type) {
-		case string:
-			activity.Arguments = arguments
-		case nil:
-		default:
-			if encoded, err := json.Marshal(arguments); err == nil {
-				activity.Arguments = string(encoded)
-			}
-		}
-
-		activity.Result = function["result"]
-	}
-
-	if activity.Kind == "" {
-		return nil
-	}
-
-	return activity
 }
