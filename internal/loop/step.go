@@ -9,6 +9,8 @@ import (
 
 	"charm.land/fantasy"
 	"charm.land/fantasy/jsonrepair"
+	"charm.land/fantasy/providers/openai"
+	"charm.land/fantasy/providers/openaicompat"
 
 	"github.com/openzot/openzot/internal/thread"
 )
@@ -107,12 +109,39 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 		wrapped[i] = guardedTool{AgentTool: tool, step: state}
 	}
 
-	// No retries here: the engine retries, on its own schedule and budget.
-	return fantasy.NewAgent(e.options.Client.model,
+	options := []fantasy.AgentOption{
 		fantasy.WithSystemPrompt(e.instructions()),
 		fantasy.WithTools(wrapped...),
+
+		// No retries here: the engine retries, on its own schedule and budget.
 		fantasy.WithMaxRetries(0),
-	)
+	}
+
+	if provider := e.providerOptions(); provider != nil {
+		options = append(options, fantasy.WithProviderOptions(provider))
+	}
+
+	return fantasy.NewAgent(e.options.Client.model, options...)
+}
+
+// providerOptions is what the model's config asks fantasy to send beyond the
+// conversation itself, or nil when it asks for nothing.
+func (e *Engine) providerOptions() fantasy.ProviderOptions {
+	config := e.options.Client.Config()
+
+	if config.ReasoningEffort == "" && len(config.ExtraBody) == 0 {
+		return nil
+	}
+
+	options := &openaicompat.ProviderOptions{ExtraBody: config.ExtraBody}
+
+	if config.ReasoningEffort != "" {
+		effort := openai.ReasoningEffort(config.ReasoningEffort)
+
+		options.ReasoningEffort = &effort
+	}
+
+	return openaicompat.NewProviderOptions(options)
 }
 
 // repairToolCall is fantasy's own repair - mend the JSON - except for the tools

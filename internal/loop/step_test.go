@@ -2,7 +2,10 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -218,5 +221,67 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 				t.Errorf("a failure was recorded = %v, want %v", refused, test.wantRan == 0)
 			}
 		})
+	}
+}
+
+// bodyOfTheFirstRequest runs one turn against a server that keeps what it was
+// sent, with the given model settings.
+func bodyOfTheFirstRequest(t *testing.T, tweak func(*ClientConfig)) map[string]any {
+	t.Helper()
+
+	var body map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if body == nil {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		fmt.Fprint(w, "data: "+text("hi")+"\n\ndata: "+stop()+"\n\ndata: [DONE]\n\n")
+	}))
+
+	t.Cleanup(server.Close)
+
+	config := ClientConfig{Provider: "custom", Model: "test-model", APIKey: "k", BaseURL: server.URL}
+	tweak(&config)
+
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run(t, Options{ContextWindow: testWindow, Client: client, Messages: []Message{{Type: TypeUser, Text: "go"}}})
+
+	if body == nil {
+		t.Fatal("the server saw no request")
+	}
+
+	return body
+}
+
+// A model's reasoning_effort and extra_body go out with every request; a model
+// with neither sends a request without them.
+func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
+	body := bodyOfTheFirstRequest(t, func(c *ClientConfig) {
+		c.ReasoningEffort = "low"
+		c.ExtraBody = map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
+	})
+
+	if body["reasoning_effort"] != "low" {
+		t.Errorf("reasoning_effort = %v, want low", body["reasoning_effort"])
+	}
+
+	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != false {
+		t.Errorf("chat_template_kwargs = %v, want the extra body merged in", body["chat_template_kwargs"])
+	}
+
+	plain := bodyOfTheFirstRequest(t, func(*ClientConfig) {})
+
+	for _, key := range []string{"reasoning_effort", "chat_template_kwargs"} {
+		if _, sent := plain[key]; sent {
+			t.Errorf("%s was sent by a model that asked for nothing", key)
+		}
 	}
 }

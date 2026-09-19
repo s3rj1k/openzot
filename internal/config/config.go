@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -76,6 +77,14 @@ type ModelConfig struct {
 	// ContentArray sends every message's content as an array of parts, for
 	// endpoints whose chat template rejects the bare string.
 	ContentArray bool `yaml:"content_array"`
+
+	// ReasoningEffort is sent as reasoning_effort: none, minimal, low, medium,
+	// high, xhigh or max. Empty sends nothing and leaves the model's default.
+	ReasoningEffort string `yaml:"reasoning_effort"`
+
+	// ExtraBody is merged into every request body for this model, as written.
+	// The escape hatch for what a server takes that has no key of its own here.
+	ExtraBody map[string]any `yaml:"extra_body"`
 }
 
 // ProviderCredential returns the credential configured for a provider.
@@ -359,6 +368,11 @@ func (c Config) Validate() error {
 				return fmt.Errorf(
 					"providers.%s.models.%s: context is required - set the model's context window, in tokens",
 					name, model)
+			}
+
+			if effort := strings.ToLower(strings.TrimSpace(provider.Models[model].ReasoningEffort)); !loop.ValidReasoningEffort(effort) {
+				return fmt.Errorf("providers.%s.models.%s: reasoning_effort %q is not known (use %s)",
+					name, model, provider.Models[model].ReasoningEffort, strings.Join(loop.ReasoningEfforts, ", "))
 			}
 		}
 	}

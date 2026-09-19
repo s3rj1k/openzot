@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -26,6 +27,25 @@ type ClientConfig struct {
 	// ContentArray sends every message's content as an array of parts, and an
 	// empty one as []. Off by default, for endpoints whose template wants arrays.
 	ContentArray bool
+
+	// ReasoningEffort is sent as reasoning_effort when set: one of
+	// ReasoningEfforts. Empty sends nothing and leaves the model's default.
+	ReasoningEffort string
+
+	// ExtraBody is merged into every request body as it is, for whatever a server
+	// takes that has no field of its own here - a chat-template switch that turns
+	// thinking off, say.
+	ExtraBody map[string]any
+}
+
+// ReasoningEfforts are the values reasoning_effort may take: the ones fantasy
+// sends. A value outside the list is refused when the config loads rather than
+// with a provider error mid-run.
+var ReasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// ValidReasoningEffort reports whether effort is empty or one of ReasoningEfforts.
+func ValidReasoningEffort(effort string) bool {
+	return effort == "" || slices.Contains(ReasoningEfforts, effort)
 }
 
 // ErrMissingCredential is returned when a provider that needs a key has none.
@@ -43,6 +63,13 @@ func (c ClientConfig) Resolve() (ClientConfig, error) {
 
 	if resolved.Model == "" {
 		return ClientConfig{}, errors.New("provider: no model specified")
+	}
+
+	resolved.ReasoningEffort = strings.ToLower(strings.TrimSpace(c.ReasoningEffort))
+
+	if !ValidReasoningEffort(resolved.ReasoningEffort) {
+		return ClientConfig{}, fmt.Errorf("provider: reasoning_effort %q is not known (use %s)",
+			c.ReasoningEffort, strings.Join(ReasoningEfforts, ", "))
 	}
 
 	if resolved.BaseURL == "" {

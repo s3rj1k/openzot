@@ -694,6 +694,52 @@ func TestSkillsDirIsRead(t *testing.T) {
 	}
 }
 
+// reasoning_effort and extra_body are per-model request settings: read as
+// written, and an effort the provider would refuse is refused at load.
+func TestAModelCarriesItsRequestSettings(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+agent:
+  model: local
+default_provider: p
+providers:
+  p:
+    base_url: http://127.0.0.1:8080/v1
+    models:
+      local:
+        context: 8000
+        reasoning_effort: Low
+        extra_body:
+          chat_template_kwargs:
+            enable_thinking: false
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	model := cfg.Providers["p"].Models["local"]
+
+	if model.ReasoningEffort != "Low" {
+		t.Errorf("reasoning_effort = %q, want it as written", model.ReasoningEffort)
+	}
+
+	kwargs, _ := model.ExtraBody["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != false {
+		t.Errorf("extra_body = %v, want the nested settings kept", model.ExtraBody)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("a known effort (any case) must validate: %v", err)
+	}
+
+	cfg.Providers["p"] = ProviderConfig{BaseURL: "http://127.0.0.1:8080/v1", Models: map[string]ModelConfig{
+		"local": {Context: 8000, ReasoningEffort: "extreme"},
+	}}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reasoning_effort") {
+		t.Errorf("err = %v, want an unknown effort refused and named", err)
+	}
+}
+
 // The viewer scrollback is a scalar UI field read from the file, and an
 // out-of-range value is rejected at load.
 func TestUIScrollbackIsReadAndValidated(t *testing.T) {

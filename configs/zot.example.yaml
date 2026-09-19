@@ -140,6 +140,15 @@ providers:
         # send every message's content as an array of parts, for llama.cpp
         # templates that reject a bare string
         # content_array: true
+        # reasoning_effort sent with every request: none, minimal, low, medium,
+        # high, xhigh or max. Left out, the model's own default applies.
+        # reasoning_effort: low
+        # extra_body is merged into the request body as written - for whatever
+        # the server takes that has no key here, such as a chat-template switch
+        # that turns thinking off on a local server.
+        # extra_body:
+        #   chat_template_kwargs:
+        #     enable_thinking: false
 
   # A local server needs no key.
   # local:

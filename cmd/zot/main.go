@@ -849,7 +849,9 @@ func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, agent
 		APIKey:   credential,
 		BaseURL:  providerConfig.BaseURL,
 
-		ContentArray: contentArray,
+		ContentArray:    contentArray,
+		ReasoningEffort: mc.ReasoningEffort,
+		ExtraBody:       mc.ExtraBody,
 	})
 	if err != nil {
 		return nil, empty, fmt.Errorf("provider %q: %w", cfg.DefaultProvider, err)
