@@ -61,8 +61,8 @@ func toThreadMessages(messages []Message) []thread.Message {
 	for _, message := range messages {
 		entry := thread.Message{"type": string(message.Type), "text": message.Text}
 
-		// the heuristics compare the platform's map shape, because their corpus
-		// is JSON captured from the TypeScript implementation
+		// the heuristics compare a map shape, because their corpus is JSON
+		// captured from the TypeScript implementation
 		if meta := message.Activity.threadMeta(); meta != nil {
 			entry["meta"] = meta
 		}

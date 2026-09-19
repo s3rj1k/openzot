@@ -186,7 +186,7 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	}
 }
 
-// The cycle heuristics read the platform's map shape, because their corpus is
+// The cycle heuristics read a map shape, because their corpus is
 // JSON captured from the TypeScript implementation. A conversion that loses the
 // call silently stops detecting loops.
 func TestThreadRoundTripPreservesTheCall(t *testing.T) {

@@ -147,11 +147,9 @@ func (a *Activity) threadMeta() map[string]any {
 	return meta
 }
 
-// activityFromMeta reads an activity out of the platform's map shape.
-//
-// The one place the old shape is still understood: a conversation loaded from a
-// session log written by an older build, or handed in by an embedder that
-// speaks the platform's format.
+// activityFromMeta is threadMeta's inverse: it reads an activity back out of the
+// map shape internal/thread works in, so the messages the thread builder
+// returns become typed again before they are rendered into a prompt.
 func activityFromMeta(meta map[string]any) *Activity {
 	raw, ok := meta["activity"].(map[string]any)
 	if !ok {
