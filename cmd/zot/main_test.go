@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,11 +19,11 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/openzot/openzot/configs"
-	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -39,44 +38,32 @@ func TestMain(m *testing.M) {
 }
 
 // headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does: an agent-declared failure as an AgentExitError, an engine error
-// as itself.
-func headlessViewer(ctx context.Context, client *loop.Client, meta tui.Meta, opts agent.ExecuteWithToolsOptions) (tui.Outcome, error) {
+// viewer does: an error behind the run as itself, otherwise an agent-declared
+// failure as an AgentExitError.
+func headlessViewer(ctx context.Context, meta tui.Meta, opts loop.Options) (loop.Result, error) {
+	engine, err := loop.New(opts)
+	if err != nil {
+		return loop.Result{}, err
+	}
+
 	fmt.Println(meta.Task)
 
-	events, errs := agent.ExecuteWithTools(ctx, client, opts)
-
-	var (
-		outcome tui.Outcome
-		exitErr error
-		sawExit bool
-	)
-
-	for ev := range events {
-		switch e := ev.(type) {
-		case agent.TokenAgentEvent:
-			fmt.Print(e.Token)
-		case agent.AgentExitEvent:
-			sawExit = true
-			outcome = tui.Outcome{Reason: e.Reason, Message: e.Message}
-
-			fmt.Println(e.Message)
-
-			if e.Code != 0 {
-				exitErr = &tui.AgentExitError{Code: e.Code, Message: e.Message}
-			}
+	result := engine.Run(ctx, func(event loop.Event) {
+		if event.Kind == loop.EventToken {
+			fmt.Print(event.Text)
 		}
+	})
+
+	fmt.Println(result.Message)
+
+	switch {
+	case result.Err != nil:
+		return result, result.Err
+	case result.ExitCode() != 0:
+		return result, &tui.AgentExitError{Code: result.ExitCode(), Message: result.Message}
 	}
 
-	if err := <-errs; err != nil {
-		return tui.Outcome{}, err
-	}
-
-	if !sawExit {
-		return tui.Outcome{}, errors.New("agent stream ended without an exit")
-	}
-
-	return outcome, exitErr
+	return result, nil
 }
 
 // With no terminal there is nothing to show a run in, so zot refuses before it
@@ -1857,7 +1844,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if len(opts.Unrepaired) != 1 || opts.Unrepaired[0] != agent.ShellTool {
+	if len(opts.Unrepaired) != 1 || opts.Unrepaired[0] != tools.ShellTool {
 		t.Errorf("Unrepaired = %v, want just the shell tool", opts.Unrepaired)
 	}
 }
@@ -2421,12 +2408,12 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 // The digest names the log the run was appended to, and says nothing of one
 // when the run was not recorded.
 func TestPrintDigestNamesTheSessionLog(t *testing.T) {
-	summary := &agent.Summary{Reason: "success", Iterations: 1}
+	result := loop.Result{Reason: loop.StopSettled, Budget: loop.Budget{Iterations: 1}}
 
 	var recorded, unrecorded strings.Builder
 
-	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", tui.Outcome{}, summary)
-	printDigest(&unrecorded, "", tui.Outcome{}, summary)
+	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", result)
+	printDigest(&unrecorded, "", result)
 
 	if !strings.Contains(recorded.String(), "/w/.zot/orders/1758300000.jsonl") {
 		t.Errorf("the digest must say where the log is:\n%s", recorded.String())
@@ -2589,7 +2576,7 @@ func TestDefaultInstructionsNamesOnlyRealTools(t *testing.T) {
 		"failure": true,
 	}
 
-	for _, tool := range agent.DefaultTools() {
+	for _, tool := range tools.DefaultTools() {
 		real[tool.Info().Name] = true
 	}
 
@@ -2826,8 +2813,8 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 		t.Errorf("MaxDuration = %v, want 30m", timed.MaxDuration)
 	}
 
-	// zero stays zero, so the agent layer falls back to its built-in default
-	// rather than pinning the budget to zero
+	// Settlement cannot be switched off: an unattended run needs an unambiguous
+	// ending, so zero means the default budget, never "no settling".
 	cfg.Agent.MaxSettles = 0
 
 	_, opts, err = resolve(cfg, defaultInstructions)
@@ -2835,8 +2822,8 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if opts.MaxSettles != 0 {
-		t.Errorf("MaxSettles = %d, want 0 (the sentinel for 'use the default')", opts.MaxSettles)
+	if opts.MaxSettles != loop.DefaultMaxSettles {
+		t.Errorf("MaxSettles = %d, want the default %d - there is no way to opt out", opts.MaxSettles, loop.DefaultMaxSettles)
 	}
 }
 

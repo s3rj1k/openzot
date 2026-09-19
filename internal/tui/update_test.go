@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // sized returns a model that has been through a window-size message, which is
@@ -160,14 +160,14 @@ func TestTickAdvancesTheElapsedClock(t *testing.T) {
 func TestHandleEventBuildsTheLog(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.IterationEvent{Iteration: 1})
-	m.handleEvent(agent.ToolCallStartEvent{Name: "shell", Args: map[string]any{"command": "ls"}})
-	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: "README.md"})
+	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 1})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallStart, Tool: "shell", Args: map[string]any{"command": "ls"}})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: "README.md"})
 	// tokens are what the log shows; a MessageAgentEvent carries the same
 	// content and is deliberately not drawn twice
-	m.handleEvent(agent.TokenAgentEvent{Token: "here is "})
-	m.handleEvent(agent.TokenAgentEvent{Token: "the answer"})
-	m.handleEvent(agent.MessageAgentEvent{Type: agent.TypeBot, Text: "here is the answer"})
+	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "here is "})
+	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "the answer"})
+	m.handleEvent(loop.Event{Kind: loop.EventMessage, MessageType: loop.TypeBot, Text: "here is the answer"})
 
 	m.flushPending()
 
@@ -191,7 +191,7 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 func TestToolErrorsAreShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.ToolCallErrorEvent{Name: "shell", Error: "command not found"})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallError, Tool: "shell", Text: "command not found"})
 
 	log := strings.Join(m.entries, "\n")
 
@@ -200,22 +200,22 @@ func TestToolErrorsAreShown(t *testing.T) {
 	}
 }
 
-func TestExitEventSetsTheStatus(t *testing.T) {
+func TestTheEndingSetsTheStatus(t *testing.T) {
 	tests := []struct {
 		name string
-		exit agent.AgentExitEvent
+		exit loop.Result
 		want status
 	}{
-		{"a settled run", agent.AgentExitEvent{Code: 0, Reason: "settled", Message: "done"}, statusDone},
-		{"a budget-exhausted run", agent.AgentExitEvent{Code: 1, Reason: "iterations", Message: "gave up"}, statusFailed},
-		{"a run the model declared failed", agent.AgentExitEvent{Code: 1, Reason: "failed", Message: "cannot reach the host"}, statusFailed},
+		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: "done"}, statusDone},
+		{"a budget-exhausted run", loop.Result{Reason: loop.StopIterations, Message: "gave up"}, statusFailed},
+		{"a run the model declared failed", loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"}, statusFailed},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := sized(t, 100, 30)
 
-			m.handleEvent(test.exit)
+			m.finish(test.exit)
 
 			if m.status != test.want {
 				t.Errorf("status = %v, want %v", m.status, test.want)
@@ -234,7 +234,7 @@ func TestExitEventSetsTheStatus(t *testing.T) {
 func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.AgentExitEvent{Code: 1, Reason: "failed", Message: "cannot reach the host"})
+	m.finish(loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
 
 	log := stripANSI(strings.Join(m.entries, "\n"))
 
@@ -250,8 +250,8 @@ func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 func TestViewRendersWithoutPanicking(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.IterationEvent{Iteration: 2})
-	m.handleEvent(agent.TokenAgentEvent{Token: "something"})
+	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 2})
+	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "something"})
 	m.flushPending()
 
 	view := m.View()
@@ -282,7 +282,7 @@ func TestViewBeforeReady(t *testing.T) {
 func TestIterationRuleIsFixedShort(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.IterationEvent{Iteration: 7})
+	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 7})
 
 	entry := m.entries[len(m.entries)-1]
 
@@ -303,7 +303,7 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 		t.Run(fmt.Sprintf("%dcolumns", width), func(t *testing.T) {
 			m := sized(t, width, 30)
 
-			m.handleEvent(agent.IterationEvent{Iteration: 4})
+			m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 4})
 
 			rows := strings.Split(m.committedWrapped, "\n")
 
@@ -426,7 +426,7 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 func TestExitBecomesAnError(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.AgentExitEvent{Code: 1, Reason: "cycle", Message: "kept repeating"})
+	m.finish(loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
 
 	err := m.runError()
 
@@ -440,7 +440,7 @@ func TestExitBecomesAnError(t *testing.T) {
 
 	clean := sized(t, 100, 30)
 
-	clean.handleEvent(agent.AgentExitEvent{Code: 0, Reason: "settled", Message: "done"})
+	clean.finish(loop.Result{Reason: loop.StopSettled, Message: "done"})
 
 	if err := clean.runError(); err != nil {
 		t.Errorf("a settled run must not error: %v", err)
@@ -532,7 +532,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: strings.Join(lines, "\n")})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: strings.Join(lines, "\n")})
 
 	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
 
@@ -555,7 +555,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 
 	long := strings.Repeat("word ", 40)
 
-	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: long + "\n" + long + "\n" + long})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: long + "\n" + long + "\n" + long})
 
 	if got := len(strings.Split(m.committedWrapped, "\n")); got != 10 {
 		t.Errorf("a wrapped record took %d rows, want the 10 a third of 30 allows", got)
@@ -566,7 +566,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 func TestARecordThatFitsIsNotClipped(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: "one\ntwo\nthree"})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: "one\ntwo\nthree"})
 
 	got := stripANSI(m.committedWrapped)
 
@@ -586,7 +586,7 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.ToolCallEndEvent{Name: "shell", Result: strings.Join(lines, "\n")})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: strings.Join(lines, "\n")})
 
 	before := len(strings.Split(m.committedWrapped, "\n"))
 
@@ -1004,7 +1004,7 @@ func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 func TestHandleEventRecordsUsage(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.UsageEvent{InputTokens: 1234, OutputTokens: 567})
+	m.handleEvent(loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
 
 	if m.inputTokens != 1234 || m.outputTokens != 567 {
 		t.Errorf("usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
@@ -1031,7 +1031,7 @@ func TestFmtTokens(t *testing.T) {
 // itself when the run ends; a run of record holds the final screen, because the
 // screen is its report.
 func TestQuitOnDoneClosesTheViewerWhenTheRunEnds(t *testing.T) {
-	exit := agentEventMsg{ev: agent.AgentExitEvent{Code: 0, Reason: "settled", Message: "done"}}
+	exit := doneMsg{result: loop.Result{Reason: loop.StopSettled, Message: "done"}}
 
 	m := sized(t, 100, 30)
 	m.quitOnDone = true
@@ -1049,7 +1049,7 @@ func TestQuitOnDoneClosesTheViewerWhenTheRunEnds(t *testing.T) {
 	running := sized(t, 100, 30)
 	running.quitOnDone = true
 
-	if _, cmd := running.Update(agentEventMsg{ev: agent.IterationEvent{Iteration: 1}}); cmd != nil {
+	if _, cmd := running.Update(eventMsg{ev: loop.Event{Kind: loop.EventIteration, Iteration: 1}}); cmd != nil {
 		t.Error("the viewer must stay open while the run is going")
 	}
 
@@ -1061,27 +1061,28 @@ func TestQuitOnDoneClosesTheViewerWhenTheRunEnds(t *testing.T) {
 	}
 }
 
-// A fatal agent error also ends the run; the self-closing viewer must not hang
-// on it.
-func TestQuitOnDoneClosesTheViewerOnAgentError(t *testing.T) {
+// A run that ends in an error also ends the run; the self-closing viewer must not
+// hang on it.
+func TestQuitOnDoneClosesTheViewerOnAnError(t *testing.T) {
 	m := sized(t, 100, 30)
 	m.quitOnDone = true
 
-	_, cmd := m.Update(agentErrMsg{err: fmt.Errorf("provider down")})
+	_, cmd := m.Update(doneMsg{result: loop.Result{Reason: loop.StopError, Err: fmt.Errorf("provider down")}})
 	if cmd == nil {
 		t.Fatal("the viewer should quit on a fatal error")
 	}
 }
 
-// The terminal error arrives after the exit event, which has already flipped
-// the status. It must still be kept - it is usually the run's only diagnostic
-// (the provider's 404, not the loop's "the provider failed").
-func TestProviderErrorAfterExitIsKeptAndShown(t *testing.T) {
+// The error behind a failed run is kept and shown - it is usually the run's only
+// diagnostic (the provider's 404, not the loop's "the provider failed").
+func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.AgentExitEvent{Code: 1, Reason: "error", Message: "the provider failed"})
-
-	next, _ := m.Update(agentErrMsg{err: fmt.Errorf("provider: Model 'x' not found (404)")})
+	next, _ := m.Update(doneMsg{result: loop.Result{
+		Reason:  loop.StopError,
+		Message: "the provider failed",
+		Err:     fmt.Errorf("provider: Model 'x' not found (404)"),
+	}})
 	m = next.(model)
 
 	if err := m.runError(); err == nil || !strings.Contains(err.Error(), "not found (404)") {
@@ -1100,7 +1101,7 @@ func TestProviderErrorAfterExitIsKeptAndShown(t *testing.T) {
 func TestRetryEventIsRendered(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(agent.RetryEvent{Error: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
+	m.handleEvent(loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
 
 	joined := strings.Join(m.entries, "\n")
 	if !strings.Contains(joined, "retrying") || !strings.Contains(joined, "Stealth") {

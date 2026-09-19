@@ -7,14 +7,14 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/tools"
 )
 
 // renderToolStart turns a tool invocation into one or more styled log lines.
 //
 // The built-in tools each get a tailored, scannable representation; anything a
 // caller has added falls through to a generic one. The names here are the names
-// in agent.DefaultTools - a mismatch is not a compile error, it just quietly
+// in tools.DefaultTools - a mismatch is not a compile error, it just quietly
 // renders the agent's most-used tool as an anonymous key/value dump.
 func renderToolStart(name string, args map[string]interface{}) string {
 	switch name {
@@ -127,7 +127,7 @@ func commandOutput(m map[string]interface{}) string {
 func renderTasks(args map[string]interface{}) string {
 	head := toolOtherStyle.Render("  tasks  ")
 
-	tasks, err := agent.ParseTasks(args)
+	tasks, err := tools.ParseTasks(args)
 	if err != nil {
 		// the call itself is refused with the reason, so the log has nothing
 		// worth drawing beyond the header
@@ -136,7 +136,7 @@ func renderTasks(args map[string]interface{}) string {
 
 	var b strings.Builder
 
-	b.WriteString(head + outputStyle.Render(fmt.Sprintf("%d/%d done", agent.CountDone(tasks), len(tasks))))
+	b.WriteString(head + outputStyle.Render(fmt.Sprintf("%d/%d done", tools.CountDone(tasks), len(tasks))))
 
 	for _, task := range tasks {
 		b.WriteString("\n    " + taskMarker(task.Status) + " ")
@@ -151,13 +151,13 @@ func renderTasks(args map[string]interface{}) string {
 }
 
 // taskMarker is the glyph drawn beside a task, coloured for its status.
-func taskMarker(status agent.TaskStatus) string {
+func taskMarker(status tools.TaskStatus) string {
 	switch status {
-	case agent.TaskDone:
+	case tools.TaskDone:
 		return okStyle.Render("✓")
-	case agent.TaskInProgress:
+	case tools.TaskInProgress:
 		return toolOtherStyle.Render("▶")
-	case agent.TaskBlocked:
+	case tools.TaskBlocked:
 		return errStyle.Render("✗")
 	default:
 		return outputStyle.Render("·")
@@ -166,11 +166,11 @@ func taskMarker(status agent.TaskStatus) string {
 
 // taskLineStyle dims what is finished and keeps the task being worked on bright,
 // so the eye lands on where the run is.
-func taskLineStyle(status agent.TaskStatus) lipgloss.Style {
+func taskLineStyle(status tools.TaskStatus) lipgloss.Style {
 	switch status {
-	case agent.TaskDone:
+	case tools.TaskDone:
 		return outputStyle
-	case agent.TaskBlocked:
+	case tools.TaskBlocked:
 		return errStyle
 	default:
 		return taskStyle

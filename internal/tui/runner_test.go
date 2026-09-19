@@ -13,7 +13,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -111,12 +110,11 @@ func headless(t *testing.T) (*tea.Program, *collector, func() model) {
 
 // collector records what the program was sent.
 type collector struct {
-	events []agent.AgentEvent
-	errs   []error
-	done   int
+	events  []loop.Event
+	results []loop.Result
 }
 
-// recordingModel wraps the real model, noting the agent messages that arrive.
+// recordingModel wraps the real model, noting the run's messages as they arrive.
 type recordingModel struct {
 	collector *collector
 	inner     model
@@ -126,12 +124,10 @@ func (r *recordingModel) Init() tea.Cmd { return nil }
 
 func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
-	case agentEventMsg:
+	case eventMsg:
 		r.collector.events = append(r.collector.events, typed.ev)
-	case agentErrMsg:
-		r.collector.errs = append(r.collector.errs, typed.err)
-	case agentDoneMsg:
-		r.collector.done++
+	case doneMsg:
+		r.collector.results = append(r.collector.results, typed.result)
 	}
 
 	updated, cmd := r.inner.Update(msg)
@@ -144,6 +140,32 @@ func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (r *recordingModel) View() string { return "" }
+
+// engineFor is an engine over the client for a run of "do the thing".
+func engineFor(t *testing.T, client *loop.Client, tweak ...func(*loop.Options)) *loop.Engine {
+	t.Helper()
+
+	options := loop.Options{
+		Client:        client,
+		ContextWindow: testWindow,
+		Messages:      []loop.Message{{Type: loop.TypeUser, Text: "do the thing"}},
+
+		// a persistent outage is retried with a growing backoff; these tests are
+		// about what reaches the screen, not about waiting an outage out
+		RetryBackoff: -1,
+	}
+
+	for _, change := range tweak {
+		change(&options)
+	}
+
+	engine, err := loop.New(options)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	return engine
+}
 
 func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 	client := scriptedClient(t,
@@ -158,14 +180,13 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
-		Text: []string{"do the thing"},
-	}, make(chan struct{}))
+	runAgent(context.Background(), program, engineFor(t, client, func(o *loop.Options) { o.MaxSettles = 5 }),
+		make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
 
-	if seen.done != 1 {
-		t.Errorf("the done message arrived %d times, want exactly one", seen.done)
+	if len(seen.results) != 1 {
+		t.Fatalf("the done message arrived %d times, want exactly one", len(seen.results))
 	}
 
 	if len(seen.events) == 0 {
@@ -174,14 +195,9 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	var tokens strings.Builder
 
-	var exited bool
-
 	for _, event := range seen.events {
-		switch typed := event.(type) {
-		case agent.TokenAgentEvent:
-			tokens.WriteString(typed.Token)
-		case agent.AgentExitEvent:
-			exited = true
+		if event.Kind == loop.EventToken {
+			tokens.WriteString(event.Text)
 		}
 	}
 
@@ -189,8 +205,8 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 		t.Errorf("the streamed answer did not reach the screen: %q", tokens.String())
 	}
 
-	if !exited {
-		t.Error("the exit event must reach the screen; it is what stops the spinner")
+	if seen.results[0].Reason != loop.StopSettled || seen.results[0].Message != "all done" {
+		t.Errorf("the ending = %+v, want settled with the summary: it is what stops the spinner", seen.results[0])
 	}
 
 	if final.status == statusRunning {
@@ -221,21 +237,15 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
-		Text: []string{"do the thing"},
-
-		// a persistent outage is retried with a growing backoff; this test is
-		// about the failure reaching the screen, not about waiting it out
-		RetryBackoff: -1,
-	}, make(chan struct{}))
+	runAgent(context.Background(), program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
 
-	if seen.done != 1 {
-		t.Errorf("the done message arrived %d times, want exactly one", seen.done)
+	if len(seen.results) != 1 {
+		t.Fatalf("the done message arrived %d times, want exactly one", len(seen.results))
 	}
 
-	if len(seen.errs) == 0 {
+	if seen.results[0].Err == nil {
 		t.Fatal("the provider failure never reached the screen")
 	}
 
@@ -258,12 +268,12 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(ctx, program, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow, Text: []string{"do the thing"}}, make(chan struct{}))
+	runAgent(ctx, program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
 
 	stop()
 
-	if seen.done != 1 {
-		t.Errorf("the done message arrived %d times, want exactly one", seen.done)
+	if len(seen.results) != 1 {
+		t.Errorf("the done message arrived %d times, want exactly one", len(seen.results))
 	}
 }
 
@@ -312,17 +322,20 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	m := newModel("do the thing", "test-model", "custom", t.TempDir())
 
-	// start stands in for the user pressing q: it returns as soon as the agent
-	// is under way, exactly as (*tea.Program).Run does on tea.Quit
+	// start stands in for the user pressing q: the program runs headlessly, so the
+	// event pump is genuinely consuming, and quits once the agent is under way
 	start := func(p *tea.Program) (tea.Model, error) {
-		<-streaming
+		go func() {
+			<-streaming
 
-		return m, nil
+			p.Quit()
+		}()
+
+		return p.Run()
 	}
 
-	if _, err := runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
-		Text: []string{"do the thing"},
-	}, start); err == nil {
+	if _, err := runViewer(context.Background(), m, engineFor(t, client), start,
+		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler()); err == nil {
 		t.Error("quitting mid-run should report that the run did not finish")
 	}
 
@@ -333,30 +346,9 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	}
 }
 
-// abortRecorder captures the run's recorded outcome.
-type abortRecorder struct {
-	mu     sync.Mutex
-	result *agent.Summary
-}
-
-func (r *abortRecorder) RecordMessage(agent.Message) error             { return nil }
-func (r *abortRecorder) RecordEvent(string, string, string, int) error { return nil }
-func (r *abortRecorder) RecordResult(summary agent.Summary) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.result = &summary
-	return nil
-}
-
-func (r *abortRecorder) recorded() *agent.Summary {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.result
-}
-
-// Quitting the viewer must leave the run's aborted outcome in the session.
-// runViewer used to return the moment the program did, racing the engine's
-// result record against the caller's deferred session close - a quit run was
+// Quitting the viewer must hand the caller the run's aborted outcome, for the
+// session. runViewer used to return the moment the program did, racing the
+// engine's ending against the caller's deferred session close - a quit run was
 // logged as "running/interrupted" forever, with no outcome at all.
 func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	streaming := make(chan struct{})
@@ -390,8 +382,6 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	recorder := &abortRecorder{}
-
 	m := newModel("do the thing", "test-model", "custom", t.TempDir())
 
 	// the program runs headlessly so the event pump is genuinely consuming;
@@ -406,18 +396,10 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		return p.Run()
 	}
 
-	_, _ = runViewer(context.Background(), m, client, agent.ExecuteWithToolsOptions{ContextWindow: testWindow,
-		Text:     []string{"do the thing"},
-		Recorder: recorder,
-	}, start, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+	result, _ := runViewer(context.Background(), m, engineFor(t, client), start,
+		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 
-	result := recorder.recorded()
-
-	if result == nil {
-		t.Fatal("the quit run recorded no outcome at all")
-	}
-
-	if result.Reason != agent.ReasonAborted {
-		t.Errorf("Reason = %q, want the abort on record", result.Reason)
+	if result.Reason != loop.StopAborted {
+		t.Errorf("Reason = %q, want the abort handed back", result.Reason)
 	}
 }

@@ -285,3 +285,33 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 		}
 	}
 }
+
+// OnEvent sees every event of a run, alongside whoever is watching it.
+func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
+	var sunk, watched []EventKind
+
+	engine, err := New(Options{ContextWindow: testWindow,
+		Client:   stub(t, []string{text("hi"), stop()}),
+		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		OnEvent:  func(event Event) { sunk = append(sunk, event.Kind) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	engine.Run(context.Background(), func(event Event) { watched = append(watched, event.Kind) })
+
+	if len(sunk) == 0 || strings.Join(kindsOf(sunk), ",") != strings.Join(kindsOf(watched), ",") {
+		t.Errorf("sink saw %v, watcher saw %v, want the same events", sunk, watched)
+	}
+}
+
+func kindsOf(kinds []EventKind) []string {
+	names := make([]string, len(kinds))
+
+	for i, kind := range kinds {
+		names[i] = string(kind)
+	}
+
+	return names
+}

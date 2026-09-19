@@ -39,11 +39,11 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/openzot/openzot/configs"
-	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -637,7 +637,7 @@ func loadSkills(cfg *config.Config) error {
 		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
 	}
 
-	skills, err := agent.LoadSkills(dir)
+	skills, err := tools.LoadSkills(dir)
 	if err != nil {
 		return fmt.Errorf("skills_dir: %w", err)
 	}
@@ -691,18 +691,16 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 	// @note there is deliberately no way to open a run with a prompt of the
 	// caller's own. zot takes a work order, not a conversation; anything worth
 	// saying to the agent belongs in the order, where it is durable.
+	opts.Client = client
 	opts.Instructions = withTask(opts.Instructions, task)
-
-	opts.Text = []string{taskKickoff}
+	opts.Messages = []loop.Message{{Type: loop.TypeUser, Text: taskKickoff}}
 
 	workdir, _ := os.Getwd()
 
-	// Captures the run's final totals so the end-of-run digest can report them;
-	// the viewer's returned Outcome carries only the reason and message.
-	summaryRec := &agent.SummaryRecorder{}
-	opts.Recorder = summaryRec
-
-	var sessionPath string
+	var (
+		sessionPath string
+		recorder    *session.Recorder
+	)
 
 	if options.SessionPath != "" {
 		meta := session.Meta{
@@ -723,7 +721,14 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 			defer writer.Close()
 
 			sessionPath = writer.Path()
-			opts.Recorder = agent.MultiRecorder(session.NewRecorder(writer), summaryRec)
+
+			// The seed is recorded before the run starts so a session that dies in
+			// its first turn still says what it was asked to do.
+			recorder = session.NewRecorder(writer)
+			recorder.Conversation(opts.Messages)
+
+			opts.OnConversation = recorder.Conversation
+			opts.OnEvent = recorder.Event
 		}
 	}
 
@@ -733,30 +738,30 @@ func runTask(ctx context.Context, cfg config.Config, task string, options runOpt
 	meta.BatchSize = options.BatchSize
 	meta.QuitOnDone = options.QuitOnDone
 
-	outcome, err := runViewer(ctx, client, meta, opts)
+	result, err := runViewer(ctx, meta, opts)
 
-	printDigest(os.Stderr, sessionPath, outcome, summaryRec.Summary)
+	// A run that never began, or was abandoned still going, has no ending to write
+	// down or to report.
+	if result.Reason != "" {
+		recorder.Result(result)
+
+		printDigest(os.Stderr, sessionPath, result)
+	}
 
 	return err
 }
 
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
-// and - when the run was recorded - the session log it was appended to. Skipped
-// entirely when there is nothing to say (a run that never produced a summary, e.g. a setup
-// failure before the first turn).
-func printDigest(w io.Writer, sessionPath string, outcome tui.Outcome, summary *agent.Summary) {
-	if summary == nil {
-		return
-	}
-
+// and - when the run was recorded - the session log it was appended to.
+func printDigest(w io.Writer, sessionPath string, result loop.Result) {
 	digest := tui.Digest{
-		Status:       tui.DigestStatus(summary.Reason, summary.Code),
+		Status:       tui.DigestStatus(string(result.Reason), result.ExitCode()),
 		Session:      sessionPath,
-		Iterations:   summary.Iterations,
-		Calls:        summary.Calls,
-		InputTokens:  summary.InputTokens,
-		OutputTokens: summary.OutputTokens,
-		Message:      outcome.Message,
+		Iterations:   result.Budget.Iterations,
+		Calls:        result.Budget.Calls,
+		InputTokens:  result.Budget.InputTokens,
+		OutputTokens: result.Budget.OutputTokens,
+		Message:      result.Message,
 	}
 
 	fmt.Fprintf(w, "\n%s", tui.RenderDigest(digest))
@@ -768,7 +773,7 @@ func printDigest(w io.Writer, sessionPath string, outcome tui.Outcome, summary *
 // configuration: a per-model max_iterations lowers the limit the engine
 // enforces, and a meta bar counting up to a number the run will never reach is
 // worse than no number at all.
-func viewerMeta(cfg config.Config, task, workdir string, opts agent.ExecuteWithToolsOptions) tui.Meta {
+func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
 	// the default is a 1,000,000 backstop, which is not a budget worth displaying.
 	iterLimit := 0
@@ -791,8 +796,8 @@ func viewerMeta(cfg config.Config, task, workdir string, opts agent.ExecuteWithT
 
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, agent.ExecuteWithToolsOptions, error) {
-	var empty agent.ExecuteWithToolsOptions
+func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, loop.Options, error) {
+	var empty loop.Options
 
 	if cfg.DefaultProvider == "" {
 		return nil, empty, errors.New(
@@ -861,16 +866,24 @@ func resolve(cfg config.Config, defaultInstructions string) (*loop.Client, agent
 	// it as unbounded rather than failing a run that already passed validation.
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
-	opts := agent.ExecuteWithToolsOptions{
+	// there is no switch to turn settlement off: zot exists to run unattended, and
+	// an unattended run needs an unambiguous ending - a terminal tool call, not
+	// prose that happens to sound final
+	settles := cfg.Agent.MaxSettles
+	if settles <= 0 {
+		settles = loop.DefaultMaxSettles
+	}
+
+	opts := loop.Options{
 		Instructions: instructions,
-		Tools:        agent.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
+		Tools:        tools.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
 
 		// shell acts on the machine, so a command the model did not finish
 		// writing is refused rather than repaired into one that runs
-		Unrepaired: []string{agent.ShellTool},
+		Unrepaired: []string{tools.ShellTool},
 
 		MaxIterations:    maxIterations,
-		MaxSettles:       cfg.Agent.MaxSettles,
+		MaxSettles:       settles,
 		MaxCalls:         cfg.Agent.MaxCalls,
 		MaxContinuations: cfg.Agent.MaxContinuations,
 		MaxRecoveries:    cfg.Agent.MaxRecoveries,

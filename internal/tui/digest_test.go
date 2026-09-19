@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
@@ -74,10 +74,10 @@ func TestDigestStatus(t *testing.T) {
 		code   int
 		want   string
 	}{
-		{agent.ReasonSettled, 0, "done"},
-		{agent.ReasonFailed, 1, "failed"},
-		{agent.ReasonAborted, 1, "cancelled"},
-		{agent.ReasonIterations, 3, "failed"},
+		{string(loop.StopSettled), 0, "done"},
+		{string(loop.StopFailed), 1, "failed"},
+		{string(loop.StopAborted), 1, "cancelled"},
+		{string(loop.StopIterations), 3, "failed"},
 	}
 
 	for _, c := range cases {

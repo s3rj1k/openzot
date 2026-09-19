@@ -1,9 +1,8 @@
 // Package tui renders the read-only terminal view of an autonomous agent run.
 //
 // The UI deliberately has no text input: the user watches the agent work, they
-// do not drive it. Everything on screen is derived from the event stream that
-// agent.ExecuteWithTools emits - tool calls, iterations, token narration, and
-// the final exit.
+// do not drive it. Everything on screen is derived from the event stream the
+// engine emits - tool calls, iterations, token narration - and the run's ending.
 package tui
 
 import (
@@ -14,7 +13,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
 
-	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -79,9 +77,15 @@ func IsInteractive() bool {
 // errors. The agent runs in the background and communicates with the UI solely
 // through tea messages.
 //
-// Along with any error it returns the run's recorded Outcome, so a caller can
-// report how it ended without scraping the screen.
-func Run(ctx context.Context, client *loop.Client, meta Meta, opts agent.ExecuteWithToolsOptions) (Outcome, error) {
+// Along with any error it returns the run's Result, so a caller can report how it
+// ended - and what it spent - without scraping the screen. The result is empty
+// when the run never began, or was still going when it was abandoned.
+func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error) {
+	engine, err := loop.New(opts)
+	if err != nil {
+		return loop.Result{}, err
+	}
+
 	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 	m.title = meta.Title
 	m.batchIndex = meta.BatchIndex
@@ -95,22 +99,21 @@ func Run(ctx context.Context, client *loop.Client, meta Meta, opts agent.Execute
 	m.maxDuration = meta.MaxDuration
 	m.quitOnDone = meta.QuitOnDone
 
-	return runViewer(ctx, m, client, opts, func(p *tea.Program) (tea.Model, error) { return p.Run() })
+	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
 }
 
-// runViewer owns the viewer's lifetime: it starts the agent, hands the program
-// to start, and shuts the agent down once start returns. start is a seam for
-// tests, which cannot open a terminal - Run passes (*tea.Program).Run.
-// programOptions is a seam for tests, which cannot open a terminal and need a
-// headless program that still consumes messages.
+// runViewer owns the viewer's lifetime: it starts the run, hands the program to
+// start, and shuts the run down once start returns. start is a seam for tests,
+// which cannot open a terminal - Run passes (*tea.Program).Run. programOptions is
+// a seam for tests, which cannot open a terminal and need a headless program that
+// still consumes messages.
 func runViewer(
 	ctx context.Context,
 	m model,
-	client *loop.Client,
-	opts agent.ExecuteWithToolsOptions,
+	engine *loop.Engine,
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,
-) (Outcome, error) {
+) (loop.Result, error) {
 	// Quitting the viewer stops the agent rather than merely stopping watching
 	// it. The agent has shell and file-write access, so a process
 	// that returned from here with the run still going would leave something
@@ -121,34 +124,38 @@ func runViewer(
 	p := tea.NewProgram(m, append([]tea.ProgramOption{tea.WithAltScreen()}, programOptions...)...)
 
 	done := make(chan struct{})
+	results := make(chan loop.Result, 1)
 
-	go runAgent(ctx, p, client, opts, done)
+	go runAgent(ctx, p, engine, results, done)
 
 	final, err := start(p)
 
-	// The agent must conclude before this returns: quitting cancels the run,
-	// and the engine then records its aborted outcome into the session - but
-	// the caller closes the session writer as soon as this function returns,
-	// so returning immediately raced the abort record out of the log and left
-	// the session with no outcome at all. Cancel explicitly, then give the
-	// engine a bounded moment to write its ending; the timeout only exists so
-	// a pathologically hung engine cannot hold the terminal hostage.
+	// The run must conclude before this returns: quitting cancels it, and the
+	// engine then ends with its aborted outcome - which the caller records into the
+	// session as soon as this function returns, so returning immediately would race
+	// that ending out of the log. Cancel explicitly, then give the engine a bounded
+	// moment to finish; the timeout only exists so a pathologically hung engine
+	// cannot hold the terminal hostage.
 	cancel()
+
+	var result loop.Result
 
 	select {
 	case <-done:
+		result = <-results
 	case <-time.After(3 * time.Second):
 	}
 
 	if err != nil {
-		return Outcome{}, err
+		return result, err
 	}
+
 	switch m := final.(type) {
 	case model:
-		return m.outcome(), m.runError()
+		return result, m.runError()
 	case *model:
-		return m.outcome(), m.runError()
+		return result, m.runError()
 	default:
-		return Outcome{}, nil
+		return result, nil
 	}
 }

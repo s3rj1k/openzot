@@ -213,3 +213,26 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 		t.Errorf("an unknown heuristic should fall back to the generic notice, got %q", detail)
 	}
 }
+
+// A caller scripting against zot tells success from everything else by the exit
+// code: only a run that settled, or finished talking, is a success.
+func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
+	for reason, want := range map[StopReason]int{
+		StopSettled:       0,
+		StopStop:          0,
+		StopFailed:        1,
+		StopUnsettled:     1,
+		StopIterations:    1,
+		StopCalls:         1,
+		StopTime:          1,
+		StopContinuations: 1,
+		StopCycle:         1,
+		StopEmpty:         1,
+		StopAborted:       1,
+		StopError:         1,
+	} {
+		if got := (Result{Reason: reason}).ExitCode(); got != want {
+			t.Errorf("%s: exit code %d, want %d", reason, got, want)
+		}
+	}
+}

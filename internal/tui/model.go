@@ -10,7 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/tools"
 )
 
 type status int
@@ -170,35 +171,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.elapsed = time.Since(m.startedAt)
 		return m, tickCmd()
 
-	case agentEventMsg:
+	case eventMsg:
 		m.handleEvent(msg.ev)
 		return m, m.maybeQuit()
 
-	case agentErrMsg:
-		// The terminal error arrives after the exit event, which has already
-		// flipped the status - it must still be kept and shown, because it is
-		// usually the run's only diagnostic: "the provider failed" on screen
-		// with the actual 404 dropped on the floor was how that got lost. A
-		// run that ended in success is the exception - a late error must not
-		// resurrect a finished run as a failure.
-		if m.err == nil && msg.err != nil && m.status != statusDone {
-			m.err = msg.err
-			m.flushPending()
-			m.appendEntry(errStyle.Render("✗ " + msg.err.Error()))
-		}
-		if m.status == statusRunning {
-			m.status = statusFailed
-		}
-		return m, m.maybeQuit()
-
-	case agentDoneMsg:
-		// The stream ended without an explicit exit (e.g. iteration cap reached).
-		if m.status == statusRunning {
-			m.status = statusFailed
-			m.err = fmt.Errorf("agent stream ended without an exit")
-			m.flushPending()
-			m.appendEntry(dividerStyle.Render("- stream ended -"))
-		}
+	case doneMsg:
+		m.finish(msg.result)
 		return m, m.maybeQuit()
 	}
 
@@ -215,80 +193,86 @@ func (m model) maybeQuit() tea.Cmd {
 	return nil
 }
 
-// handleEvent folds one agent event into the UI state.
-func (m *model) handleEvent(ev agent.AgentEvent) {
-	switch e := ev.(type) {
-	case agent.IterationEvent:
-		m.iteration = e.Iteration
+// handleEvent folds one event of the run into the UI state.
+func (m *model) handleEvent(ev loop.Event) {
+	switch ev.Kind {
+	case loop.EventIteration:
+		m.iteration = ev.Iteration
 		m.flushPending()
 		// A fixed short rule: one that fills the width would wrap at a narrow
 		// terminal and smear the divider across two rows.
-		m.appendEntry(dividerStyle.Render(fmt.Sprintf("─── iteration %d ───", e.Iteration)))
+		m.appendEntry(dividerStyle.Render(fmt.Sprintf("─── iteration %d ───", ev.Iteration)))
 
-	case agent.TokenAgentEvent:
-		m.pending += e.Token
+	case loop.EventToken:
+		m.pending += ev.Text
 		m.render()
 
-	case agent.ResultAgentEvent:
-		m.flushPending()
-
-	case agent.MessageAgentEvent:
-		// Server-side history bookkeeping; the content already surfaced via
-		// tokens, so nothing to draw.
-
-	case agent.ToolCallStartEvent:
+	case loop.EventToolCallStart:
 		m.flushPending()
 		m.toolCount++
-		m.trackProgress(e.Name, e.Args)
-		m.appendEntry(renderToolStart(e.Name, e.Args))
+		m.trackProgress(ev.Tool, ev.Args)
+		m.appendEntry(renderToolStart(ev.Tool, ev.Args))
 
-	case agent.ToolCallEndEvent:
-		if s := renderToolEnd(e.Name, e.Result); s != "" {
+	case loop.EventToolCallEnd:
+		if s := renderToolEnd(ev.Tool, ev.Result); s != "" {
 			m.appendEntry(s)
 		}
 
-	case agent.ToolCallErrorEvent:
-		m.appendEntry(errStyle.Render("    ✗ " + e.Name + ": " + e.Error))
+	case loop.EventToolCallError:
+		m.appendEntry(errStyle.Render("    ✗ " + ev.Tool + ": " + ev.Text))
 
-	case agent.NoticeEvent:
+	case loop.EventNotice:
 		// a corrective nudge - an empty turn, a truncation continuation, a
 		// settle reminder; without this line the recovery renders as bare
 		// iteration dividers, indistinguishable from a hang
 		m.flushPending()
-		m.appendEntry(statusRunningStyle.Render("⚠ ") + metaStyle.Render(e.Text))
+		m.appendEntry(statusRunningStyle.Render("⚠ ") + metaStyle.Render(ev.Text))
 
-	case agent.RetryEvent:
+	case loop.EventRetry:
 		// a retried provider failure spends a continuation and then waits out a
 		// backoff; without this line the wait renders as empty iterations
 		// stacking up - a run that is surviving looks like one that is hanging
 		m.flushPending()
-		m.appendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(e.Error))
+		m.appendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(ev.Text))
 
-	case agent.UsageEvent:
+	case loop.EventUsage:
 		// provider-reported cumulative token usage, shown in the meta bar
-		m.inputTokens = e.InputTokens
-		m.outputTokens = e.OutputTokens
+		m.inputTokens = ev.InputTokens
+		m.outputTokens = ev.OutputTokens
+	}
+}
 
-	case agent.AgentExitEvent:
-		m.exitCode = e.Code
-		m.exitReason = e.Reason
-		m.exitMsg = e.Message
-		m.flushPending()
-		switch {
-		case e.Code == 0:
-			m.status = statusDone
-			m.appendEntry("\n" + okStyle.Render("✓ done") + "  " + taskStyle.Render(e.Message))
+// finish folds the run's ending into the UI state: the verdict, and the error
+// behind it when there is one. The error is usually the run's only diagnostic -
+// "the provider failed" on screen with the actual 404 dropped on the floor was
+// how that got lost - so it is kept and shown.
+func (m *model) finish(result loop.Result) {
+	code := result.ExitCode()
 
-		case e.Reason == agent.ReasonFailed:
-			// the model reached a conclusion and the conclusion is "no" - an
-			// outcome, not a malfunction, so it does not get a process exit code
-			m.status = statusFailed
-			m.appendEntry("\n" + errStyle.Render("✗ failed") + "  " + taskStyle.Render(e.Message))
+	m.exitCode = code
+	m.exitReason = string(result.Reason)
+	m.exitMsg = result.Message
+	m.flushPending()
 
-		default:
-			m.status = statusFailed
-			m.appendEntry("\n" + errStyle.Render(fmt.Sprintf("✗ exited (code %d)", e.Code)) + "  " + taskStyle.Render(e.Message))
-		}
+	switch {
+	case code == 0:
+		m.status = statusDone
+		m.appendEntry("\n" + okStyle.Render("✓ done") + "  " + taskStyle.Render(result.Message))
+
+	case result.Reason == loop.StopFailed:
+		// the model reached a conclusion and the conclusion is "no" - an
+		// outcome, not a malfunction, so it does not get a process exit code
+		m.status = statusFailed
+		m.appendEntry("\n" + errStyle.Render("✗ failed") + "  " + taskStyle.Render(result.Message))
+
+	default:
+		m.status = statusFailed
+		m.appendEntry("\n" + errStyle.Render(fmt.Sprintf("✗ exited (code %d)", code)) + "  " + taskStyle.Render(result.Message))
+	}
+
+	if result.Err != nil && m.err == nil {
+		m.err = result.Err
+		m.appendEntry(errStyle.Render("✗ " + result.Err.Error()))
 	}
 }
 
@@ -489,9 +473,9 @@ func (m *model) trackProgress(name string, args map[string]any) {
 		return
 	}
 
-	if tasks, err := agent.ParseTasks(args); err == nil {
+	if tasks, err := tools.ParseTasks(args); err == nil {
 		m.planSteps = len(tasks)
-		m.stepsDone = agent.CountDone(tasks)
+		m.stepsDone = tools.CountDone(tasks)
 	}
 }
 

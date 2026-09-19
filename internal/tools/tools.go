@@ -1,4 +1,7 @@
-package agent
+// Package tools is the tools a run offers the model: shell, which is the only one
+// that touches the machine, tasks, which keeps the run's plan followable, and
+// skills, which serves instructions on request. Each is a typed fantasy tool.
+package tools
 
 import (
 	"context"

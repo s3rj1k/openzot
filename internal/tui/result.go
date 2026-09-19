@@ -2,19 +2,6 @@ package tui
 
 import "fmt"
 
-// Outcome is the run's recorded ending: the stop reason and the message the
-// terminal tool carried. It is display material the caller already watched, and
-// what the end-of-run digest reports.
-type Outcome struct {
-	// Reason is the machine-readable stop reason (see the agent.Reason
-	// constants).
-	Reason string
-
-	// Message is the prose the ending carried - a success summary, a failure
-	// reason, or a guard's explanation.
-	Message string
-}
-
 // ErrCancelled reports that the operator closed the viewer while the run was
 // still going. A sentinel, so a caller running a batch can tell a deliberate
 // stop from a failure and report it calmly.
@@ -48,8 +35,4 @@ func (m model) runError() error {
 		return ErrCancelled
 	}
 	return nil
-}
-
-func (m model) outcome() Outcome {
-	return Outcome{Reason: m.exitReason, Message: m.exitMsg}
 }

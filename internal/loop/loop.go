@@ -49,6 +49,12 @@ type Options struct {
 	// trimmed to the window, but the conversation itself is never rewritten.
 	OnConversation func([]Message)
 
+	// OnEvent, when set, sees every event alongside the function Run is given.
+	// It is for a sink that has to see the whole run whoever is watching it - a
+	// session log - where the function Run is given belongs to the caller
+	// showing the run.
+	OnEvent func(Event)
+
 	// MaxIterations, MaxContinuations, MaxCycles, MaxEmpties bound the run. Zero
 	// uses the corresponding default.
 	MaxIterations    int
@@ -151,6 +157,23 @@ type Result struct {
 
 	// Err is set when Reason is StopError.
 	Err error
+}
+
+// ExitCode is the process-style exit code the run's ending maps onto.
+//
+// Zero means the run reached a conclusion it stands behind and that conclusion was
+// success - the model settled, or finished talking in a run that does not require
+// settling. Everything else means the task did not get done: either the model
+// declared it could not be done (StopFailed) or the run was cut short by a guard.
+// A caller scripting against zot needs to tell those apart from success without
+// parsing prose.
+func (r Result) ExitCode() int {
+	switch r.Reason {
+	case StopSettled, StopStop:
+		return 0
+	default:
+		return 1
+	}
 }
 
 // Engine runs conversations.
@@ -406,12 +429,18 @@ func (e *Engine) settleMode() bool {
 
 // Run drives the conversation to a conclusion, emitting events as it goes.
 //
-// Run returns the Result; emit sees each event as it happens, and a nil emit is
+// Run returns the Result; watch sees each event as it happens, and a nil watch is
 // allowed. Events are delivered synchronously on the calling goroutine, so a
 // slow consumer throttles the run rather than dropping anything.
-func (e *Engine) Run(ctx context.Context, emit func(Event)) Result {
-	if emit == nil {
-		emit = func(Event) {}
+func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
+	emit := func(event Event) {
+		if e.options.OnEvent != nil {
+			e.options.OnEvent(event)
+		}
+
+		if watch != nil {
+			watch(event)
+		}
 	}
 
 	messages := append([]Message(nil), e.options.Messages...)

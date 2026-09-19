@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openzot/openzot/internal/agent"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	m := newModel("task", "model", "openai", "/tmp")
-	m.handleEvent(agent.AgentExitEvent{Code: 7, Message: "verification failed"})
+	m.finish(loop.Result{Reason: loop.StopFailed, Message: "verification failed"})
 
 	err := m.runError()
 	if err == nil {
@@ -21,8 +21,8 @@ func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	if !errors.As(err, &exitErr) {
 		t.Fatalf("runError() = %T, want *AgentExitError", err)
 	}
-	if exitErr.Code != 7 || !strings.Contains(exitErr.Error(), "verification failed") {
-		t.Errorf("exit error = %+v, want code 7 and the agent message", exitErr)
+	if exitErr.Code != 1 || !strings.Contains(exitErr.Error(), "verification failed") {
+		t.Errorf("exit error = %+v, want code 1 and the agent message", exitErr)
 	}
 }
 
@@ -72,55 +72,3 @@ func TestAgentExitErrorMessage(t *testing.T) {
 		})
 	}
 }
-
-// A stream that ends with no exit event is a failure, not a success. It is what
-// an iteration cap or a killed provider connection looks like, and reporting it
-// as a clean run would hide a run that did not finish.
-func TestAStreamEndingWithoutAnExitIsAFailure(t *testing.T) {
-	m := sized(t, 80, 24)
-
-	updated, _ := m.Update(agentDoneMsg{})
-
-	final := updated.(model)
-
-	if final.status != statusFailed {
-		t.Errorf("status = %v, want failed", final.status)
-	}
-
-	if final.runError() == nil {
-		t.Error("a stream that ended without an exit must be reported as an error")
-	}
-}
-
-// The same message arriving after a clean exit must not turn a finished run
-// into a failed one.
-func TestDoneAfterAnExitLeavesTheStatusAlone(t *testing.T) {
-	m := sized(t, 80, 24)
-
-	m.status = statusDone
-
-	updated, _ := m.Update(agentDoneMsg{})
-
-	if got := updated.(model).status; got != statusDone {
-		t.Errorf("status = %v, want it left alone", got)
-	}
-
-	if updated.(model).runError() != nil {
-		t.Error("a finished run must stay finished")
-	}
-}
-
-// An error arriving after the run already ended must not overwrite the outcome.
-func TestAnErrorAfterTheRunEndedIsIgnored(t *testing.T) {
-	m := sized(t, 80, 24)
-
-	m.status = statusDone
-
-	updated, _ := m.Update(agentErrMsg{err: errAfterTheFact})
-
-	if updated.(model).runError() != nil {
-		t.Error("a late error must not resurrect a finished run as a failure")
-	}
-}
-
-var errAfterTheFact = errors.New("too late")

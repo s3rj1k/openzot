@@ -15,8 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/openzot/openzot/internal/agent"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -31,7 +31,7 @@ type Config struct {
 	SkillsDir string `yaml:"skills_dir"`
 	// Skills are the skills loaded from SkillsDir at startup. Not configured
 	// directly.
-	Skills []agent.Skill `yaml:"-"`
+	Skills []tools.Skill `yaml:"-"`
 	// DefaultProvider names the entry in Providers used by every run. There is
 	// no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`
