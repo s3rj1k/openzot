@@ -61,7 +61,7 @@ type Record struct {
 	Meta *Meta `json:"meta,omitempty"`
 
 	// Message is set on a KindMessage record.
-	Message *Message `json:"message,omitempty"`
+	Message *loop.Message `json:"message,omitempty"`
 
 	// Event is set on a KindEvent record.
 	Event *Event `json:"event,omitempty"`
@@ -81,27 +81,6 @@ type Meta struct {
 
 	// Workdir is where the agent's tools operated.
 	Workdir string `json:"workdir"`
-}
-
-// Message is one conversation entry.
-//
-// The activity is stored as its own object rather than a free-form bag: a typed
-// field either decodes or does not, where a map quietly loses whatever it did
-// not expect.
-type Message struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text"`
-	Activity *Activity `json:"activity,omitempty"`
-}
-
-// Activity is a tool call recorded in a log.
-type Activity struct {
-	Kind      string `json:"kind"`
-	ID        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
-	Result    any    `json:"result,omitempty"`
-	Failure   string `json:"failure,omitempty"`
 }
 
 // Event is something that happened during the run.
@@ -251,7 +230,7 @@ func (w *Writer) write(record Record) error {
 }
 
 // Message records a conversation entry.
-func (w *Writer) Message(message Message) error {
+func (w *Writer) Message(message loop.Message) error {
 	return w.write(Record{Kind: KindMessage, At: time.Now().UTC(), Message: &message})
 }
 

@@ -38,27 +38,10 @@ func (r *Recorder) Conversation(messages []loop.Message) {
 	}
 
 	for r.recorded < len(messages) {
-		_ = r.writer.Message(entryOf(messages[r.recorded]))
+		_ = r.writer.Message(messages[r.recorded])
 
 		r.recorded++
 	}
-}
-
-func entryOf(message loop.Message) Message {
-	entry := Message{Type: string(message.Type), Text: message.Text}
-
-	if activity := message.Activity; activity != nil {
-		entry.Activity = &Activity{
-			Kind:      string(activity.Kind),
-			ID:        activity.ID,
-			Name:      activity.Name,
-			Arguments: activity.Arguments,
-			Result:    activity.Result,
-			Failure:   activity.Failure,
-		}
-	}
-
-	return entry
 }
 
 // Event records something that happened.

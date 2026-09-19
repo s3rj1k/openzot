@@ -1,7 +1,9 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,7 +37,7 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	var got []string
 
 	for _, record := range records[1:] {
-		got = append(got, record.Message.Type+": "+record.Message.Text)
+		got = append(got, string(record.Message.Type)+": "+record.Message.Text)
 	}
 
 	want := []string{
@@ -94,13 +96,13 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	}
 
 	// the type has to survive as the string the engine's own type names
-	if records[1].Message.Type != string(loop.TypeUser) || records[3].Message.Type != string(loop.TypeActivity) {
+	if records[1].Message.Type != loop.TypeUser || records[3].Message.Type != loop.TypeActivity {
 		t.Errorf("message types = %q, %q", records[1].Message.Type, records[3].Message.Type)
 	}
 
 	activity := records[3].Message.Activity
 
-	if activity == nil || activity.Kind != string(loop.ActivityResponse) || activity.ID != "call_1" ||
+	if activity == nil || activity.Kind != loop.ActivityResponse || activity.ID != "call_1" ||
 		activity.Name != "shell" || activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
 		t.Errorf("the call was not recorded whole: %+v", activity)
 	}
@@ -268,5 +270,46 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 		if got := records[len(records)-1].Result.Code; got != want {
 			t.Errorf("%s: code = %d, want %d", reason, got, want)
 		}
+	}
+}
+
+// The log's message records are loop's own types, and their JSON is the log's
+// format: a change to a tag there would rewrite what every log says.
+func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "task.jsonl")
+
+	writer, _ := Open(path, Meta{Task: "t"})
+
+	NewRecorder(writer).Conversation([]loop.Message{{
+		Type: loop.TypeActivity,
+		Text: "ok",
+		Activity: &loop.Activity{
+			Kind: loop.ActivityResponse, ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`, Result: "out",
+		},
+	}})
+
+	_ = writer.Close()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+
+	var record struct {
+		Message map[string]any `json:"message"`
+	}
+
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &record); err != nil {
+		t.Fatal(err)
+	}
+
+	activity, _ := record.Message["activity"].(map[string]any)
+
+	if record.Message["type"] != "activity" || record.Message["text"] != "ok" ||
+		activity["kind"] != "response" || activity["id"] != "c1" || activity["name"] != "shell" ||
+		activity["arguments"] != `{"command":"ls"}` || activity["result"] != "out" {
+		t.Errorf("message record = %v, want type/text/activity{kind,id,name,arguments,result}", record.Message)
 	}
 }
