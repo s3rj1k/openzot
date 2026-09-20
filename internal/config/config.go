@@ -137,11 +137,13 @@ type Agent struct {
 	// unbounded - like max_calls and max_time, zot sends no cap, so the model
 	// produces its full output. A positive value caps a single response.
 	MaxTokens int `yaml:"max_tokens"`
-	// MaxToolOutput caps the bytes a single tool result may return before it is
-	// truncated. Zero uses the built-in default. Lower it for a model served by
-	// an endpoint with a small context window, where one large result can
-	// overflow the whole request and be rejected wholesale.
-	MaxToolOutput int `yaml:"max_tool_output"`
+	// MaxToolOutputPercent caps a single tool result (a file read, a command's
+	// output) at this share of the model's context window, in percent, before it
+	// is truncated. Zero uses the built-in default (25). One large result can
+	// overflow the whole request and be rejected wholesale, so it is a share of
+	// the window rather than a fixed size: a small-window model gets a tighter
+	// bound on its own.
+	MaxToolOutputPercent int `yaml:"max_tool_output_percent"`
 	// MaxContinuations caps CONSECUTIVE recovery attempts - a truncated
 	// response, or a retriable provider error - with no good turn between
 	// them; a turn that comes back whole resets the count. Zero uses the
@@ -329,6 +331,9 @@ func (c Config) Validate() error {
 	}
 	if _, _, err := loop.ContextThresholds(c.Agent.ContextSoft, c.Agent.ContextHard); err != nil {
 		return fmt.Errorf("agent.context_soft/context_hard: %w", err)
+	}
+	if c.Agent.MaxToolOutputPercent < 0 || c.Agent.MaxToolOutputPercent > 100 {
+		return fmt.Errorf("agent.max_tool_output_percent: %d is out of range (1-100, or 0 for the default)", c.Agent.MaxToolOutputPercent)
 	}
 	if c.Agent.PlanMinTurns < 0 {
 		return fmt.Errorf("agent.plan_min_turns must not be negative")

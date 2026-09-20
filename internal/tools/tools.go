@@ -12,15 +12,16 @@ import (
 	"charm.land/fantasy"
 )
 
-// DefaultMaxToolOutput is the byte ceiling on a single tool result when the
-// caller does not set its own. See toolSet.truncate for why a bound exists.
-const DefaultMaxToolOutput = 100_000
+// DefaultOutputPercent is the share of the context window, in percent, that a
+// single tool result may take when the caller does not choose its own. See
+// toolSet.truncate for why a bound exists.
+const DefaultOutputPercent = 25
 
 // ShellTool is the name of the tool that acts on the machine.
 const ShellTool = "shell"
 
-// DefaultTools returns the standard tool set, with the default output ceiling
-// and no skills.
+// New returns the standard tool set, with a ceiling of maxOutput bytes on a
+// single tool result. Zero or negative means no ceiling.
 //
 // The set is two tools. shell is the only one that touches the machine: the
 // model reads, lists, creates and changes files with ordinary commands, the way
@@ -33,22 +34,11 @@ const ShellTool = "shell"
 // that cannot touch the machine is not much use to a CLI - but it means the
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
-func DefaultTools() []fantasy.AgentTool {
-	return DefaultToolsWith(DefaultMaxToolOutput, nil)
-}
-
-// DefaultToolsWith returns the standard tool set with a specific ceiling on a
-// single tool result. A model served by an endpoint with a small context
-// window needs a tighter bound than one with a large one - a single result
-// that overflows the window is rejected wholesale, and the run cannot recover
-// from a message it cannot even send. Zero or negative uses the default.
 //
-// skills, when there are any, adds the skills tool over them.
-func DefaultToolsWith(maxOutput int, skills []Skill) []fantasy.AgentTool {
-	if maxOutput <= 0 {
-		maxOutput = DefaultMaxToolOutput
-	}
-
+// The ceiling is the caller's to derive from the model's context window: a
+// single result that overflows the window is rejected wholesale, and the run
+// cannot recover from a message it cannot even send.
+func New(maxOutput int, skills []Skill) []fantasy.AgentTool {
 	s := toolSet{maxOutput: maxOutput}
 
 	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
@@ -96,7 +86,7 @@ type toolSet struct {
 // run cannot even send it. Truncation is visible so the model knows it is
 // seeing a fragment.
 func (s toolSet) truncate(text string) string {
-	if len(text) <= s.maxOutput {
+	if s.maxOutput <= 0 || len(text) <= s.maxOutput {
 		return text
 	}
 

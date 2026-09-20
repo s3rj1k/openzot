@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 
@@ -2522,7 +2523,7 @@ func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 		"failure": true,
 	}
 
-	for _, tool := range tools.DefaultTools() {
+	for _, tool := range tools.New(1000, nil) {
 		real[tool.Info().Name] = true
 	}
 
@@ -2790,5 +2791,58 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 
 	if opts.MaxSettles != 0 {
 		t.Errorf("MaxSettles = %d, want the unset value left for the engine to default", opts.MaxSettles)
+	}
+}
+
+// A tool result is bounded by a share of the model's own context window, so a
+// model with a small window is held tighter without being told to be.
+func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
+	shellOutput := func(window, percent int) int {
+		cfg := testDefaults()
+		cfg.DefaultProvider = "openai"
+		cfg.Agent.MaxToolOutputPercent = percent
+		cfg.Providers = map[string]config.ProviderConfig{"openai": {
+			BaseURL: "https://gw.example.com/v1", APIKey: "sk-test",
+			Models: map[string]config.ModelConfig{"glm-5.2": {Context: window}},
+		}}
+
+		_, opts, err := resolve(cfg)
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+
+		for _, tool := range opts.Tools {
+			if tool.Info().Name != tools.ShellTool {
+				continue
+			}
+
+			response, err := tool.Run(context.Background(), fantasy.ToolCall{
+				ID: "c", Name: tools.ShellTool, Input: `{"command":"head -c 600000 /dev/zero | tr '\\0' x"}`,
+			})
+			if err != nil {
+				t.Fatalf("shell: %v", err)
+			}
+
+			return len(response.Content)
+		}
+
+		t.Fatal("no shell tool")
+
+		return 0
+	}
+
+	small, large := shellOutput(8_000, 0), shellOutput(64_000, 0)
+
+	// 25% of the window in tokens, three bytes to a token, and a marker
+	if want := 8_000 / 4 * 3; small < want || small > want+100 {
+		t.Errorf("a small window let through %d bytes, want about %d", small, want)
+	}
+
+	if large <= small*4 {
+		t.Errorf("an eight times larger window let through %d bytes against %d: the cap does not follow the window", large, small)
+	}
+
+	if tight := shellOutput(64_000, 5); tight >= large/3 {
+		t.Errorf("max_tool_output_percent 5 let through %d bytes against %d at the default", tight, large)
 	}
 }

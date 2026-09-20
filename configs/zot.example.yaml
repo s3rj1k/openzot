@@ -44,11 +44,11 @@ agent:
   # bound response length or per-turn cost.
   # max_tokens: 8192
 
-  # Cap on the bytes a single tool result (a file read, a command's output) may
-  # return before it is truncated. Default 100000. Lower it for a model served
-  # by an endpoint with a small context window, where one large result can
-  # overflow the whole request and be rejected outright.
-  # max_tool_output: 32000
+  # Cap on a single tool result (a file read, a command's output), as a share of
+  # the model's context window in percent, before it is truncated. Default 25.
+  # One large result can overflow the whole request and be rejected outright, so
+  # a model with a small window is bounded tighter on its own.
+  # max_tool_output_percent: 25
 
   # The safety guards below rarely need touching - each default encodes a real
   # failure mode, so raise or lower them with care. Unlike calls and time, these

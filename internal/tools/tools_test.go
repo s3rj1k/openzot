@@ -73,10 +73,10 @@ func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]
 }
 
 // The handlers are methods on a toolSet now; these shims let the existing
-// tests exercise them directly at the default output ceiling.
-const maxToolOutput = DefaultMaxToolOutput
+// tests exercise them directly at an ordinary output ceiling.
+const maxToolOutput = 100_000
 
-var defaultSet = toolSet{maxOutput: DefaultMaxToolOutput}
+var defaultSet = toolSet{maxOutput: maxToolOutput}
 
 func shellHandler(ctx context.Context, a map[string]any) (any, error) {
 	command, _ := a["command"].(string)
@@ -90,7 +90,7 @@ func shellHandler(ctx context.Context, a map[string]any) (any, error) {
 }
 
 func TestDefaultToolsAreWellFormed(t *testing.T) {
-	tools := DefaultTools()
+	tools := New(maxToolOutput, nil)
 
 	for _, name := range []string{"shell", "tasks"} {
 		tool, ok := findTool(tools, name)
@@ -116,7 +116,7 @@ func TestDefaultToolsAreWellFormed(t *testing.T) {
 }
 
 func TestShellReturnsOutput(t *testing.T) {
-	got, err := call(t, DefaultTools(), "shell", map[string]any{"command": "echo hello"})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": "echo hello"})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestShellReturnsOutput(t *testing.T) {
 // failing test - so it comes back as output rather than as an error that would
 // end the run.
 func TestShellFailureIsOutputNotAnError(t *testing.T) {
-	got, err := call(t, DefaultTools(), "shell", map[string]any{"command": "exit 3"})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": "exit 3"})
 	if err != nil {
 		t.Fatalf("a non-zero exit must not surface as an error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestShellFailureIsOutputNotAnError(t *testing.T) {
 }
 
 func TestShellTimeoutIsReported(t *testing.T) {
-	got, err := call(t, DefaultTools(), "shell", map[string]any{
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
 		"command": "sleep 5", "timeout": float64(1),
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 // file tool that came back would be a second way to change the tree, and the
 // system prompt tells the model shell is the only way.
 func TestTheToolboxIsShellAndTasks(t *testing.T) {
-	tools := DefaultTools()
+	tools := New(maxToolOutput, nil)
 
 	var names []string
 
@@ -220,7 +220,7 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 	command := "cd " + dir + " && cat > notes.txt <<'EOF'\none\ntwo\nthree\nfour\nEOF\n" +
 		"sed -n '2,3p' notes.txt && ls"
 
-	got, err := call(t, DefaultTools(), "shell", map[string]any{"command": command})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": command})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 // that used to bound the read tool has to bound shell: one cat of a large file
 // must not flood the context.
 func TestShellOutputIsTruncatedVisibly(t *testing.T) {
-	got, err := call(t, DefaultTools(), "shell", map[string]any{
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
 		"command": "head -c " + strconv.Itoa(maxToolOutput+5_000) + " /dev/zero | tr '\\0' x",
 	})
 	if err != nil {
@@ -260,10 +260,10 @@ func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 	}
 }
 
-// The ceiling is configurable, so a model on a small-window endpoint can be
-// given a tighter bound than the default.
+// The ceiling is the caller's, so a model on a small-window endpoint can be given
+// a tighter bound.
 func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
-	got, err := call(t, DefaultToolsWith(4_000, nil), "shell", map[string]any{
+	got, err := call(t, New(4_000, nil), "shell", map[string]any{
 		"command": "head -c 40000 /dev/zero | tr '\\0' x",
 	})
 	if err != nil {
@@ -278,5 +278,20 @@ func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
 
 	if !strings.Contains(text, "truncated") {
 		t.Error("the tighter ceiling must still mark its truncation")
+	}
+}
+
+// No ceiling means what it says: a caller that does not want one gets the whole
+// output, and no marker.
+func TestNoCeilingReturnsEverything(t *testing.T) {
+	got, err := call(t, New(0, nil), "shell", map[string]any{
+		"command": "head -c 30000 /dev/zero | tr '\\0' x",
+	})
+	if err != nil {
+		t.Fatalf("shell: %v", err)
+	}
+
+	if text := got.(string); len(text) != 30_000 || strings.Contains(text, "truncated") {
+		t.Errorf("got %d bytes with truncation %v, want all 30000 untouched", len(text), strings.Contains(text, "truncated"))
 	}
 }

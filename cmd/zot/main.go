@@ -595,6 +595,17 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 	}
 }
 
+// toolOutputLimit is the bytes a single tool result may take: a share of the
+// context window, so a small-window model is bounded tighter without being told
+// to be.
+func toolOutputLimit(window, percent int) int {
+	if percent <= 0 {
+		percent = tools.DefaultOutputPercent
+	}
+
+	return loop.BytesForTokens(window * percent / 100)
+}
+
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
 func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
@@ -661,7 +672,7 @@ func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
 	opts := loop.Options{
-		Tools: tools.DefaultToolsWith(cfg.Agent.MaxToolOutput, cfg.Skills),
+		Tools: tools.New(toolOutputLimit(contextWindow, cfg.Agent.MaxToolOutputPercent), cfg.Skills),
 
 		// shell acts on the machine, so a command the model did not finish
 		// writing is refused rather than repaired into one that runs

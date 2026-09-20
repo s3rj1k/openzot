@@ -674,6 +674,23 @@ func TestPlanKnobsAreReadAndValidated(t *testing.T) {
 	}
 }
 
+func TestToolOutputPercentIsReadAndValidated(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "agent:\n  max_tool_output_percent: 10\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Agent.MaxToolOutputPercent != 10 {
+		t.Errorf("max_tool_output_percent = %d, want 10", cfg.Agent.MaxToolOutputPercent)
+	}
+
+	for _, bad := range []int{-1, 101} {
+		if err := validConfig(func(c *Config) { c.Agent.MaxToolOutputPercent = bad }).Validate(); err == nil {
+			t.Errorf("max_tool_output_percent %d was accepted", bad)
+		}
+	}
+}
+
 func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	for _, key := range []string{
 		"context_strategy: truncate",
@@ -682,6 +699,7 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 		"compact_min_tokens: 1000",
 		"compact_min_messages: 10",
 		"limit_checkpoints: [50, 80, 90]",
+		"max_tool_output: 32000",
 	} {
 		t.Run(key, func(t *testing.T) {
 			path := writeConfig(t, "agent:\n  "+key+"\n")

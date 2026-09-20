@@ -36,3 +36,9 @@ func estimateTokens(text string) int {
 func estimateMessageTokens(text string) int {
 	return estimateTokens(text) + messageOverhead
 }
+
+// BytesForTokens is roughly how many bytes of text a number of tokens stands for,
+// by the same conservative measure the estimates use.
+func BytesForTokens(tokens int) int {
+	return tokens * bytesPerToken
+}

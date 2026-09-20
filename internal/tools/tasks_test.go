@@ -111,7 +111,7 @@ func TestCountDoneCountsOnlyFinishedTasks(t *testing.T) {
 // The tool answers with the list, so the model reads its own state back on every
 // call - the latest result is the one place the whole list is always in view.
 func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
-	got, err := call(t, DefaultTools(), "tasks", taskCall(
+	got, err := call(t, New(maxToolOutput, nil), "tasks", taskCall(
 		task("read the parser", "done"),
 		map[string]any{"title": "fix the lexer", "status": "in_progress", "note": "hit in TestLex"},
 		task("add a test", "pending"),
@@ -136,7 +136,7 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 // the tool, so a second call is never merged into the first: a task left out of
 // it is a task that is no longer wanted.
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
-	tools := DefaultTools()
+	tools := New(maxToolOutput, nil)
 
 	if _, err := call(t, tools, "tasks", taskCall(task("first", "pending"), task("second", "pending"))); err != nil {
 		t.Fatalf("first call: %v", err)
@@ -159,11 +159,11 @@ func TestTasksReplaceRatherThanMerge(t *testing.T) {
 }
 
 func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
-	if _, err := call(t, DefaultTools(), "tasks", map[string]any{"tasks": []any{}}); err == nil {
+	if _, err := call(t, New(maxToolOutput, nil), "tasks", map[string]any{"tasks": []any{}}); err == nil {
 		t.Error("an empty list must be refused")
 	}
 
-	if _, err := call(t, DefaultTools(), "tasks", taskCall(task("a", "finished"))); err == nil {
+	if _, err := call(t, New(maxToolOutput, nil), "tasks", taskCall(task("a", "finished"))); err == nil {
 		t.Error("an unknown status must be refused")
 	}
 }
@@ -172,7 +172,7 @@ func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
 // schema names the statuses, so a status the schema offers but the parser
 // refuses would be a trap.
 func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
-	tasks, _ := findTool(DefaultTools(), "tasks")
+	tasks, _ := findTool(New(maxToolOutput, nil), "tasks")
 
 	items := tasks.Info().Parameters["tasks"].(map[string]any)["items"].(map[string]any)
 	statuses := items["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
