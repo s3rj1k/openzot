@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/skills"
 )
 
 // DefaultOutputPercent is the share of the context window, in percent, that a
@@ -38,13 +39,13 @@ const ShellTool = "shell"
 // The ceiling is the caller's to derive from the model's context window: a
 // single result that overflows the window is rejected wholesale, and the run
 // cannot recover from a message it cannot even send.
-func New(maxOutput int, skills []Skill) []fantasy.AgentTool {
+func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {
 	s := toolSet{maxOutput: maxOutput}
 
 	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
 
-	if len(skills) > 0 {
-		tools = append(tools, s.skillsTool(skills))
+	if len(offered) > 0 {
+		tools = append(tools, s.skillsTool(offered))
 	}
 
 	return tools

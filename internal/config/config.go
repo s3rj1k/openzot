@@ -17,7 +17,7 @@ import (
 
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
-	"github.com/openzot/openzot/internal/tools"
+	"github.com/openzot/openzot/internal/skills"
 )
 
 // Config is the fully-resolved zot configuration.
@@ -31,7 +31,7 @@ type Config struct {
 	SkillsDir string `yaml:"skills_dir"`
 	// Skills are the skills loaded from SkillsDir at startup. Not configured
 	// directly.
-	Skills []tools.Skill `yaml:"-"`
+	Skills []skills.Skill `yaml:"-"`
 	// ProjectContext is the instructions found in the AGENTS.md files of the
 	// config directory and the project, for an order's prompt to use as
 	// .Project. Not configured directly.

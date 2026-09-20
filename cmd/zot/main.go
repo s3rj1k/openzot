@@ -42,8 +42,10 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/plan"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -428,12 +430,12 @@ func loadSkills(cfg *config.Config) error {
 		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
 	}
 
-	skills, err := tools.LoadSkills(dir)
+	loaded, err := skills.Load(dir)
 	if err != nil {
 		return fmt.Errorf("skills_dir: %w", err)
 	}
 
-	cfg.Skills = skills
+	cfg.Skills = loaded
 
 	return nil
 }
@@ -691,7 +693,7 @@ func resolve(cfg config.Config) (*provider.Client, loop.Options, error) {
 		MaxCycles:        cfg.Agent.MaxCycles,
 		MaxEmpties:       cfg.Agent.MaxEmpties,
 		MaxDuration:      maxDuration,
-		PlanTool:         tools.TasksTool,
+		PlanTool:         plan.Tool,
 		PlanNudgeEvery:   cfg.Agent.PlanNudgeEvery,
 		PlanMinTurns:     cfg.Agent.PlanMinTurns,
 		ContextSoft:      cfg.Agent.ContextSoft,

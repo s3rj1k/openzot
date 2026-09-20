@@ -25,6 +25,7 @@ import (
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -2576,7 +2577,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	}
 
 	cfg := stubProviderConfig(t)
-	cfg.Skills = []tools.Skill{{Name: "deploy", Description: "ship it"}}
+	cfg.Skills = []skills.Skill{{Name: "deploy", Description: "ship it"}}
 
 	client, opts, err := resolve(cfg)
 	if err != nil {
