@@ -72,12 +72,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 		{Type: TypeBot, Text: "a short recent answer"},
 	}
 
-	forgotten := 0
-
-	req, err := engine.buildRequest(messages, &forgotten, nil, func(Event) {})
-	if err != nil {
-		t.Fatalf("buildRequest: %v", err)
-	}
+	req, forgotten := requestFor(engine, messages)
 
 	if forgotten == 0 {
 		t.Error("the argument-heavy tool call was kept - its arguments were priced as empty, which is the bug")

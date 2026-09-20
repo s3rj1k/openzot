@@ -167,6 +167,14 @@ type Agent struct {
 	// reach: past it, as many of the oldest messages are forgotten as it takes.
 	// Must be above context_soft. Zero uses the built-in default (90).
 	ContextHard int `yaml:"context_hard"`
+	// PlanNudgeEvery is how many iterations pass between reminders that the
+	// plan tool exists and should be kept current. Zero uses the built-in
+	// default (5); a negative value turns the reminders off.
+	PlanNudgeEvery int `yaml:"plan_nudge_every"`
+	// PlanMinTurns is how few turns may be left in the context window, after
+	// older messages were forgotten, before the plan is posted to the model again.
+	// Zero uses the built-in default (5).
+	PlanMinTurns int `yaml:"plan_min_turns"`
 }
 
 // MaxDuration parses Agent.MaxTime into a duration. An empty value is zero
@@ -321,6 +329,9 @@ func (c Config) Validate() error {
 	}
 	if _, _, err := loop.ContextThresholds(c.Agent.ContextSoft, c.Agent.ContextHard); err != nil {
 		return fmt.Errorf("agent.context_soft/context_hard: %w", err)
+	}
+	if c.Agent.PlanMinTurns < 0 {
+		return fmt.Errorf("agent.plan_min_turns must not be negative")
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")

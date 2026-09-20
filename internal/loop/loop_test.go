@@ -718,12 +718,7 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		)
 	}
 
-	forgotten := 0
-
-	request, err := engine.buildRequest(messages, &forgotten, nil, func(Event) {})
-	if err != nil {
-		t.Fatalf("buildRequest: %v", err)
-	}
+	request, _ := requestFor(engine, messages)
 
 	for _, message := range request.messages {
 		if message.Role == fantasy.MessageRoleSystem {

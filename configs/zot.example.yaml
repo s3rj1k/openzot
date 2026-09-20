@@ -80,6 +80,14 @@ agent:
   # under it. Forgotten messages stay in the session log. Defaults 50 and 90.
   # context_soft: 50
   # context_hard: 90
+  #
+  # The plan is what the model keeps with its tasks tool. Every plan_nudge_every
+  # iterations the model is reminded that the tool exists (default 5, negative
+  # turns the reminders off). When forgetting leaves fewer than plan_min_turns
+  # turns in the window and the model's last plan call is no longer among them,
+  # the plan is posted to it again (default 5).
+  # plan_nudge_every: 5
+  # plan_min_turns: 5
 
 # The system prompt is not configured here: it is the body of each order file,
 # a Go template `zot new` writes out in full, so it can be changed order by order.

@@ -50,6 +50,17 @@ func settleNotice() string {
 	)
 }
 
+// planNudge reminds the model that it has a plan tool. Gentle on purpose: the
+// model may well be on top of it, and the aim is only that it never quietly
+// stops keeping the plan.
+func planNudge(tool string) string {
+	return fmt.Sprintf(
+		"%s reminder: you have a %s tool for the plan. If a step is done, blocked or the "+
+			"approach has changed, update it now; if you have no plan yet, lay one out.",
+		noticePrefix, tool,
+	)
+}
+
 // truncationNotice follows an answer the provider cut off at the token limit.
 func truncationNotice() string {
 	return noticePrefix + " your previous answer was cut off at the output limit. " +

@@ -655,6 +655,25 @@ func TestContextThresholdsAreReadAndValidated(t *testing.T) {
 	}
 }
 
+func TestPlanKnobsAreReadAndValidated(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "agent:\n  plan_nudge_every: -1\n  plan_min_turns: 8\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Agent.PlanNudgeEvery != -1 || cfg.Agent.PlanMinTurns != 8 {
+		t.Errorf("plan knobs = %d/%d, want -1/8", cfg.Agent.PlanNudgeEvery, cfg.Agent.PlanMinTurns)
+	}
+
+	if err := validConfig(func(c *Config) { c.Agent.PlanNudgeEvery = -1 }).Validate(); err != nil {
+		t.Errorf("a negative plan_nudge_every turns the reminders off, got %v", err)
+	}
+
+	if err := validConfig(func(c *Config) { c.Agent.PlanMinTurns = -1 }).Validate(); err == nil {
+		t.Error("a negative plan_min_turns was accepted")
+	}
+}
+
 func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	for _, key := range []string{
 		"context_strategy: truncate",

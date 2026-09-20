@@ -22,6 +22,17 @@ func ten(n int) []Message {
 	return messages
 }
 
+// requestFor is what the engine would send for a conversation it has not seen
+// before: forgetting applied from scratch, then the request built. It also
+// returns how many messages were forgotten.
+func requestFor(engine *Engine, messages []Message) (turnRequest, int) {
+	forgotten := 0
+
+	messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
+
+	return engine.buildRequest(messages, forgotten), forgotten
+}
+
 // The window here is 1000 with the marks at 50% and 90%: 500 and 900.
 func TestForget(t *testing.T) {
 	tests := []struct {
@@ -138,9 +149,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 
 		before := forgotten
 
-		if _, err := engine.buildRequest(messages, &forgotten, nil, func(Event) {}); err != nil {
-			t.Fatal(err)
-		}
+		messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
 
 		if forgotten < before {
 			t.Fatalf("round %d: the offset moved back from %d to %d", round, before, forgotten)

@@ -9,6 +9,9 @@ import (
 	"charm.land/fantasy"
 )
 
+// TasksTool is the name of the tool that keeps the run's plan.
+const TasksTool = "tasks"
+
 // TaskStatus is where one task stands.
 type TaskStatus string
 
@@ -160,7 +163,7 @@ type taskInput struct {
 // The call is still read through ParseTasks, the one place the schema is
 // interpreted, so what the tool accepts and what the viewer shows cannot drift.
 func tasksTool() fantasy.AgentTool {
-	return fantasy.NewAgentTool("tasks",
+	return fantasy.NewAgentTool(TasksTool,
 		"List the tasks the work needs and keep each one's status current. Call it at the start to lay the work out, then again as you go: set a task in_progress when you begin it, done when it is finished, blocked when it cannot go on. Every call carries the whole list and replaces the last, so also use it to revise the list when your approach changes. Use a task's note for what blocks it, what you found, or an assumption you made.",
 		func(_ context.Context, _ tasksInput, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			var args map[string]any

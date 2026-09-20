@@ -90,6 +90,20 @@ type Options struct {
 	// MaxTokens bounds a single response.
 	MaxTokens *int
 
+	// PlanTool names the tool the model keeps its plan with. Empty turns the plan
+	// handling off: nothing is nudged or posted. The engine does not know the
+	// tool's schema - the plan is simply its latest successful call.
+	PlanTool string
+
+	// PlanNudgeEvery is how many iterations pass between reminders of the plan
+	// tool. Zero uses DefaultPlanNudgeEvery; negative turns the reminders off.
+	PlanNudgeEvery int
+
+	// PlanMinTurns is the number of turns the window must still hold after
+	// forgetting for the plan to be left where it is; fewer and it is posted
+	// again. Zero uses DefaultPlanMinTurns.
+	PlanMinTurns int
+
 	// ContextSoft and ContextHard are the percentages of the window at which the
 	// oldest messages start to be forgotten (one per request) and at which as
 	// many as it takes are (so the request stays under it). Zero uses
@@ -198,6 +212,8 @@ type Engine struct {
 	// window is the context window requests are held under: the configured one,
 	// lowered when a provider rejects a request and states its own ceiling.
 	window      int
+	planEvery   int
+	planTurns   int
 	softPercent int
 	hardPercent int
 
@@ -244,6 +260,12 @@ func New(options Options) (*Engine, error) {
 		return fallback
 	}
 
+	planEvery := options.PlanNudgeEvery
+
+	if planEvery == 0 {
+		planEvery = DefaultPlanNudgeEvery
+	}
+
 	soft, hard, err := ContextThresholds(options.ContextSoft, options.ContextHard)
 	if err != nil {
 		return nil, err
@@ -267,6 +289,8 @@ func New(options Options) (*Engine, error) {
 		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
 		window:       options.ContextWindow,
 		softPercent:  soft,
+		planEvery:    planEvery,
+		planTurns:    pick(options.PlanMinTurns, DefaultPlanMinTurns),
 		hardPercent:  hard,
 	}, nil
 }
@@ -405,6 +429,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 	// conversation itself keeps them all; only the wire copy is short.
 	forgotten := 0
 
+	// turnStarts is where in the conversation each iteration began, and nudged is
+	// the iteration the plan was last mentioned at.
+	var turnStarts []int
+
+	nudged := 0
+
 	tools := e.toolDefinitions()
 
 	state := &step{engine: e}
@@ -453,10 +483,20 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		emit(Event{Kind: EventIteration, Iteration: budget.Iterations})
 
-		request, err := e.buildRequest(messages, &forgotten, tools, emit)
-		if err != nil {
-			return e.finish(messages, budget, StopError, "could not assemble the request", err)
+		if e.options.PlanTool != "" && e.planEvery > 0 && budget.Iterations%e.planEvery == 0 && nudged != budget.Iterations {
+			nudged = budget.Iterations
+
+			messages = append(messages, Message{Type: TypeUser, Text: planNudge(e.options.PlanTool)})
 		}
+
+		// a failed call is retried from the same place: it is one turn, not two
+		if len(turnStarts) == 0 || turnStarts[len(turnStarts)-1] != len(messages) {
+			turnStarts = append(turnStarts, len(messages))
+		}
+
+		messages = e.fitToWindow(messages, &forgotten, turnStarts, tools, emit)
+
+		request := e.buildRequest(messages, forgotten)
 
 		turn, err := e.runStep(ctx, agent, state, request, &messages, &budget, emit)
 
@@ -796,28 +836,113 @@ func (e *Engine) narrowWindow(limit ContextLimit, emit func(Event)) bool {
 	return true
 }
 
-// buildRequest assembles the provider request, forgetting the oldest messages
-// as the window fills. forgotten is the run's offset into messages and only
-// moves forward.
-func (e *Engine) buildRequest(messages []Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) (turnRequest, error) {
-	instructions := e.instructions()
+// fitToWindow forgets the oldest messages as the window fills, and puts the plan
+// back in front of the model when forgetting has left it with too little to go
+// on. It returns the conversation, which has grown by the plan when that was
+// posted. forgotten is the run's offset into messages and only moves forward.
+func (e *Engine) fitToWindow(messages []Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []Message {
+	if !e.forgetOldest(messages, forgotten, tools, emit) {
+		return messages
+	}
 
+	turns := turnsHeld(turnStarts, *forgotten)
+
+	if turns >= e.planTurns {
+		return messages
+	}
+
+	posted, ok := e.repostedPlan(messages, *forgotten)
+	if !ok {
+		return messages
+	}
+
+	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+		"only %d turns are left in the context window; posting the plan again", turns)})
+
+	messages = append(messages, posted...)
+
+	// the plan costs something too
+	e.forgetOldest(messages, forgotten, tools, emit)
+
+	return messages
+}
+
+// turnsHeld is how many whole turns the window still holds. The turn about to be
+// asked for is the last of turnStarts and has not happened yet, so it is not one.
+func turnsHeld(turnStarts []int, forgotten int) int {
+	turns := 0
+
+	for _, start := range turnStarts[:len(turnStarts)-1] {
+		if start >= forgotten {
+			turns++
+		}
+	}
+
+	return turns
+}
+
+// forgetOldest moves the offset forward as far as the window calls for, and
+// reports whether it moved.
+func (e *Engine) forgetOldest(messages []Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
 	// the system prompt and the tool schemas are sent on every request and are
 	// part of what fills the window
-	used := estimateTokens(instructions) + e.toolSchemaTokens(tools)
+	used := estimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
 
 	for _, message := range messages[*forgotten:] {
 		used += messageCost(message)
 	}
 
-	if next := forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, messageCost); next > *forgotten {
-		emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-			"forgot %d older messages to stay within the context window", next-*forgotten)})
-
-		*forgotten = next
+	next := forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, messageCost)
+	if next == *forgotten {
+		return false
 	}
 
-	chat := toPrompt(messages[*forgotten:])
+	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+		"forgot %d older messages to stay within the context window", next-*forgotten)})
+
+	*forgotten = next
+
+	return true
+}
+
+// repostedPlan is the model's latest plan - its last successful call of the plan
+// tool - as a fresh call and result to append to the conversation. It reports
+// false when there is no plan, or when the plan is still in the window and so
+// needs no help.
+func (e *Engine) repostedPlan(messages []Message, forgotten int) ([]Message, bool) {
+	if e.options.PlanTool == "" {
+		return nil, false
+	}
+
+	for index := len(messages) - 1; index >= 0; index-- {
+		activity := messages[index].Activity
+
+		if activity == nil || activity.Kind != ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
+			continue
+		}
+
+		if index >= forgotten {
+			return nil, false
+		}
+
+		id := fmt.Sprintf("plan-%d", len(messages))
+
+		call := Activity{Kind: ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
+		answer := Activity{Kind: ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
+
+		return []Message{
+			{Type: TypeActivity, Activity: &call},
+			{Type: TypeActivity, Text: answer.ResultText(), Activity: &answer},
+		}, true
+	}
+
+	return nil, false
+}
+
+// buildRequest assembles the provider request from what the window still holds:
+// the conversation from the forgotten offset on.
+func (e *Engine) buildRequest(messages []Message, forgotten int) turnRequest {
+	chat := toPrompt(messages[forgotten:])
 
 	// Forgetting takes the oldest first, which is the run's opening user message.
 	// A conversation with no user turn at all is invalid to strict providers:
@@ -855,7 +980,7 @@ func (e *Engine) buildRequest(messages []Message, forgotten *int, tools []fantas
 		call.maxOutput = &limit
 	}
 
-	return call, nil
+	return call
 }
 
 // trimmedKickoff stands in for the opening user message once trimming has
