@@ -21,12 +21,8 @@ type Meta struct {
 	// Task is the one-line instruction the agent is working on.
 	Task string
 
-	/*
-		Title is an optional short label for the work - a work order's title, or
-		one derived from its file name. When set it is shown instead of the task
-		text, which is the whole order rendered to prose and reads as a truncated
-		paragraph in a one-line header. Empty falls back to Task.
-	*/
+	// An optional short label for the work (an order's title or its file name), shown instead of the task text,
+	// which is the whole order rendered to prose. Empty falls back to Task.
 	Title string
 	// Model is the model name driving the agent.
 	Model string
@@ -35,18 +31,12 @@ type Meta struct {
 	// Workdir is the directory the agent's tools operate in.
 	Workdir string
 
-	/*
-		MaxScrollback caps how many log lines the viewer keeps on screen. Zero uses
-		DefaultMaxScrollback. A larger value keeps more history (at more memory).
-		The full run is always in the session log regardless.
-	*/
+	// How many log lines the viewer keeps on screen. Zero uses DefaultMaxScrollback. A larger value keeps more
+	// history at more memory. The full run is always in the session log.
 	MaxScrollback int
 
-	/*
-		MaxIterations and MaxDuration are the configured run limits, shown
-		as "5/1000" progress in the meta bar. Zero means unbounded (or not worth
-		showing, e.g. the default iteration fallback), so no denominator appears.
-	*/
+	// The configured run limits, shown as "5/1000" progress in the meta bar. Zero means unbounded or not worth
+	// showing (such as the default iteration fallback), so no denominator appears.
 	MaxIterations int
 	MaxDuration   time.Duration
 }
@@ -72,12 +62,8 @@ func runViewer(
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,
 ) (loop.Result, error) {
-	/*
-		Quitting the viewer stops the agent rather than only stopping watching
-		it. The agent has shell and file-write access, so a process
-		that returned from here with the run still going would leave something
-		editing the working tree with nothing on screen reporting what it does.
-	*/
+	// Quitting the viewer stops the agent, not only the watching. The agent has shell and file-write access, so
+	// a run left going with nothing on screen would keep editing the working tree unseen.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -90,14 +76,8 @@ func runViewer(
 
 	final, err := start(p)
 
-	/*
-		The run must conclude before this returns. Quitting cancels it, and the
-		engine then ends with its aborted outcome - which the caller records into the
-		session as soon as this function returns, so returning immediately would race
-		that ending out of the log. Cancel explicitly, then give the engine a bounded
-		moment to finish. The timeout only exists so a pathologically hung engine
-		cannot hold the terminal hostage.
-	*/
+	// The run must conclude before this returns. Quitting cancels it and the engine ends with its aborted outcome,
+	// which the caller records right after, so returning early would race it out of the log. The timeout only bounds a hung engine.
 	cancel()
 
 	var result loop.Result

@@ -27,12 +27,8 @@ type turnResult struct {
 	ToolCalls    []fantasy.ToolCallContent
 	FinishReason fantasy.FinishReason
 
-	/*
-		InputTokens and OutputTokens are the prompt- and completion-token counts the
-		provider reported for this turn (zero when it reported none). Provider counts,
-		not the local estimate. They reflect what the provider actually processed,
-		including any server-side prompt caching.
-	*/
+	// The prompt and completion tokens the provider reported for this turn (zero when none), including
+	// server-side prompt caching. Provider counts, not the local estimate.
 	InputTokens  int
 	OutputTokens int
 }
@@ -65,11 +61,8 @@ type step struct {
 	guard     *runawayGuard
 	runaway   *guardReason
 
-	/*
-		flushed is whether the turn's reasoning and words are in the conversation
-		yet. They go in before the first tool call of the turn does, and are
-		otherwise written once the model call is over.
-	*/
+	// Whether the turn's reasoning and words are in the conversation yet. They go in before the turn's first
+	// tool call, and otherwise once the model call is over.
 	flushed bool
 
 	// terminalSeen is set when the turn calls a terminal tool. The run ends
@@ -202,12 +195,8 @@ func (s *step) onReasoningDelta(_, delta string) error {
 func (s *step) onStreamFinish(usage fantasy.Usage, reason fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
 	s.turn.FinishReason = reason
 
-	/*
-		the provider's own count, which reflects what it actually processed
-		(server-side prompt caching and all) - never the local estimate
-		fantasy reports the prompt without its cached part. Zot has always
-		counted the whole prompt, so the cached tokens are added back
-	*/
+	// The provider's own count, which reflects what it processed (prompt caching included). fantasy reports
+	// the prompt without its cached part, so the cached tokens are added back.
 	if prompt := usage.InputTokens + usage.CacheReadTokens; prompt > 0 {
 		s.turn.InputTokens = int(prompt)
 	}
@@ -361,12 +350,8 @@ func (e *Engine) runStep(
 	messages *[]conversation.Message, budget *Budget,
 	emit func(Event),
 ) (turnResult, error) {
-	/*
-		A turn can end while the provider is still streaming - the runaway guard
-		cuts a degenerate one short - so every exit from here cancels the stream,
-		which closes the response body rather than leaving it open for the life
-		of the process.
-	*/
+	// A turn can end while the provider is still streaming, such as a runaway cut, so every exit cancels the
+	// stream. That closes the response body instead of leaving it open for the life of the process.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -411,11 +396,8 @@ func (e *Engine) runStep(
 func (g guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	s := g.step
 
-	/*
-		A terminal call ends the run before anything else of its turn is acted on,
-		and a spent call budget ends it before the call that would overrun it.
-		Neither leaves a trace in the conversation.
-	*/
+	// A terminal call ends the run before anything else of its turn is acted on, and a spent call budget ends
+	// it before the call that would overrun it. Neither leaves a trace in the conversation.
 	if s.terminalSeen || s.callsExhausted || !s.spendCall() {
 		return fantasy.NewTextResponse("skipped"), nil
 	}

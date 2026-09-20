@@ -243,11 +243,8 @@ type Failure struct {
 	// ResponseBody is the raw (bounded) body the provider returned.
 	ResponseBody string `json:"response_body,omitempty"`
 
-	/*
-		RequestBytes is the size of the request that was rejected - against a
-		suspected context ceiling, the number that turns a correlation into a
-		diagnosis.
-	*/
+	// The size of the rejected request. Against a suspected context ceiling it turns a correlation into a
+	// diagnosis.
 	RequestBytes int `json:"request_bytes,omitzero"`
 }
 

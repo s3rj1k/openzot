@@ -177,11 +177,8 @@ type Env struct {
 	// carry for every run in them (their AGENTS.md files), or empty.
 	Project string
 
-	/*
-		Session is the path of the log this run is recorded in. It is the run's
-		long-term memory. Every message, including the ones the context window has
-		forgotten.
-	*/
+	// The path of the log this run is recorded in, the run's long-term memory. It holds every message,
+	// including the ones the context window has forgotten.
 	Session string
 }
 

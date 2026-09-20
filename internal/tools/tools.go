@@ -69,27 +69,16 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command) //nolint:gosec // G204: running the model's command is what the shell tool is for
 
-	/*
-		Killing the shell is not enough. A command that leaves a process behind -
-		`npm start &`, anything that daemonises - hands the inherited output pipe
-		to a grandchild, and reading that pipe blocks until every holder of it is
-		gone. Without a WaitDelay the tool call simply never returns, and nothing
-		upstream can recover. The run's time budget is only checked between
-		iterations, and canceling the run kills the shell, not the process
-		holding the pipe. WaitDelay gives up on the pipe shortly after the process
-		is killed, so a stuck command costs a timeout instead of the whole run.
-	*/
+	// Killing the shell is not enough, since a command that daemonizes hands the output pipe to a grandchild
+	// and reading it blocks. WaitDelay gives up on the pipe shortly after the kill, so a stuck command costs a timeout, not the run.
 	cmd.WaitDelay = 2 * time.Second
 
 	setProcessGroup(cmd)
 
 	output, err := cmd.CombinedOutput()
 
-	/*
-		@note a non-zero exit is returned to the model as output rather than as an
-		error. A failing command is information - a compiler error, a failing test -
-		and the model is usually the thing best placed to act on it.
-	*/
+	// A non-zero exit is returned to the model as output, not as an error. A failing command is information
+	// (a compiler error, a failing test), and the model is best placed to act on it.
 	if err != nil && ctx.Err() == nil {
 		return s.truncate(fmt.Sprintf("%s\n[exit: %v]", output, err))
 	}

@@ -96,12 +96,8 @@ type Options struct {
 	// run of the same task again adds to it. Empty disables recording.
 	SessionPath string
 
-	/*
-		Title is a short label for the work, shown in the viewer instead of the
-		task text. A work order's title, or one derived from its file name.
-		Empty falls back to the task. It is presentation only and never reaches
-		the model - the goal is the contract, a title is a label.
-	*/
+	// A short label for the work, shown in the viewer instead of the task text. A work order's title or its
+	// file name. Presentation only, and never sent to the model. The goal is the contract.
 	Title string
 
 	// Project is the instructions found in the AGENTS.md files of the config
@@ -196,11 +192,8 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
 
-	/*
-		Every model is declared, with its own context window. Validate says so at
-		load. The same rule holds here because a run with no window has nothing to
-		decide how much of a conversation to keep.
-	*/
+	// Every model is declared with its own context window, and Validate says so at load. The same rule holds
+	// here, since a run with no window cannot decide how much of a conversation to keep.
 	mc, ok := providerConfig.Models[model]
 	if !ok || mc.Context <= 0 {
 		return nil, empty, fmt.Errorf(
@@ -286,17 +279,11 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	workdir, _ := os.Getwd()
 
-	/*
-		The order is the system prompt. Its goal, criteria and constraints go
-		in it, where they survive trimming however long the run grows, and the
-		opening user message only has to get the agent moving. It is rendered here,
-		once the provider secrets are out of the environment, so nothing it reads
-		can be one of them.
+	// The order is the system prompt. Its goal, criteria and constraints survive trimming there, and the
+	// opening user message only gets the agent moving. Rendered after the secrets leave the environment.
 
-		@note there is by design no way to open a run with a prompt of the
-		caller's own. zot takes a work order, not a conversation. Anything worth
-		saying to the agent belongs in the order, where it is durable.
-	*/
+	// There is no way to open a run with a prompt of the caller's own. Zot takes a work order, not a
+	// conversation, and anything worth saying to the agent belongs in the order, where it is durable.
 	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
@@ -308,11 +295,8 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	task := o.Objective
 
-	/*
-		The session log is not optional. It is the run's record and, once the
-		context window has forgotten something, the agent's long-term memory. A run
-		that cannot be recorded is rejected rather than run without either.
-	*/
+	// The session log is not optional. It is the run's record and the agent's long-term memory, so a run
+	// that cannot be recorded is rejected rather than run without either.
 	if options.SessionPath == "" {
 		return errors.New("no session log: a run is always recorded")
 	}

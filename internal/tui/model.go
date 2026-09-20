@@ -44,11 +44,8 @@ type model struct {
 	width   int
 	height  int
 
-	/*
-		Activity log. entries are the committed, logical lines. committedWrapped
-		caches them word-wrapped to the current width so per-token redraws stay
-		cheap. pending holds the assistant's in-flight narration.
-	*/
+	// Activity log. entries are the committed logical lines, committedWrapped caches them word-wrapped to
+	// the width so per-token redraws stay cheap, and pending holds the assistant's in-flight narration.
 	entries          []string
 	committedWrapped string
 	pending          string
@@ -209,19 +206,13 @@ func (m *model) rewrap() {
 func (m *model) appendEntry(s string) {
 	m.entries = append(m.entries, s)
 
-	/*
-		The buffer may grow a quarter past the cap before trimming, so the (linear)
-		re-wrap a trim costs is amortized over many appends rather than paid on every
-		append once the cap is reached.
-	*/
+	// The buffer may grow a quarter past the cap before trimming, so the linear re-wrap a trim costs is
+	// amortized over many appends instead of paid on every one once the cap is reached.
 	slack := m.maxEntries / 4
 
 	if len(m.entries) > m.maxEntries+slack {
-		/*
-			Keep the most recent m.maxEntries, copied into a fresh slice so the old
-			backing array is released rather than kept behind a reslice, then
-			rebuild the wrapped cache from the trimmed set.
-		*/
+		// Keep the most recent m.maxEntries, copied into a fresh slice so the old backing array is released,
+		// then rebuild the wrapped cache from the trimmed set.
 		kept := make([]string, m.maxEntries)
 		copy(kept, m.entries[len(m.entries)-m.maxEntries:])
 		m.entries = kept
@@ -231,12 +222,8 @@ func (m *model) appendEntry(s string) {
 		return
 	}
 
-	/*
-		Append only the newly wrapped entry to the cache. Wrapping each entry to the
-		viewport width is equivalent to wrapping the whole joined buffer - the wrap
-		is per line - so per-append cost stays independent of how long the run has
-		been, instead of re-wrapping the entire history on every line.
-	*/
+	// Append only the new entry to the cache. Wrapping per entry equals wrapping the joined buffer, since
+	// the wrap is per line, so per-append cost does not grow with the length of the run.
 	wrapped := m.wrapRecord(s)
 	if m.committedWrapped == "" {
 		m.committedWrapped = wrapped
@@ -286,20 +273,14 @@ func (m *model) handleEvent(ev *loop.Event) {
 		m.appendEntry(errStyle.Render("    ✗ " + ev.Tool + ": " + ev.Text))
 
 	case loop.EventNotice:
-		/*
-			a corrective nudge - an empty turn, a truncation continuation, a
-			settle reminder. Without this line the recovery renders as bare
-			iteration dividers, indistinguishable from a hang
-		*/
+		// A corrective nudge (empty turn, truncation continuation, settle reminder). Without this line the
+		// recovery renders as bare iteration dividers, indistinguishable from a hang.
 		m.flushPending()
 		m.appendEntry(statusRunningStyle.Render("⚠ ") + metaStyle.Render(ev.Text))
 
 	case loop.EventRetry:
-		/*
-			a retried provider failure spends a continuation and then waits out a
-			backoff. Without this line the wait renders as empty iterations
-			stacking up - a run that is surviving looks like one that is hanging
-		*/
+		// A retried provider failure spends a continuation and waits out a backoff. Without this line the wait
+		// renders as empty iterations stacking up, so a surviving run looks like a hanging one.
 		m.flushPending()
 		m.appendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(ev.Text))
 
@@ -507,13 +488,8 @@ func (m *model) metaBar() string {
 		elapsed += "/" + fmtDuration(m.maxDuration)
 	}
 
-	/*
-		Live values sit in fixed-width cells (see cell) so a number growing a digit
-		- 9 to 10 iterations, 999 to 1.0k tokens - does not shove every segment
-		after it sideways. The cell widths are the widest value each field normally
-		shows. A value that outgrows its cell still renders whole, and the bar shifts
-		once rather than clipping.
-	*/
+	// Live values sit in fixed-width cells (see cell) so a number gaining a digit does not shove every later
+	// segment sideways. A value that outgrows its cell renders whole, and the bar shifts once rather than clipping.
 	segments := []string{
 		seg("provider", m.provider, metaProvider),
 		seg("model", m.model, metaModel),
@@ -523,15 +499,8 @@ func (m *model) metaBar() string {
 		seg("dir", shortPath(m.workdir, 28), metaStyle),
 	}
 
-	/*
-		A segment is shown whole or not at all. Clipping the line to the terminal
-		width left whichever segment straddled the edge half-rendered - "elap",
-		"tok" - which reads as a broken UI rather than a narrow one, and a
-		half-written number is worse than no number. It can be misread. So the
-		bar takes segments for as long as they fit and stops at the first
-		that does not, giving a prefix that grows and shrinks predictably as the
-		terminal is resized.
-	*/
+	// A segment is shown whole or not at all, since clipping left half-rendered segments ("elap", "tok") that
+	// read as a broken UI. The bar takes segments in order while they fit and stops at the first that does not.
 	separator := metaStyle.Render("  ·  ")
 	separatorWidth := lipgloss.Width(separator)
 

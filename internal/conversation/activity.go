@@ -42,11 +42,8 @@ type Activity struct {
 	// Name is the tool being called.
 	Name string `json:"name,omitempty"`
 
-	/*
-		Arguments is the call's arguments as the provider sent them - a JSON
-		string, kept verbatim rather than decoded, because it is replayed to the
-		provider exactly as received and re-encoding could change it.
-	*/
+	// The call's arguments as the provider sent them, a JSON string kept verbatim, since it is replayed
+	// exactly as received and re-encoding could change it.
 	Arguments string `json:"arguments,omitempty"`
 
 	// Result is what the tool returned, on a response. Whatever a handler

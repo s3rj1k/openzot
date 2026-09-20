@@ -40,11 +40,8 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 		pending = map[string]bool{}
 	)
 
-	/*
-		repair the history before rendering it. A provider rejects the whole
-		request rather than the invalid part, so anything left unpaired here ends
-		an otherwise healthy run with an opaque 400
-	*/
+	// Repair the history before rendering it. A provider rejects the whole request rather than the
+	// invalid part, so anything left unpaired here ends a healthy run with an opaque 400.
 	for _, message := range Organize(messages) {
 		switch message.Type {
 		case TypeActivity:
@@ -94,11 +91,8 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 			})
 
 		case TypeReasoning:
-			/*
-				the reasoning channel is not replayed. Providers reject their own
-				reasoning content on the way back in, and it is the model's
-				scratchpad rather than conversation
-			*/
+			// The reasoning channel is not replayed. Providers reject their own reasoning on the way back in,
+			// and it is the model's scratchpad rather than conversation.
 
 		case TypeInstructions:
 			prompt = append(prompt, fantasy.NewSystemMessage(message.Text))

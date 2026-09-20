@@ -95,11 +95,8 @@ func settle(summary string) string {
 func run(t *testing.T, options *Options) Result {
 	t.Helper()
 
-	/*
-		tests opt out of the retry backoff unless they are about it. A test that
-		only drives a retriable failure should not silently sleep through the
-		production default. A test of the backoff itself sets its own value.
-	*/
+	// Tests skip the retry backoff unless they are about it. A test driving a retriable failure should not
+	// sleep through the production default. A test of the backoff sets its own value.
 	if options.RetryBackoff == 0 {
 		options.RetryBackoff = -1
 	}

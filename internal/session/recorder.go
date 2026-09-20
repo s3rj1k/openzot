@@ -78,12 +78,8 @@ func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it 
 
 	text := event.Text
 
-	/*
-		a usage event carries its numbers in dedicated fields the log has no column
-		for. Render them into the text, or the log records a usage event that says
-		nothing - and "why did this run cost 567k tokens" is exactly the question a
-		session has to answer after the fact
-	*/
+	// A usage event carries its numbers in fields the log has no column for. Render them into the text, or
+	// the log records a usage event that says nothing about why a run cost 567k tokens.
 	if event.Kind == loop.EventUsage && text == "" {
 		text = fmt.Sprintf("input %d output %d", event.InputTokens, event.OutputTokens)
 	}

@@ -86,11 +86,8 @@ func RenderDigest(d Digest) string {
 	)
 
 	if m := strings.TrimSpace(d.Message); m != "" {
-		/*
-			A multi-line message would break the one-row-per-line contract, so it
-			is flattened to a single line - the digest is a pointer to the full
-			record, not the record itself.
-		*/
+		// A multi-line message would break the one-row-per-line contract, so it is flattened. The digest is a
+		// pointer to the full record, not the record itself.
 		rows = append(rows, row{"message", strings.Join(strings.Fields(m), " ")})
 	}
 

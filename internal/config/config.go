@@ -24,18 +24,11 @@ import (
 type Config struct {
 	Agent Agent `yaml:"agent"`
 	UI    UI    `yaml:"ui"`
-	/*
-		SkillsDir is the folder of skills - subdirectories each holding a
-		SKILL.md - loaded into memory at startup and offered to the model through
-		the skills tool. "~/" is the home directory. A relative path is taken
-		against --dir. Empty means no skills.
-	*/
+	// The folder of skills - subdirectories each holding a SKILL.md - loaded at startup and offered
+	// through the skills tool. "~/" is home, a relative path is taken against --dir, empty means none.
 	SkillsDir string `yaml:"skills_dir"`
-	/*
-		Provider is the one model-provider connection every run uses. There is no
-		built-in one. It is declared here with a base_url, an api_key and the
-		models it serves, and agent.model picks which of them runs.
-	*/
+	// The one model-provider connection every run uses. None is built in. It holds a base_url, an
+	// api_key and the models it serves, and agent.model picks which of them runs.
 	Provider ProviderConfig `yaml:"provider"`
 }
 
@@ -47,12 +40,8 @@ type ProviderConfig struct {
 	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
 	// secret need be written to disk. Required unless base_url is loopback.
 	APIKey string `yaml:"api_key"`
-	/*
-		Models is the list of models the provider serves. Required. A model that
-		is not listed here cannot be run, because every model must state its own
-		context window. Its keys are the selectable names, and each entry may
-		alias or override the real model id.
-	*/
+	// The models the provider serves. Required, since every model must state its own context window.
+	// Keys are the selectable names, and an entry may alias or override the real model id.
 	Models map[string]ModelConfig `yaml:"models"`
 }
 
@@ -64,13 +53,8 @@ type ModelConfig struct {
 	Model string `yaml:"model"`
 	// MaxIterations overrides the global iteration cap for this model.
 	MaxIterations int `yaml:"max_iterations"`
-	/*
-		Context is the model's total context window, in tokens. Required, and the
-		only source of it. Zot keeps no table of what models can take, because
-		the real ceiling belongs to the endpoint being served, which can be
-		smaller than the model's card. It decides how much of a long conversation
-		is kept before each request.
-	*/
+	// The model's context window, in tokens. Required, and the only source of it. Zot keeps no table
+	// of models, since the endpoint's real ceiling can be below the model's card. It sizes what is kept.
 	Context int `yaml:"context"`
 
 	// ContentArray sends every message's content as an array of parts, for
@@ -104,11 +88,8 @@ func (p ProviderConfig) Label() string {
 
 // UI holds presentation options for the read-only viewer.
 type UI struct {
-	/*
-		Scrollback caps how many log lines the full-screen viewer keeps on screen.
-		Zero uses the built-in default. Raise it to keep more of a long run visible
-		(at more memory). The full run is always in the session log regardless.
-	*/
+	// How many log lines the viewer keeps on screen. Zero uses the built-in default. Raising it keeps
+	// more of a long run visible at more memory. The session log always has the full run.
 	Scrollback int `yaml:"scrollback"`
 }
 
@@ -119,83 +100,44 @@ type Agent struct {
 	// MaxIterations caps how many plan/act/observe cycles the agent may run
 	// before it is forced to stop.
 	MaxIterations int `yaml:"max_iterations"`
-	/*
-		MaxSettles bounds how many times the agent is nudged to record an outcome
-		(call success or failure) before the run is surfaced as unsettled. This
-		is "how hard we push the model to finish properly". Zero uses the built-in
-		default.
-	*/
+	// How many times the agent is nudged to record an outcome (success or failure) before the run is
+	// reported unsettled. Zero uses the built-in default.
 	MaxSettles int `yaml:"max_settles"`
-	/*
-		MaxCalls caps the total number of tool calls across a run, independently of
-		iterations (one iteration can request several). Zero is unbounded - only
-		max_iterations is a finite default.
-	*/
+	// Caps total tool calls across a run, independent of iterations (one can request several).
+	// Zero is unbounded, and max_iterations is the only finite default.
 	MaxCalls int `yaml:"max_calls"`
 	// MaxTime caps the wall-clock time of a run, as a duration string ("30m",
 	// "2h", "90s"). Empty is unbounded.
 	MaxTime string `yaml:"max_time"`
-	/*
-		MaxTokens caps the output tokens of a single model response. Zero is
-		unbounded - like max_calls and max_time, zot sends no cap, so the model
-		produces its full output. A positive value caps a single response.
-	*/
+	// Caps the output tokens of one model response. Zero sends no cap, like max_calls and max_time,
+	// so the model produces its full output.
 	MaxTokens int `yaml:"max_tokens"`
-	/*
-		MaxToolOutputPercent caps a single tool result (a file read, a command's
-		output) at this share of the model's context window, in percent, before it
-		is truncated. Zero uses the built-in default (25). One large result can
-		overflow the whole request and be rejected wholesale, so it is a share of
-		the window rather than a fixed size. A small-window model gets a tighter
-		bound on its own.
-	*/
+	// Caps one tool result at this share of the context window, in percent, before it is truncated.
+	// Zero uses the default (25). A share, not a size, so a small-window model gets a tighter bound.
 	MaxToolOutputPercent int `yaml:"max_tool_output_percent"`
-	/*
-		MaxContinuations caps CONSECUTIVE recovery attempts - a truncated
-		response, or a retriable provider error - with no good turn between
-		them. A turn that comes back whole resets the count. Zero uses the
-		built-in default.
-	*/
+	// Caps CONSECUTIVE recovery attempts (truncated response, retriable provider error) with no
+	// good turn between them. A whole turn resets the count. Zero uses the built-in default.
 	MaxContinuations int `yaml:"max_continuations"`
-	/*
-		MaxRecoveries caps recovery attempts across a whole run, however they are
-		spaced - where max_continuations catches a provider refusing right now,
-		this catches one that answers just often enough to keep resetting it.
-		Zero uses the built-in default.
-	*/
+	// Caps recovery attempts across a whole run, however spaced. max_continuations catches a provider
+	// failing now, this catches one that answers just often enough to keep resetting it. Zero uses the default.
 	MaxRecoveries int `yaml:"max_recoveries"`
-	/*
-		MaxCycles is how many times the loop nudges the model out of a detected
-		repetition before giving up. Zero uses the built-in default. A safety
-		guard - the default encodes a real failure, so raise it with care.
-	*/
+	// How many times the loop nudges the model out of a detected repetition before giving up. Zero
+	// uses the built-in default. The default encodes a real failure, so raise it with care.
 	MaxCycles int `yaml:"max_cycles"`
 	// MaxEmpties caps consecutive empty turns before the run bails. Zero uses the
 	// built-in default.
 	MaxEmpties int `yaml:"max_empties"`
-	/*
-		ContextSoft is the percentage of the model's context window at which the
-		oldest message starts to be forgotten on every request. Zero uses the
-		built-in default (50).
-	*/
+	// Percent of the context window where the oldest message starts to be forgotten on every request.
+	// Zero uses the built-in default (50).
 	ContextSoft int `yaml:"context_soft"`
-	/*
-		ContextHard is the percentage of the window a request is never allowed to
-		reach. Past it, as many of the oldest messages are forgotten as it takes.
-		Must be above context_soft. Zero uses the built-in default (90).
-	*/
+	// Percent of the window a request may never reach. Past it, as many of the oldest messages are
+	// forgotten as it takes. Must be above context_soft. Zero uses the built-in default (90).
 	ContextHard int `yaml:"context_hard"`
-	/*
-		PlanNudgeEvery is how many iterations pass between reminders that the
-		plan tool exists and should be kept current. Zero uses the built-in
-		default (5). A negative value turns the reminders off.
-	*/
+	// Iterations between reminders that the plan tool exists. Zero uses the built-in default (5).
+	// A negative value turns the reminders off.
 	PlanNudgeEvery int `yaml:"plan_nudge_every"`
-	/*
-		PlanMinTurns is how few turns may be left in the context window, after
-		older messages were forgotten, before the plan is posted to the model again.
-		Zero uses the built-in default (5).
-	*/
+	// How few turns may be left in the window after forgetting before the plan is posted again.
+	// Zero uses the built-in default (5).
 	PlanMinTurns int `yaml:"plan_min_turns"`
 }
 

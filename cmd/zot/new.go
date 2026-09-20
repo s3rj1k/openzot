@@ -81,11 +81,8 @@ func newOrder(args []string, out io.Writer) error {
 		return err
 	}
 
-	/*
-		An order left exactly as it was made is not an order, and a blank one lying
-		in .zot/orders would only fail when someone ran it. Nothing was written, so
-		nothing is kept.
-	*/
+	// An order left exactly as made is not an order, and a blank one in .zot/orders would only fail
+	// when someone ran it. Nothing was written, so nothing is kept.
 	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() { //nolint:gosec // G304: the order path is the one the operator named
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("remove the unedited order: %w", err)

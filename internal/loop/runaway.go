@@ -30,22 +30,16 @@ const runawayTextRunTailLimit = 4000
 // textRunOptions tunes hasRepeatedTextRun. The zero value is the production
 // default.
 type textRunOptions struct {
-	/*
-		MinUnits is the number of trailing sentence-like units required before a
-		runaway is even considered. Short repetitive snippets end on their own.
-		Clamped to at least 2.
-	*/
+	// The trailing sentence-like units required before a runaway is even considered. Short repetitive
+	// snippets end on their own. Clamped to at least 2.
 	MinUnits *int
 
 	// Window bounds how many trailing units are inspected, so a degenerate tail
 	// is still caught after a long healthy prefix. Clamped to at least MinUnits.
 	Window *int
 
-	/*
-		MaxUniqueRatio is the unique-to-inspected ratio at or below which the text
-		counts as a runaway. Healthy prose almost never repeats whole normalised
-		sentences that densely.
-	*/
+	// The unique-to-inspected ratio at or below which the text counts as a runaway. Healthy prose almost
+	// never repeats whole normalized sentences that densely.
 	MaxUniqueRatio *float64
 }
 
@@ -82,11 +76,8 @@ func segmentNormalizedUnits(text string) []string {
 	}) {
 		var builder strings.Builder
 
-		/*
-			@note ASCII-only on purpose. This mirrors the normalisation the
-			corpus pins. Non-ASCII collapses to a separator, which is why the CJK
-			cases are covered by the streaming guard rather than here.
-		*/
+		// ASCII-only on purpose, mirroring the normalization the corpus pins. Non-ASCII collapses to a
+		// separator, so the CJK cases are covered by the streaming guard rather than here.
 		for _, r := range strings.ToLower(part) {
 			switch {
 			case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
@@ -186,18 +177,12 @@ type guardOptions struct {
 	// the guard latches. Clamped to at least 2.
 	MaxRepeats *int
 
-	/*
-		MaxUniqueRatio is the lexical-diversity ceiling. A stuck loop churns the
-		same few words. A progressing list keeps introducing new ones and must not
-		be cut off. Clamped to [0, 1].
-	*/
+	// The lexical-diversity ceiling. A stuck loop churns the same few words, while a progressing list keeps
+	// adding new ones and must not be cut off. Clamped to [0, 1].
 	MaxUniqueRatio *float64
 
-	/*
-		MinChars is the minimum output length before the guard may trip. Short
-		repetitive output is harmless - it ends on its own - and was the bulk of
-		the false positives this exists to prevent.
-	*/
+	// Minimum output length before the guard may trip. Short repetitive output ends on its own and was
+	// the bulk of the false positives this exists to prevent.
 	MinChars *int
 }
 
@@ -213,12 +198,8 @@ type guardReason struct {
 	// back to a user or to the model.
 	Text string `json:"text"`
 
-	/*
-		UniqueRatio and HapaxRatio are the window's diversity and novelty at the
-		trip - the signals that separate a stuck loop (both low) from a wrongly
-		flagged progressing list (both higher). Reported so a stop can be triaged
-		from telemetry rather than re-derived by hand.
-	*/
+	// The window's diversity and novelty at the trip. Both low means a stuck loop, higher means a wrongly
+	// flagged list. Reported so a stop can be triaged from telemetry.
 	UniqueRatio float64 `json:"uniqueRatio"`
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
@@ -341,12 +322,8 @@ func (g *runawayGuard) addWord(word, original string, newlines int) {
 		uniqueRatio := float64(len(g.wordCount)) / float64(len(g.words))
 
 		if g.totalChars >= g.minChars && next >= g.maxRepeats && uniqueRatio <= g.maxUniqueRatio {
-			/*
-				structural-enumeration exemption. A recurring phrase inside a
-				multi-line block that still introduces novel tokens is a
-				progressing list or table. The cheap newline check short-circuits
-				the hapax scan, so a single-line loop never pays for it.
-			*/
+			// Structural-enumeration exemption. A recurring phrase in a multi-line block that keeps introducing new
+			// tokens is a list or table. The newline check short-circuits the hapax scan for single-line loops.
 			enumerated := g.maxUniqueRatio < structureAggressiveGate &&
 				g.windowNewlines >= minStructureNewlines &&
 				(g.hapaxRatio() >= structureHapaxFloor ||
@@ -435,11 +412,8 @@ func splitKeepingSeparators(text string) []string {
 		parts = append(parts, current.String())
 	}
 
-	/*
-		@note JavaScript's split with a capturing group yields a leading empty
-		string when the input starts with a separator, which keeps the
-		word/separator alternation aligned. Reproduce it.
-	*/
+	// JavaScript's split with a capturing group yields a leading empty string when the input starts with a
+	// separator, which keeps the word/separator alternation aligned. Reproduce it.
 	if len(parts) > 0 && strings.TrimSpace(parts[0]) == "" && parts[0] != "" {
 		parts = append([]string{""}, parts...)
 	}

@@ -27,18 +27,12 @@ type ClientConfig struct {
 	// empty one as []. Off by default, for endpoints whose template wants arrays.
 	ContentArray bool
 
-	/*
-		ReasoningEffort is sent as reasoning_effort when set, as the operator
-		wrote it apart from case and spacing. The endpoint rejects what it does not
-		know. Empty sends nothing and leaves the model's default.
-	*/
+	// Sent as reasoning_effort when set, as written apart from case and spacing. The endpoint rejects what
+	// it does not know. Empty sends nothing and leaves the model's default.
 	ReasoningEffort string
 
-	/*
-		ExtraBody is merged into every request body as it is, for whatever a server
-		takes that has no field of its own here - a chat-template switch that turns
-		thinking off, say.
-	*/
+	// Merged into every request body as it is, for whatever a server takes that has no field here, such as a
+	// chat-template switch that turns thinking off.
 	ExtraBody map[string]any
 }
 

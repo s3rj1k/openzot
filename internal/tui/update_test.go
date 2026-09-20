@@ -635,11 +635,8 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 
 		updated, _ := m.Update(key)
 
-		/*
-			a quit would leave the model unchanged and end the program. What we
-			can check without running the program is that the viewer is still
-			there and still running
-		*/
+		// A quit would leave the model unchanged and end the program. Without running the program, what can be
+		// checked is that the viewer is still there and still running.
 		if updated.(*model).status != statusRunning {
 			t.Errorf("key %v ended the run", key)
 		}
@@ -737,11 +734,8 @@ func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
 		{in: "two\nlines", max: 20, want: "two lines"},
 		{in: "two\nlines here", max: 6, want: "two l…"},
 
-		/*
-			a task or tool argument in CJK or emoji was cut mid-rune, so the meta
-			bar and the tool lines rendered a replacement character - and the cap
-			counted bytes, so the line was cut far short of the width it was given
-		*/
+		// A task or tool argument in CJK or emoji was cut mid-rune, rendering a replacement character, and the cap
+		// counted bytes, so the line was cut far short of its width.
 		{in: "日本語のタスク説明文です", max: 6, want: "日本語のタ…"},
 		{in: "🚀🚀🚀🚀🚀", max: 3, want: "🚀🚀…"},
 		{in: "日本語", max: 10, want: "日本語"},
@@ -773,11 +767,8 @@ func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
 }
 
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
-	/*
-		a not-yet-sized model. render() no-ops, so this exercises the scrollback cap
-		without the per-append viewport cost (which is what a real, model-paced run
-		pays anyway, now bounded to the cap)
-	*/
+	// A not-yet-sized model. render() does nothing, so this exercises the scrollback cap without the per-append
+	// viewport cost (which a real, model-paced run pays anyway, now bounded by the cap).
 	m := newModel("do the thing", "m", "b", "d")
 
 	limit := m.maxEntries // DefaultMaxScrollback

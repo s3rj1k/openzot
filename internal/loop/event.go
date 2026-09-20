@@ -39,10 +39,7 @@ type Event struct {
 	InputTokens  int
 	OutputTokens int
 
-	/*
-		Failure is the provider error behind an EventRetry, so a consumer can
-		persist the failing exchange the moment it happens rather than waiting
-		for the run to end - which a kill would never reach.
-	*/
+	// The provider error behind an EventRetry, so a consumer can persist the failing exchange as it
+	// happens instead of waiting for the run to end, which a kill would never reach.
 	Failure error
 }

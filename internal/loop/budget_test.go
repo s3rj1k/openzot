@@ -547,11 +547,8 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 		t.Errorf("three retries took %s, want at least %s of backoff between them", elapsed, want)
 	}
 
-	/*
-		A failed model call is not an agentic round. Continuations are the bound
-		on recovery attempts. Charging the iteration budget too would make an
-		outage cost the run twice.
-	*/
+	// A failed model call is not an agentic round. Continuations bound recovery, so charging the
+	// iteration budget too would make an outage cost the run twice.
 	if result.Budget.Iterations != 0 {
 		t.Errorf("Iterations = %d, want 0 - no round ever completed", result.Budget.Iterations)
 	}
@@ -605,11 +602,8 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		t.Errorf("reason = %q, want the cancellation to end the run", result.Reason)
 	}
 
-	/*
-		The abort landed during a backoff wait, but the provider failure that
-		preceded it is carried along as the evidence - it is the exchange the
-		operator quit to go and read. A bare "context canceled" would discard it.
-	*/
+	// The abort landed during a backoff wait, but the provider failure before it travels with it as
+	// evidence. A bare "context canceled" would discard the exchange the operator quit to read.
 	if result.Err == nil || !provider.IsProviderError(result.Err) {
 		t.Errorf("aborted result carries %v, want the last provider failure preserved", result.Err)
 	}
@@ -897,11 +891,8 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		t.Fatalf("continuations = %d, want 3", result.Budget.Recoveries)
 	}
 
-	/*
-		base + 2x base + base = 4x base when the counter resets on success. A
-		counter that kept escalating would wait base + 2x + 4x = 7x base. The
-		bound sits between the two with generous slack for a loaded machine.
-	*/
+	// The wait is base + 2x base + base = 4x base when the counter resets on success. A counter that
+	// kept escalating would wait 7x base. The bound sits between, with slack for a loaded machine.
 	if floor := 4 * base; elapsed < floor {
 		t.Fatalf("the retries took %s, want at least %s of backoff", elapsed, floor)
 	}

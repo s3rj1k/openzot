@@ -99,19 +99,12 @@ type Result struct {
 	Reason  string `json:"reason"`
 	Message string `json:"message,omitempty"`
 
-	/*
-		Error is the underlying failure on an error ending - the provider's own
-		words, not the loop's summary of them. "the provider failed" answers
-		nothing at three in the morning. The 404 naming the wrong model does.
-	*/
+	// The underlying failure on an error ending, in the provider's own words. "the provider failed" answers
+	// nothing at three in the morning, but the 404 naming the wrong model does.
 	Error string `json:"error,omitempty"`
 
-	/*
-		Failure is the wire evidence behind Error, when the failure was a
-		provider response. The raw exchange is what troubleshooting needs. An
-		opaque upstream "ERROR" and a proper context-length message read the
-		same in Error, but the rejected request's size tells them apart.
-	*/
+	// The wire evidence behind Error when the failure was a provider response. An opaque upstream "ERROR"
+	// and a context-length message read the same in Error, but the rejected request's size tells them apart.
 	Failure *provider.Failure `json:"failure,omitempty"`
 
 	Code int `json:"code"`
@@ -122,11 +115,8 @@ type Result struct {
 	Cycles        int `json:"cycles"`
 	Settles       int `json:"settles"`
 
-	/*
-		InputTokens and OutputTokens are the provider-billed totals for the run,
-		persisted so an audit can see cost rather than only the terminal that
-		produced it.
-	*/
+	// The provider-billed totals for the run, so an audit can see cost and not only the terminal that
+	// produced it.
 	InputTokens  int `json:"inputTokens,omitzero"`
 	OutputTokens int `json:"outputTokens,omitzero"`
 }

@@ -35,11 +35,8 @@ func (m *model) runError() error {
 	}
 
 	if m.status == statusRunning {
-		/*
-			The viewer closed while the run was still going, and in production
-			only the operator does that - q or Ctrl-C. Say so. "ended before
-			completion" read as a mysterious failure when it was a keypress.
-		*/
+		// The viewer closed while the run was going, and in production only the operator does that (q or Ctrl-C).
+		// Say so, since "ended before completion" read as a mysterious failure when it was a keypress.
 		return ErrCancelled
 	}
 

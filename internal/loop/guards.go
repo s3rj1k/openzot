@@ -174,12 +174,8 @@ type Budget struct {
 	Iterations int
 	Calls      int
 
-	/*
-		Continuations counts CONSECUTIVE recovery attempts. A turn that comes
-		back whole zeroes it. Recoveries is the total across the run, which only
-		ever rises - it is what the run is reported to have spent, and what
-		DefaultMaxRecoveries fallbacks.
-	*/
+	// Continuations counts CONSECUTIVE recovery attempts and a whole turn zeroes it. Recoveries is the
+	// run total, which only rises. It is what the run reports spending and what DefaultMaxRecoveries bounds.
 	Continuations int
 	Recoveries    int
 
@@ -187,12 +183,8 @@ type Budget struct {
 	Empties int
 	Settles int
 
-	/*
-		InputTokens and OutputTokens accumulate the provider-reported prompt and
-		completion tokens across the run - the actual billed usage, not the local
-		estimate. Each model call bills its full prompt, so these are summed per
-		turn.
-	*/
+	// The provider-reported prompt and completion tokens across the run - actual billed usage, not the
+	// local estimate. Each call bills its whole prompt, so they are summed per turn.
 	InputTokens  int
 	OutputTokens int
 }

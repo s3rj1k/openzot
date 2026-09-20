@@ -57,22 +57,16 @@ func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersNam
 
 // Order is one work order. A single run's brief, and the prompt it is run with.
 type Order struct {
-	/*
-		Title is an optional short label for the order, for people rather than
-		for the agent. It is how a human recognizes the order in a list or a
-		viewer. The prompt may use it, but nothing does by default.
-	*/
+	// An optional short label for people rather than the agent, to recognize the order in a list or the
+	// viewer. The prompt may use it, but nothing does by default.
 	Title string
 
 	// The durable goal of the run. The prompt puts it where the
 	// agent cannot forget it on a long run.
 	Objective string
 
-	/*
-		Acceptance are the criteria that define "done". They travel with the
-		goal into the prompt, and they are the contract a future
-		verification gate judges the result against.
-	*/
+	// The criteria that define "done". They travel with the goal into the prompt and are the contract
+	// a future verification gate judges the result against.
 	Acceptance []string
 
 	// Constraints are rules the work must hold to throughout - boundaries, not

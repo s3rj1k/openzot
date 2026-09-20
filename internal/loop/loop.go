@@ -31,36 +31,18 @@ type Options struct {
 	// Tools the model may call.
 	Tools []fantasy.AgentTool
 
-	/*
-		Unrepaired names the tools whose calls are never repaired. fantasy mends a
-		call whose input does not parse - a missing brace, an unterminated string,
-		a stray comma - so a small slip costs the model no turn. For a tool that
-		acts on the machine that is the wrong trade. The mended input is one the
-		model never finished writing. A call to one of these goes back to the model
-		as it stands, with the reason.
-	*/
+	// Tools whose calls are never repaired. fantasy mends input that does not parse, which is the wrong
+	// trade for a tool that acts on the machine. Such a call goes back to the model as it stands.
 	Unrepaired []string
 
-	/*
-		OnConversation, when set, is called at each iteration boundary, and again
-		just before each tool handler runs, with the conversation as it then
-		stands. It exists so a caller can persist the conversation as the run goes
-		rather than only when it ends - the whole point of a session log is that a
-		run killed at iteration 500 still leaves its record, which it does not if
-		nothing was written down until iteration 500 finished.
+	// Called at each iteration boundary and again before each tool handler, with the whole conversation
+	// as it stands, so a run killed at iteration 500 still leaves its record.
 
-		The slice handed over is the whole conversation as it then stands, not a
-		delta. The engine only ever appends to it - what is sent on the wire is
-		trimmed to the window, but the conversation itself is never rewritten.
-	*/
+	// The engine only appends to it. Only the copy sent on the wire is trimmed to the window.
 	OnConversation func([]conversation.Message)
 
-	/*
-		OnEvent, when set, sees every event alongside the function Run is given.
-		It is for a sink that has to see the whole run whoever is watching it - a
-		session log - where the function Run is given belongs to the caller
-		showing the run.
-	*/
+	// Sees every event alongside the function Run is given, for a sink that must see the whole run
+	// whoever is watching, such as a session log.
 	OnEvent func(Event)
 
 	// MaxIterations, MaxContinuations, MaxCycles, MaxEmpties bound the run. Zero
@@ -70,12 +52,8 @@ type Options struct {
 	MaxCycles        int
 	MaxEmpties       int
 
-	/*
-		MaxRecoveries bounds recovery attempts across the whole run, however they
-		are spaced - the point at which a provider that keeps needing them is
-		called broken. See DefaultMaxRecoveries for why it is separate from
-		MaxContinuations rather than derived from it. Zero uses the default.
-	*/
+	// Bounds recovery attempts across the whole run, however spaced. See DefaultMaxRecoveries for why
+	// it is separate from MaxContinuations. Zero uses the default.
 	MaxRecoveries int
 
 	// MaxCalls bounds total tool calls. Zero (or negative) is unbounded - only
@@ -86,59 +64,36 @@ type Options struct {
 	// boundary. Zero is unbounded.
 	MaxDuration time.Duration
 
-	/*
-		RetryBackoff is the pause before the first retry of a retriable provider
-		failure, doubling per consecutive retry up to MaxRetryBackoff. Zero uses
-		DefaultRetryBackoff. Negative disables the wait entirely, which only a test
-		driving an outage should ask for.
-	*/
+	// Pause before the first retry of a retriable failure, doubling per consecutive retry up to
+	// MaxRetryBackoff. Zero uses DefaultRetryBackoff. Negative disables the wait, for tests driving an outage.
 	RetryBackoff time.Duration
 
-	/*
-		MaxSettles bounds how many times the model is nudged to record an outcome
-		before the run is surfaced as unsettled. Zero uses the default. There is no
-		way to turn settling off. A run finishes only when the model calls a
-		terminal tool, which is what replaces deciding a task is done because the
-		answer contained the word "completed".
-	*/
+	// How many times the model is nudged to record an outcome before the run is reported unsettled.
+	// Zero uses the default. Settling cannot be turned off, since only a terminal tool call ends a run.
 	MaxSettles int
 
 	// MaxTokens bounds a single response.
 	MaxTokens *int
 
-	/*
-		PlanTool names the tool the model keeps its plan with. Empty turns the plan
-		handling off. Nothing is nudged or posted. The engine does not know the
-		tool's schema - the plan is simply its latest successful call.
-	*/
+	// The tool the model keeps its plan with. Empty turns plan handling off. The engine does not know
+	// its schema, since the plan is simply the latest successful call.
 	PlanTool string
 
 	// PlanNudgeEvery is how many iterations pass between reminders of the plan
 	// tool. Zero uses DefaultPlanNudgeEvery. Negative turns the reminders off.
 	PlanNudgeEvery int
 
-	/*
-		PlanMinTurns is the number of turns the window must still hold after
-		forgetting for the plan to be left where it is. Fewer and it is posted
-		again. Zero uses DefaultPlanMinTurns.
-	*/
+	// Turns the window must still hold after forgetting for the plan to stay where it is. Fewer and it
+	// is posted again. Zero uses DefaultPlanMinTurns.
 	PlanMinTurns int
 
-	/*
-		ContextSoft and ContextHard are the percentages of the window at which the
-		oldest messages start to be forgotten (one per request) and at which as
-		many as it takes are (so the request stays under it). Zero uses
-		DefaultContextSoft and DefaultContextHard.
-	*/
+	// Percent of the window where the oldest messages start to be forgotten (one per request) and
+	// where as many as needed are, so the request stays under it. Zero uses the defaults.
 	ContextSoft int
 	ContextHard int
 
-	/*
-		ContextWindow overrides the model's total context window, in tokens.
-		Required: New rejects a run without it. There is no built-in table of what
-		each model can take - the operator states it, because only the operator
-		knows the real ceiling of the endpoint being served.
-	*/
+	// The model's total context window, in tokens. Required, and New rejects a run without it. There
+	// is no built-in table, since only the operator knows the real ceiling of the endpoint.
 	ContextWindow int
 }
 
@@ -254,11 +209,8 @@ func New(options *Options) (*Engine, error) {
 	return &Engine{
 		options:       *options,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
-		/*
-			@note calls and time are unbounded unless the caller sets them. Only
-			the iteration count is a hard default fallback. A non-positive value
-			means "no cap", which is why they are stored raw rather than picked.
-		*/
+		// Calls and time are unbounded unless the caller sets them, and only the iteration count is a hard
+		// default. A non-positive value means no cap, so they are stored raw rather than picked.
 		maxCalls:         max(options.MaxCalls, 0),
 		maxDuration:      options.MaxDuration,
 		maxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
@@ -429,12 +381,8 @@ func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]
 	detected := describeCycle(messages)
 
 	if detected == "" {
-		/*
-			a round that is not cyclic breaks the run of repetitions. The budget
-			counts *consecutive* cycles, so two unrelated repetitions far apart in a
-			long run must not add up to a stop. This mirrors the source, which zeroes
-			its cycle counter the moment a round comes back clean.
-		*/
+		// A round that is not cyclic breaks the run of repetitions. The budget counts consecutive cycles, so
+		// two unrelated repetitions far apart must not add up to a stop.
 		budget.Cycles = 0
 
 		return nil, nil
@@ -620,14 +568,8 @@ const trimmedKickoff = "Continue working on your task as stated in the instructi
 func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) turnRequest {
 	chat := conversation.ToPrompt(messages[forgotten:])
 
-	/*
-		Forgetting takes the oldest first, which is the run's opening user message.
-		A conversation with no user turn at all is invalid to strict providers.
-		They reject the whole request, deterministically, from that iteration on
-		(bisected live against one that answered only an opaque 400). The
-		goal itself is safe in the instructions. What must be restored is a
-		user turn's existence.
-	*/
+	// Forgetting takes the oldest first, which is the opening user message. A conversation with no user
+	// turn is rejected by strict providers, so one is restored. The goal itself is safe in the instructions.
 	hasUser := false
 
 	for _, message := range chat {
@@ -642,12 +584,8 @@ func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) tu
 		chat = append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat...)
 	}
 
-	/*
-		fantasy will not start a step from a conversation that ends on the model's
-		own words. The engine never leaves one - every turn is followed by a tool
-		result or a nudge - but a conversation it was handed might, and one more
-		line to continue costs less than a run that cannot start.
-	*/
+	// fantasy will not start a step from a conversation ending on the model's own words. The engine never
+	// leaves one, but a handed-in conversation might, and one more line costs less than a run that cannot start.
 	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
 		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
 	}
@@ -665,11 +603,8 @@ func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) tu
 func (e *Engine) toolDefinitions() []fantasy.Tool {
 	offered := slices.Concat(e.options.Tools, terminalTools())
 
-	/*
-		map order was random once and a tool list that reshuffles between requests
-		defeats any server-side prompt cache keyed on the prefix, so the order is
-		fixed. By name
-	*/
+	// Map order was random once, and a tool list that reshuffles between requests defeats server-side
+	// prompt caches keyed on the prefix. So the order is fixed by name.
 	slices.SortFunc(offered, func(a, b fantasy.AgentTool) int {
 		return strings.Compare(a.Info().Name, b.Info().Name)
 	})
@@ -734,22 +669,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	started := time.Now()
 
-	/*
-		retries counts *consecutive* retriable provider failures, and is what the
-		backoff keys off. By design not budget.Continuations: that also counts
-		truncation recoveries and context-limit retries, so keying the
-		backoff off it would make a truncation earlier in the same stretch start
-		an unrelated outage at an escalated wait. Both reset on a good turn.
-	*/
+	// Counts consecutive retriable provider failures for the backoff. Not budget.Continuations, which also
+	// counts truncation recoveries and would escalate an unrelated outage. Both reset on a good turn.
 	retries := 0
 
-	/*
-		The most recent provider failure, kept so an abort can carry it. A run is
-		usually quit during a backoff wait, not during the failing call itself,
-		so the top-of-loop cancellation check would otherwise discard the very
-		exchange being diagnosed - the failure whose dump the operator quit to
-		go and read.
-	*/
+	// The latest provider failure, kept so an abort can carry it. A run is usually quit during a backoff
+	// wait, and the top-of-loop cancellation check would otherwise discard the exchange being diagnosed.
 	var lastFailure error
 
 	for {
@@ -761,12 +686,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// so what a crash leaves behind is everything the run has actually done
 		e.handOver(messages)
 
-		/*
-			A time cap is checked at the iteration boundary, like every other
-			budget. A single long tool call can overrun by one operation - the
-			shell tool's own timeout bounds that - but the run will not start
-			another iteration past the deadline.
-		*/
+		// A time cap is checked at the iteration boundary like every budget. One long tool call can overrun by
+		// one operation (the shell timeout bounds it), but no new iteration starts past the deadline.
 		if e.maxDuration > 0 && time.Since(started) >= e.maxDuration {
 			return finish(messages, budget, StopTime,
 				fmt.Sprintf("stopped after %s", e.maxDuration), nil)
@@ -798,11 +719,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		turn, err := e.runStep(ctx, agent, state, request, &messages, &budget, emit)
 
-		/*
-			Accumulate the provider's reported usage - the actual billed tokens - and
-			surface the running total so a viewer can show real cost rather than an
-			estimate. Each call bills its whole prompt, so the per-turn counts sum.
-		*/
+		// Accumulate the provider's reported usage, the actual billed tokens, and surface the running total so
+		// a viewer shows real cost. Each call bills its whole prompt, so per-turn counts sum.
 		if turn.InputTokens > 0 || turn.OutputTokens > 0 {
 			budget.InputTokens += turn.InputTokens
 			budget.OutputTokens += turn.OutputTokens
@@ -815,34 +733,18 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		}
 
 		if err != nil {
-			/*
-				A failed model call is not an agentic round. The recovery paths
-				below hand the failure back to the top of the loop, and without
-				this the round budget pays for every retry - twenty spaced
-				retries through an outage would cost twenty iterations of work
-				the run never got. Continuations are the bound on recovery
-				attempts. Iterations count normal progress.
-			*/
+			// A failed model call is not an agentic round. Without this the round budget pays for every retry,
+			// so twenty retries through an outage would cost twenty iterations. Continuations bound recovery.
 			budget.Iterations--
 
-			/*
-				remember the failure so an abort during the ensuing backoff still
-				carries it - only a provider error, so a bare cancellation does
-				not overwrite the exchange worth keeping
-			*/
+			// Remember the failure so an abort during the backoff still carries it. Only a provider error, so a
+			// bare cancellation does not overwrite the exchange worth keeping.
 			if provider.IsProviderError(err) {
 				lastFailure = err
 			}
 
-			/*
-				A cancellation that lands mid-call surfaces here as the provider
-				error it caused - a cut stream, an aborted request - rather than
-				at the top-of-loop check. It is recorded as the abort it is - a
-				user quitting is not a provider failing - but the provider error
-				is carried along as the evidence, so a quit during a provider
-				failure still preserves the failing exchange (and its dump)
-				rather than discarding the very thing being diagnosed.
-			*/
+			// A cancellation mid-call surfaces here as the provider error it caused. It is recorded as the abort it
+			// is, with the provider error carried along as evidence, so a quit during a failure keeps the dump.
 			if ctx.Err() != nil {
 				return finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
 			}
@@ -857,12 +759,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				}
 			}
 
-			/*
-				A rate limit is recoverable, but on the provider's schedule rather
-				than ours - which is why 429 is not IsRetriable. Waiting out the
-				advised delay is the other half of that contract. Without it a
-				single throttle response ends an overnight run.
-			*/
+			// A rate limit is recoverable, on the provider's schedule, which is why 429 is not IsRetriable.
+			// Waiting out the advised delay is the other half. Without it one throttle response ends an overnight run.
 			limited := provider.IsRateLimited(err)
 
 			if (limited || provider.IsRetriable(err)) && e.canContinue(budget) {
@@ -872,21 +770,13 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 				emit(Event{Kind: EventRetry, Text: err.Error(), Failure: err})
 
-				/*
-					Space the retries out. Without this the continuation budget is
-					spent in milliseconds, so a run dies to an outage it would have
-					outlived by waiting - and the retries land on an endpoint that
-					is already failing. Cancellation cuts the wait short. The check
-					at the top of the loop then ends the run.
-				*/
+				// Space the retries out. Otherwise the continuation budget is spent in milliseconds and the run dies
+				// to an outage it would have outlived by waiting. Cancellation cuts the wait short.
 				delay := backoffFor(e.retryBackoff, retries)
 
 				if limited {
-					/*
-						the advised delay is honored, but the backoff stays a
-						floor under it - "Retry-After: 0" must not turn into the
-						instant-retry loop the backoff exists to prevent
-					*/
+					// The advised delay is honored, but the backoff stays a floor under it, so "Retry-After: 0" cannot
+					// become the instant-retry loop the backoff exists to prevent.
 					advised, ok := provider.RetryAfter(err)
 					delay = rateLimitWait(advised, ok, delay)
 				}
@@ -903,12 +793,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// so the next one - if any - starts again from the base delay
 		retries = 0
 
-		/*
-			a turn that produced *anything* breaks the run of silences. The empty
-			budget counts CONSECUTIVE empty turns, so single stalls scattered over a
-			long run must not add up to a StopEmpty hours later. Same reasoning as
-			the cycle counter, which zeroes the moment a round comes back clean.
-		*/
+		// A turn that produced anything breaks the run of silences. The empty budget counts consecutive empty
+		// turns, so scattered stalls must not add up to a StopEmpty hours later. Same reasoning as the cycle counter.
 		if turn.Text != "" || turn.Reasoning != "" || len(turn.ToolCalls) > 0 {
 			budget.Empties = 0
 		}
@@ -936,15 +822,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			continue
 		}
 
-		/*
-			The turn came back whole - not a provider failure, not cut off at the
-			output limit - so whatever the run was recovering from is behind it
-			and the consecutive count starts over. Everything that needs recovery
-			continues above this line, which is what keeps a run of truncations
-			bounded while a truncation an hour ago no longer counts against a
-			provider blip now. The total is untouched. It is the record of what
-			the run spent, and the fallback under this reset.
-		*/
+		// The turn came back whole, so whatever the run was recovering from is behind it and the consecutive
+		// count restarts. The total is untouched. It is the record of what the run spent, and the bound under this reset.
 		if turn.Text != "" || turn.Reasoning != "" || len(turn.ToolCalls) > 0 {
 			budget.Continuations = 0
 		}
@@ -973,13 +852,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			continue
 		}
 
-		/*
-			A really empty turn - no text, no reasoning, no tool call - is a stuck
-			model, bounded tightly by the empty budget. A run producing nothing must
-			not burn the whole (much larger) settle budget on silence. The nudge still
-			points at the terminal tools, though - a plain "say you are finished"
-			would not record the outcome a run requires.
-		*/
+		// A really empty turn (no text, no reasoning, no tool call) is a stuck model, bounded tightly by the
+		// empty budget, not the larger settle budget. The nudge still points at the terminal tools.
 
 		if turn.Text == "" && turn.Reasoning == "" {
 			if budget.Empties >= e.maxEmpties {
@@ -989,11 +863,8 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			budget.Empties++
 
-			/*
-				visible, because a stuck or stalling provider otherwise renders as
-				bare iteration dividers with nothing between them - a run being
-				nudged back to life looked exactly like a hang
-			*/
+			// Visible, because a stalling provider otherwise renders as bare iteration dividers, and a run being
+			// nudged back to life looked exactly like a hang.
 			emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
 				"the model returned an empty turn; nudging it to continue (%d/%d)",
 				budget.Empties, e.maxEmpties)})

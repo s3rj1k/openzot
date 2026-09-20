@@ -45,11 +45,8 @@ func TestCycleCircularResult(t *testing.T) {
 
 	got := hasRepeatedSuffix(messages)
 
-	/*
-		@note both cyclic results collapse to the same sentinel, so the two halves
-		fingerprint the same and the pair reads as a cycle. That is the
-		intended trade-off in safeStringify. A degraded comparison beats none.
-	*/
+	// Both cyclic results collapse to the same sentinel, so the two halves fingerprint the same and the
+	// pair reads as a cycle. That is the intended trade in safeStringify. A degraded comparison beats none.
 	if !got {
 		t.Errorf("hasRepeatedSuffix = false, want true (a cyclic result must degrade, not disable)")
 	}

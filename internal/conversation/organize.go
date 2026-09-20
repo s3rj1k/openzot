@@ -125,11 +125,8 @@ func sameMessage(a, b Message) bool {
 		return false
 	}
 
-	/*
-		activities are never duplicates of one another. Two calls with the same
-		arguments are two real calls the model made, and collapsing them would
-		hide exactly the repetition the cycle guards look for
-	*/
+	// Activities are never duplicates of one another. Two calls with the same arguments are two real
+	// calls, and collapsing them would hide the repetition the cycle guards look for.
 	if a.Type == TypeActivity {
 		return false
 	}
