@@ -23,7 +23,7 @@ import (
 const testWindow = 1_000_000
 
 // RunAgent is the seam between the engine and the screen. It is a pure pump,
-// and the thing worth proving about a pump is that nothing goes missing: every
+// and the thing worth proving about a pump is that nothing goes missing. Every
 // event reaches the program, an error reaches it too, and the stream always
 // ends with a done message so the viewer knows the run is over rather than
 // hanging on a spinner nobody will ever stop.
@@ -152,7 +152,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 		ContextWindow: testWindow,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "do the thing"}},
 
-		// a persistent outage is retried with a growing backoff; these tests are
+		// a persistent outage is retried with a growing backoff. These tests are
 		// about what reaches the screen, not about waiting an outage out
 		RetryBackoff: -1,
 	}
@@ -256,7 +256,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 	}
 }
 
-// A canceled run still has to end cleanly: the pump drains and the done
+// A canceled run still has to end cleanly. The pump drains and the done
 // message arrives, or the viewer never comes back.
 func TestRunAgentEndsOnCancellation(t *testing.T) {
 	client := scriptedClient(t, []string{
@@ -279,7 +279,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 	}
 }
 
-// Quitting the viewer must stop the agent, not merely stop watching it. The
+// Quitting the viewer must stop the agent, not only stop watching it. The
 // agent holds shell and file-write access, so returning from the viewer with the
 // run still going leaves something editing the working tree with nothing on
 // screen reporting what it does. Process exit would hide this in
@@ -324,8 +324,8 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
-	// start stands in for the user pressing q: the program runs headlessly, so the
-	// event pump is genuinely consuming, and quits once the agent is under way
+	// start stands in for the user pressing q. The program runs headlessly, so the
+	// event pump is really consuming, and quits once the agent is under way
 	start := func(p *tea.Program) (tea.Model, error) {
 		go func() {
 			<-streaming
@@ -386,8 +386,8 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
-	// the program runs headlessly so the event pump is genuinely consuming;
-	// quitting once the stream is under way is the user pressing q mid-run
+	// the program runs headlessly so the event pump is really consuming.
+	// Quitting once the stream is under way is the user pressing q mid-run
 	start := func(p *tea.Program) (tea.Model, error) {
 		go func() {
 			<-streaming

@@ -1,4 +1,4 @@
-// Package plan is the model's task list: what a call to the plan tool means, how
+// Package plan is the model's task list. What a call to the plan tool means, how
 // it is read, and how it reads back. The tools package wraps it as a tool and the
 // viewer draws it, and neither has to know the other to agree on the schema.
 package plan
@@ -25,7 +25,7 @@ const (
 	// TaskDone is finished work.
 	TaskDone TaskStatus = "done"
 
-	// TaskBlocked is work that cannot go on until something changes; its note
+	// TaskBlocked is work that cannot go on until something changes. Its note
 	// says what.
 	TaskBlocked TaskStatus = "blocked"
 )
@@ -38,7 +38,7 @@ type Task struct {
 	// Status is where the task stands. Empty on input means pending.
 	Status TaskStatus
 
-	// Note is free text beside the task: why it is blocked, what was found, or
+	// Note is free text beside the task. Why it is blocked, what was found, or
 	// an assumption made in doing it.
 	Note string
 }
@@ -55,7 +55,7 @@ func stringField(fields map[string]any, key string) string {
 // It is the one place the schema is read. The handler, the viewer and the
 // viewer's task count all come through it, so what counts as a valid list cannot
 // drift between what the model is told and what the operator is shown. A task
-// with no status is pending; anything else that is not a status is an error the
+// with no status is pending. Anything else that is not a status is an error the
 // model can act on.
 func ParseTasks(args map[string]any) ([]Task, error) {
 	raw, _ := args["tasks"].([]any)
@@ -129,7 +129,7 @@ func TaskMarker(status TaskStatus) string {
 // FormatTasks renders the list as a checklist, headed by how much of it is done.
 //
 // This is what the tool answers with, so the model reads its own state back on
-// every call: on a long run the older messages have been trimmed away, and the
+// every call. On a long run the older messages have been trimmed away, and the
 // latest result is the one place the whole list is always in view.
 func FormatTasks(tasks []Task) string {
 	var b strings.Builder

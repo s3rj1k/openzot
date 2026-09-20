@@ -12,7 +12,7 @@ import (
 	"github.com/openzot/openzot/internal/provider"
 )
 
-// The context-limit recovery path: a provider rejecting an oversized prompt is
+// The context-limit recovery path. A provider rejecting an oversized prompt is
 // not a failure, it is a signal to trim harder and try again. The conversation
 // itself is never rewritten - only the window the oldest messages are forgotten to fit.
 
@@ -114,7 +114,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	}
 }
 
-// Trimming happens on the wire, not in the history: every message the run
+// Trimming happens on the wire, not in the history. Every message the run
 // started with is still in the conversation afterwards, and nothing has been
 // summarized into its place.
 func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
@@ -145,7 +145,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 }
 
 // A provider that keeps saying "too long" is wrong about its own ceiling only so
-// far: once the window is down to a fraction of the configured one there is
+// far. Once the window is down to a fraction of the configured one there is
 // nothing left to try, and retrying would send the same request again.
 func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
@@ -293,7 +293,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 	}
 }
 
-// A 4xx that is not a context limit is terminal: retrying a bad key or a missing
+// A 4xx that is not a context limit is terminal. Retrying a bad key or a missing
 // model only burns the budget.
 func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

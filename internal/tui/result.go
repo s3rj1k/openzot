@@ -6,7 +6,7 @@ import (
 )
 
 // ErrCancelled reports that the operator closed the viewer while the run was
-// still going. A sentinel, so a caller can tell a deliberate stop from a failure and
+// still going. A sentinel, so a caller can tell an explicit stop from a failure and
 // report it calmly.
 var ErrCancelled = errors.New("run canceled - the viewer was closed while the run was still going")
 
@@ -35,9 +35,11 @@ func (m *model) runError() error {
 	}
 
 	if m.status == statusRunning {
-		// The viewer closed while the run was still going, and in production
-		// only the operator does that - q or Ctrl-C. Say so: "ended before
-		// completion" read as a mysterious failure when it was a keypress.
+		/*
+			The viewer closed while the run was still going, and in production
+			only the operator does that - q or Ctrl-C. Say so. "ended before
+			completion" read as a mysterious failure when it was a keypress.
+		*/
 		return ErrCancelled
 	}
 

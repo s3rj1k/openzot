@@ -27,15 +27,17 @@ type turnResult struct {
 	ToolCalls    []fantasy.ToolCallContent
 	FinishReason fantasy.FinishReason
 
-	// InputTokens and OutputTokens are the prompt- and completion-token counts the
-	// provider reported for this turn (zero when it reported none). Provider counts,
-	// not the local estimate: they reflect what the provider actually processed,
-	// including any server-side prompt caching.
+	/*
+		InputTokens and OutputTokens are the prompt- and completion-token counts the
+		provider reported for this turn (zero when it reported none). Provider counts,
+		not the local estimate. They reflect what the provider actually processed,
+		including any server-side prompt caching.
+	*/
 	InputTokens  int
 	OutputTokens int
 }
 
-// turnRequest is what one model call is sent: the conversation to show, without the
+// turnRequest is what one model call is sent. The conversation to show, without the
 // system prompt, which the agent carries.
 type turnRequest struct {
 	messages  []fantasy.Message
@@ -47,7 +49,7 @@ type turnRequest struct {
 //
 // Fantasy's Agent does the work of a step - the call, checking and repairing the
 // tool calls, running the tools - and this is what keeps the engine's own
-// conversation in step with it: it turns the agent's callbacks into events and
+// conversation in step with it. It turns the agent's callbacks into events and
 // into the messages the conversation is made of, in the order the engine has
 // always written them. One step is used for the whole run and reset per
 // iteration.
@@ -63,16 +65,18 @@ type step struct {
 	guard     *runawayGuard
 	runaway   *guardReason
 
-	// flushed is whether the turn's reasoning and words are in the conversation
-	// yet. They go in before the first tool call of the turn does, and are
-	// otherwise written once the model call is over.
+	/*
+		flushed is whether the turn's reasoning and words are in the conversation
+		yet. They go in before the first tool call of the turn does, and are
+		otherwise written once the model call is over.
+	*/
 	flushed bool
 
 	// terminalSeen is set when the turn calls a terminal tool. The run ends
 	// there, before any other call of the turn is acted on.
 	terminalSeen bool
 
-	// callsExhausted is set when the call budget runs out mid-turn; the calls
+	// callsExhausted is set when the call budget runs out mid-turn. The calls
 	// from there on are not run.
 	callsExhausted bool
 
@@ -114,7 +118,7 @@ func (e *Engine) providerOptions() fantasy.ProviderOptions {
 	return openaicompat.NewProviderOptions(options)
 }
 
-// guardedTool is a tool as fantasy runs it, with the engine looking on: it is
+// guardedTool is a tool as fantasy runs it, with the engine looking on. It is
 // where the conversation and the events learn of a call being made, in the same
 // order and at the same moments as ever - the request is written, and handed over,
 // before the tool runs, and the answer after.
@@ -123,7 +127,7 @@ type guardedTool struct {
 	step *step
 }
 
-// newAgent builds the agent a run uses: the instructions, and every tool - the
+// newAgent builds the agent a run uses. The instructions, and every tool - the
 // terminal ones too - wrapped so the engine sees each call.
 func (e *Engine) newAgent(state *step) fantasy.Agent {
 	offered := append([]fantasy.AgentTool(nil), e.options.Tools...)
@@ -139,7 +143,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 		fantasy.WithSystemPrompt(e.instructions()),
 		fantasy.WithTools(wrapped...),
 
-		// No retries here: the engine retries, on its own schedule and budget.
+		// No retries here. The engine retries, on its own schedule and budget.
 		fantasy.WithMaxRetries(0),
 	}
 
@@ -151,7 +155,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 }
 
 // repairToolCall is fantasy's own repair - mend the JSON - except for the tools
-// the engine was told never to repair, whose calls are refused as they stand.
+// the engine was told never to repair, whose calls are rejected as they stand.
 func (e *Engine) repairToolCall(_ context.Context, options fantasy.ToolCallRepairOptions) (*fantasy.ToolCallContent, error) { //nolint:gocritic // hugeParam: the callback type is fantasy's
 	call := options.OriginalToolCall
 
@@ -198,10 +202,12 @@ func (s *step) onReasoningDelta(_, delta string) error {
 func (s *step) onStreamFinish(usage fantasy.Usage, reason fantasy.FinishReason, _ fantasy.ProviderMetadata) error {
 	s.turn.FinishReason = reason
 
-	// the provider's own count, which reflects what it actually processed
-	// (server-side prompt caching and all) - never the local estimate
-	// fantasy reports the prompt without its cached part; zot has always
-	// counted the whole prompt, so the cached tokens are added back
+	/*
+		the provider's own count, which reflects what it actually processed
+		(server-side prompt caching and all) - never the local estimate
+		fantasy reports the prompt without its cached part. Zot has always
+		counted the whole prompt, so the cached tokens are added back
+	*/
 	if prompt := usage.InputTokens + usage.CacheReadTokens; prompt > 0 {
 		s.turn.InputTokens = int(prompt)
 	}
@@ -271,7 +277,7 @@ func (s *step) callOf(id string) fantasy.ToolCallContent {
 }
 
 // decodeInput reads a call's JSON input for the event that announces it. An empty
-// input is an empty object, and input that is not an object is nil: the raw text
+// input is an empty object, and input that is not an object is nil. The raw text
 // travels with the event either way.
 func decodeInput(input string) map[string]any {
 	input = strings.TrimSpace(input)
@@ -290,8 +296,8 @@ func decodeInput(input string) map[string]any {
 }
 
 // begin writes a call's request into the conversation and announces it. With
-// handOver set the conversation is given to the caller too, before the tool runs:
-// a shell call can outlast the run, and a run killed inside one must still leave
+// handOver set the conversation is given to the caller too, before the tool runs.
+// A shell call can outlast the run, and a run killed inside one must still leave
 // what the model thought and asked for.
 func (s *step) begin(call fantasy.ToolCallContent, handOver bool) {
 	*s.messages = append(*s.messages, activityMessage(conversation.ActivityRequest, call, nil, ""))
@@ -303,7 +309,7 @@ func (s *step) begin(call fantasy.ToolCallContent, handOver bool) {
 	}
 }
 
-// end writes a call's answer into the conversation and announces it: a failure
+// end writes a call's answer into the conversation and announces it. A failure
 // when there is one, otherwise the tool's output.
 func (s *step) end(call fantasy.ToolCallContent, output, failure string) {
 	if failure != "" {
@@ -319,7 +325,7 @@ func (s *step) end(call fantasy.ToolCallContent, output, failure string) {
 	*s.messages = append(*s.messages, activityMessage(conversation.ActivityResponse, call, output, ""))
 }
 
-// onToolResult records the calls that never reached a tool: one to a tool that
+// onToolResult records the calls that never reached a tool. One to a tool that
 // does not exist, or whose input could not be read even after repair. Fantasy
 // answers those itself, so the wrapper never sees them.
 func (s *step) onToolResult(result fantasy.ToolResultContent) error {
@@ -355,10 +361,12 @@ func (e *Engine) runStep(
 	messages *[]conversation.Message, budget *Budget,
 	emit func(Event),
 ) (turnResult, error) {
-	// A turn can end while the provider is still streaming - the runaway guard
-	// cuts a degenerate one short - so every exit from here cancels the stream,
-	// which closes the response body rather than leaving it open for the life
-	// of the process.
+	/*
+		A turn can end while the provider is still streaming - the runaway guard
+		cuts a degenerate one short - so every exit from here cancels the stream,
+		which closes the response body rather than leaving it open for the life
+		of the process.
+	*/
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -368,10 +376,10 @@ func (e *Engine) runStep(
 		Messages:        call.messages,
 		MaxOutputTokens: call.maxOutput,
 
-		// one step and no more: whether to go round again is the engine's call
+		// one step and no more. Whether to go round again is the engine's call
 		StopWhen: []fantasy.StopCondition{func([]fantasy.StepResult) bool { return true }},
 
-		// set on the call, not on the agent: Agent.Stream reads the repair function
+		// set on the call, not on the agent. Agent.Stream reads the repair function
 		// from the call alone
 		RepairToolCall: e.repairToolCall,
 
@@ -403,9 +411,11 @@ func (e *Engine) runStep(
 func (g guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	s := g.step
 
-	// A terminal call ends the run before anything else of its turn is acted on,
-	// and a spent call budget ends it before the call that would overrun it.
-	// Neither leaves a trace in the conversation.
+	/*
+		A terminal call ends the run before anything else of its turn is acted on,
+		and a spent call budget ends it before the call that would overrun it.
+		Neither leaves a trace in the conversation.
+	*/
 	if s.terminalSeen || s.callsExhausted || !s.spendCall() {
 		return fantasy.NewTextResponse("skipped"), nil
 	}
@@ -419,7 +429,7 @@ func (g guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	response, err := g.AgentTool.Run(ctx, call)
 
 	// a tool that ran and reported a problem is answered the same way as one that
-	// could not run: the model reads the failure and acts on it
+	// could not run. The model reads the failure and acts on it
 	if err == nil && response.IsError {
 		err = errors.New(response.Content)
 	}

@@ -106,7 +106,7 @@ func asParts(message *openaisdk.ChatCompletionMessageParamUnion) {
 }
 
 // contentArrayPrompt is the conversation as messages with every content sent as an
-// array of parts, and an empty one as []: what some servers' chat templates want,
+// array of parts, and an empty one as []. What some servers' chat templates want,
 // llama.cpp's among them, and reject a bare string without.
 func contentArrayPrompt(prompt fantasy.Prompt, provider, model string) ([]openaisdk.ChatCompletionMessageParamUnion, []fantasy.CallWarning) {
 	messages, warnings := openaicompat.ToPromptFunc(prompt, provider, model)

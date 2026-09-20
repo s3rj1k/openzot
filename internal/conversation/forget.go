@@ -8,19 +8,19 @@ import "encoding/json"
 //
 // Below the soft mark the whole conversation is sent. From the soft mark the
 // oldest message is forgotten on each request, so the conversation may still
-// drift upward between drops; at the hard mark as many go as it takes to be
+// drift upward between drops. At the hard mark as many go as it takes to be
 // under it. The soft zone is what keeps compaction cheap and gradual, the hard
 // mark is what keeps a request from ever being rejected for length.
 
 const (
-	// KeepNewest is how many of the newest messages are never forgotten, so one
+	// How many of the newest messages are never forgotten, so one
 	// oversized fresh tool result cannot evict the turn that has to interpret it.
 	keepNewest = 2
 )
 
-// forget returns the new offset into messages below which everything is
+// Forget returns the new offset into messages below which everything is
 // forgotten, given used - the estimated cost of the whole request - against a
-// window. From is the offset already in force; it never moves backwards.
+// window. The parameter from is the offset already in force. It never moves backwards.
 func Forget(messages []Message, from, used, window, soft, hard int, cost func(Message) int) int {
 	if used < window*soft/100 {
 		return from
@@ -42,7 +42,7 @@ func Forget(messages []Message, from, used, window, soft, hard int, cost func(Me
 	return from
 }
 
-// messageCost is what a message is priced at for trimming: its text plus the
+// messageCost is what a message is priced at for trimming. Its text plus the
 // tool call it carries.
 //
 // A tool call has almost all its cost outside the text - the name, arguments and

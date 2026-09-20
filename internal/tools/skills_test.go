@@ -96,7 +96,7 @@ func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 	}
 }
 
-// A run with no skills has no skills tool: nothing to list is not worth a tool
+// A run with no skills has no skills tool. Nothing to list is not worth a tool
 // in every request.
 func TestTheSkillsToolExistsOnlyWhenThereAreSkills(t *testing.T) {
 	if _, ok := findTool(New(maxToolOutput, nil), "skills"); ok {

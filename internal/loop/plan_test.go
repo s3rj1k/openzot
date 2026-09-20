@@ -68,7 +68,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("a plan still in the window needs no help", func(t *testing.T) {
-		// the plan's result is message 3: at the offset it is the oldest one held
+		// the plan's result is message 3. At the offset it is the oldest one held
 		for _, forgotten := range []int{2, 3} {
 			if _, ok := engine.repostedPlan(messages, forgotten); ok {
 				t.Errorf("the plan was posted while its result is still in the window (offset %d)", forgotten)
@@ -196,7 +196,7 @@ func TestThePlanGoesBackOnlyBelowTheMinimumTurns(t *testing.T) {
 	messages := history(12, strings.Repeat("file content ", 60))
 	marks := starts(messages)
 
-	// what the window holds when the decision is made: after forgetting, before
+	// what the window holds when the decision is made. After forgetting, before
 	// the plan is put back
 	probe := planEngine(t, &Options{ContextWindow: 4_000})
 	forgotten := 0
@@ -338,7 +338,7 @@ func TestPlanNudgeIsANotice(t *testing.T) {
 	}
 }
 
-// End to end: a long run in a small window loses the model's own plan call to
+// End to end. A long run in a small window loses the model's own plan call to
 // forgetting, and the run puts it back - the conversation and so the session log
 // hold both the original and the reposted call.
 func TestALongRunKeepsThePlanInView(t *testing.T) {

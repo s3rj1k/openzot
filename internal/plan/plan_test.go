@@ -6,7 +6,7 @@ import (
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model
-// sends them: JSON-decoded, so lists are []any and objects are map[string]any.
+// sends them. JSON-decoded, so lists are []any and objects are map[string]any.
 func taskCall(tasks ...map[string]any) map[string]any {
 	list := make([]any, 0, len(tasks))
 
@@ -51,7 +51,7 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 }
 
 // A model listing the work for the first time often leaves the status off. That
-// is a pending task, not a reason to refuse the list.
+// is a pending task, not a reason to reject the list.
 func TestATaskWithNoStatusIsPending(t *testing.T) {
 	tasks, err := ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
 	if err != nil {
@@ -64,7 +64,7 @@ func TestATaskWithNoStatusIsPending(t *testing.T) {
 }
 
 // Each of these is a mistake the model can correct once it is told what it was,
-// so each has to be refused with words that say so.
+// so each has to be rejected with words that say so.
 func TestParseTasksRefusesAMalformedList(t *testing.T) {
 	tests := []struct {
 		name string
@@ -123,7 +123,7 @@ func TestTheChecklistMarkersAreDistinct(t *testing.T) {
 }
 
 // The list reads back headed by how much of it is done, one marked line per task,
-// with the note beside it: on a long run the latest result is the one place the
+// with the note beside it. On a long run the latest result is the one place the
 // whole plan is always in view.
 func TestFormatTasksReadsTheListBack(t *testing.T) {
 	got := FormatTasks([]Task{

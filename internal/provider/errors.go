@@ -38,21 +38,21 @@ func IsProviderError(err error) bool {
 // IsRetriable reports whether an error is a transient provider failure worth
 // retrying.
 //
-// It goes by what the error is, never by what it says: gateways word the same
+// It goes by what the error is, never by what it says. Gateways word the same
 // condition differently, and matching prose turns a wording nobody anticipated
 // into a run that ends on a blip. For an error the provider answered with, that is
-// fantasy's own rule (ProviderError.IsRetryable): a 5xx, 408 or 409, an in-band
+// fantasy's own rule (ProviderError.IsRetryable). A 5xx, 408 or 409, an in-band
 // error frame, a stream that ended mid-turn, an HTTP/2 reset, or a response that
 // says so with x-should-retry. Anything else - a 4xx caused by the request itself,
 // such as a bad key or a model the provider does not have - would only burn the
 // budget. What fantasy's errors do not cover are the failures that never became a
-// provider answer: a connection reset or closed under the request (however far
+// provider answer. A connection reset or closed under the request (however far
 // the request had got - a peer that hangs up mid-write surfaces as a broken pipe
 // or a closed connection, not a reset), a bare EOF, and zot's own stall.
 //
-// 429 is deliberately excluded, though fantasy would retry it. A rate limit needs
+// 429 is by design excluded, though fantasy would retry it. A rate limit needs
 // Retry-After backoff, not a tight retry loop, and retrying it aggressively makes
-// the throttling worse; the caller checks IsRateLimited first.
+// the throttling worse. The caller checks IsRateLimited first.
 func IsRetriable(err error) bool {
 	if err == nil {
 		return false
@@ -83,7 +83,7 @@ func IsRateLimited(err error) bool {
 	return ok && found.StatusCode == http.StatusTooManyRequests
 }
 
-// parseRetryAfter reads the two forms the Retry-After header takes: a count of
+// parseRetryAfter reads the two forms the Retry-After header takes. A count of
 // seconds, and an HTTP-date to wait until. A date already in the past is advice
 // to retry now, not a negative sleep.
 func parseRetryAfter(header string) (time.Duration, bool) {
@@ -98,7 +98,7 @@ func parseRetryAfter(header string) (time.Duration, bool) {
 			return 0, true
 		}
 
-		// saturate rather than overflow: a count too large for the nanosecond
+		// saturate rather than overflow. A count too large for the nanosecond
 		// arithmetic would wrap negative and slip under the caller's cap
 		if int64(seconds) > math.MaxInt64/int64(time.Second) {
 			return time.Duration(math.MaxInt64), true
@@ -123,7 +123,7 @@ func parseRetryAfter(header string) (time.Duration, bool) {
 // whether it advised one at all.
 //
 // This is the half of the rate-limit contract that makes excluding 429 from
-// IsRetriable defensible: the caller does not loop, it waits for as long as the
+// IsRetriable defensible. The caller does not loop, it waits for as long as the
 // provider asked. A delay of zero with ok true means "now" rather than "no advice".
 func RetryAfter(err error) (time.Duration, bool) {
 	found, ok := providerError(err)
@@ -142,7 +142,7 @@ func RetryAfter(err error) (time.Duration, bool) {
 
 // contextLimitPatterns identify a prompt that exceeded the model's window.
 //
-// This is recoverable in a way most 4xx are not: the run can trim harder and try
+// This is recoverable in a way most 4xx are not. The run can trim harder and try
 // again rather than failing. Detecting it needs prose because providers report
 // it as a generic 400 with no distinguishing code.
 var contextLimitPatterns = []*regexp.Regexp{
@@ -158,7 +158,7 @@ var contextLimitPatterns = []*regexp.Regexp{
 }
 
 // maximumContextPattern pulls the real window out of the rejection. When a
-// provider refuses a prompt for length it states the actual limit, and that is
+// provider rejects a prompt for length it states the actual limit, and that is
 // ground truth in a way the configured window may not be.
 var maximumContextPattern = regexp.MustCompile(`(?i)maximum context length is\s+(\d+)\s+tokens`)
 
@@ -166,7 +166,7 @@ var maximumContextPattern = regexp.MustCompile(`(?i)maximum context length is\s+
 var usedTokensPattern = regexp.MustCompile(`(?i)resulted in\s+(\d+)\s+tokens`)
 
 // contextLimitSafetyRatio is how much of the stated window to aim for on retry.
-// Not all of it: the window has to hold the answer too, and the rebuilt prompt
+// Not all of it. The window has to hold the answer too, and the rebuilt prompt
 // carries slightly different overhead.
 const contextLimitSafetyRatio = 0.85
 
@@ -234,18 +234,20 @@ func DetectContextLimit(err error) (ContextLimit, bool) {
 	return limit, true
 }
 
-// Failure is the wire evidence behind a provider refusal. It is recorded in the
+// Failure is the wire evidence behind a provider rejection. It is recorded in the
 // session log as it is, so its JSON tags are the log's schema.
 type Failure struct {
-	// Status is the HTTP status of the refusal.
+	// Status is the HTTP status of the rejection.
 	Status int `json:"status"`
 
 	// ResponseBody is the raw (bounded) body the provider returned.
 	ResponseBody string `json:"response_body,omitempty"`
 
-	// RequestBytes is the size of the request that was refused - against a
-	// suspected context ceiling, the number that turns a correlation into a
-	// diagnosis.
+	/*
+		RequestBytes is the size of the request that was rejected - against a
+		suspected context ceiling, the number that turns a correlation into a
+		diagnosis.
+	*/
 	RequestBytes int `json:"request_bytes,omitzero"`
 }
 

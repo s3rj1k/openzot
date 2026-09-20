@@ -25,7 +25,7 @@ import (
 )
 
 // headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does: an error behind the run as itself, otherwise an agent-declared
+// viewer does. An error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
 func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
@@ -54,7 +54,7 @@ func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loo
 }
 
 // TestMain gives every test a stand-in for the terminal and the full-screen
-// viewer, which need a real TTY: the stand-in runs the agent to its ending and
+// viewer, which need a real TTY. The stand-in runs the agent to its ending and
 // prints what it said, so a test can assert on the run without a screen.
 func TestMain(m *testing.M) {
 	isTerminal = func() bool { return true }
@@ -63,13 +63,13 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// orderText is an order file with the given objective and the smallest prompt
-// that uses it: the contract is not in it, because the run supplies that.
+// orderText is an order file with the given goal and the smallest prompt
+// that uses it. The contract is not in it, because the run supplies that.
 func orderText(objective string) string {
 	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n{{ .Objective }}\n"
 }
 
-// orderFileIn writes an order with the given objective to dir/name.
+// orderFileIn writes an order with the given goal to dir/name.
 func orderFileIn(t *testing.T, dir, name, objective string) string {
 	t.Helper()
 
@@ -90,7 +90,7 @@ func orderFile(t *testing.T, objective string) string {
 
 // withArgs runs a function with a fresh flag set and the given argv, so command()
 // can be exercised the way the shell invokes it. It chdirs into --dir, so the
-// working directory is put back afterwards: a later test must not inherit a
+// working directory is put back afterwards. A later test must not inherit a
 // temp directory that is already gone.
 func withArgs(t *testing.T, args ...string) {
 	t.Helper()
@@ -98,7 +98,7 @@ func withArgs(t *testing.T, args ...string) {
 	originalArgs := os.Args
 	originalFlags := pflag.CommandLine
 
-	// command chdirs into --dir; this registers the return to where the test began
+	// command chdirs into --dir. This registers the return to where the test began
 	t.Chdir(".")
 
 	os.Args = append([]string{"zot"}, args...)
@@ -111,7 +111,7 @@ func withArgs(t *testing.T, args ...string) {
 	})
 }
 
-// With no terminal there is nothing to show a run in, so zot refuses before it
+// With no terminal there is nothing to show a run in, so zot rejects before it
 // reads an order or touches a provider.
 func TestRunNeedsATerminal(t *testing.T) {
 	original := isTerminal
@@ -194,7 +194,7 @@ func TestLoadOrderFailsUpFront(t *testing.T) {
 	}
 }
 
-// Someone typing prose where an order file goes is the retraining moment: the
+// Someone typing prose where an order file goes is the retraining moment. The
 // error has to teach the new shape, not just report a missing file.
 func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	_, err := loadOrder([]string{"add a health endpoint"})
@@ -207,7 +207,7 @@ func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	}
 }
 
-// quietStderr silences stderr for a test that deliberately triggers the usage
+// quietStderr silences stderr for a test that by design triggers the usage
 // block.
 func quietStderr(t *testing.T) {
 	t.Helper()
@@ -228,7 +228,7 @@ func quietStderr(t *testing.T) {
 	})
 }
 
-// One order per invocation: none is told how to make one, several are told to
+// One order per invocation. None is told how to make one, several are told to
 // run them one at a time.
 func TestLoadOrderNeedsExactlyOne(t *testing.T) {
 	quietStderr(t)
@@ -325,7 +325,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 		}
 	}
 
-	// --dir belongs to both shapes: where a run works, and where `zot new`
+	// --dir belongs to both shapes. Where a run works, and where `zot new`
 	// scaffolds - someone standing outside the project needs it either way
 	if n := strings.Count(text, litDir); n < 2 {
 		t.Errorf("usage should document --dir for both running an order and `zot new` (%d mentions):\n%s", n, text)
@@ -341,7 +341,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 		t.Errorf("usage still mentions --orders-dir:\n%s", text)
 	}
 
-	// ACP is gone: zot runs unattended and has no protocol server
+	// ACP is gone. Zot runs unattended and has no protocol server
 	if strings.Contains(strings.ToLower(text), "acp") {
 		t.Errorf("usage still mentions acp:\n%s", text)
 	}
@@ -356,7 +356,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 }
 
 // The CLI uses pflag (GNU-style), so a flag may appear AFTER the positional
-// order paths: `zot orders/a.md --dir proj` parses --dir as a flag and keeps
+// order paths. `zot orders/a.md --dir proj` parses --dir as a flag and keeps
 // the paths intact. The stdlib flag package stopped at the first non-flag,
 // folding the flag into the positionals - this locks the behavior that
 // motivated the switch.
@@ -421,7 +421,7 @@ func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
 }
 
 // captureStderr collects what a function prints to stderr. Stdout and stderr are
-// worth telling apart: stdout is the transcript, stderr is where zot talks about
+// worth telling apart. Stdout is the transcript, stderr is where zot talks about
 // itself, and something that belongs on one must not leak onto the other.
 func captureStderr(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
@@ -429,12 +429,12 @@ func captureStderr(t *testing.T, fn func() error) (string, error) {
 	return capture(t, &os.Stderr, fn)
 }
 
-// Everything the config can say, the config alone says: a flag that duplicated a
+// Everything the config can say, the config alone says. A flag that duplicated a
 // key would be a second place to look for what a run was told.
 func TestConfigKeysAreNotFlags(t *testing.T) {
 	withArgs(t, "--config", filepath.Join(t.TempDir(), "missing.yaml"), orderFile(t, "a task"))
 
-	_, _ = captureStderr(t, func() error { return command() })
+	_, _ = captureStderr(t, command)
 
 	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color", "orders-dir"} {
 		if pflag.CommandLine.Lookup(name) != nil {
@@ -480,9 +480,9 @@ func TestRunRequiresAnOrder(t *testing.T) {
 	}
 }
 
-// The whole path: argv in, config resolved, provider called, transcript out.
+// The whole path. Argv in, config resolved, provider called, transcript out.
 func TestRunEndToEnd(t *testing.T) {
-	// the run's log lands under --dir, which defaults to here: keep it out of the
+	// the run's log lands under --dir, which defaults to here. Keep it out of the
 	// source tree
 	t.Chdir(t.TempDir())
 
@@ -553,16 +553,16 @@ provider:
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// The whole loop of the new order: zot new scaffolds the file with the full
-// prompt in it, the operator writes the objective, and what the model is sent is
-// that prompt rendered - the objective, the tools the run really has, where it is
+// The whole loop of the new order. Zot new scaffolds the file with the full
+// prompt in it, the operator writes the goal, and what the model is sent is
+// that prompt rendered - the goal, the tools the run really has, where it is
 // working, and the project's AGENTS.md, with the contract once.
 func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 	project := t.TempDir()
 
 	mustWrite(t, filepath.Join(project, "AGENTS.md"), "Always mention PINECONE.")
 
-	// the operator fills in the objective and a criterion and leaves the prompt as
+	// the operator fills in the goal and a criterion and leaves the prompt as
 	// zot wrote it
 	withEditor(t, `sed -i 's/^objective:$/objective: build the parser\nacceptance:\n  - it parses/' "$1"`)
 
@@ -637,7 +637,7 @@ provider:
 	}
 }
 
-// A run pointed at another directory works end to end: every relative path on
+// A run pointed at another directory works end to end. Every relative path on
 // the command line - --config, the order itself - resolves from
 // the invoking directory before zot chdirs into --dir, the session records the
 // real working directory, and project context comes from --dir.
@@ -652,13 +652,13 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// project context that only exists inside --dir: if either reaches the
+	// project context that only exists inside --dir. If either reaches the
 	// provider, it was loaded from the right tree
 	if err := os.WriteFile(filepath.Join(target, "AGENTS.md"), []byte("# Project context\n\nAlways mention PINECONE.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// a relative skills_dir means the project: the skills tool only exists if
+	// a relative skills_dir means the project. The skills tool only exists if
 	// this folder, inside --dir, was found
 	mustWrite(t, filepath.Join(target, "skills", "deploy", "SKILL.md"),
 		"---\nname: deploy\ndescription: ship it\n---\nDeploy carefully.\n")
@@ -739,8 +739,8 @@ provider:
 	}
 }
 
-// A run gets its own log, named after its order, with its own recorded outcome;
-// an order that does not end in success fails the run.
+// A run gets its own log, named after its order, with its own recorded outcome.
+// An order that does not end in success fails the run.
 func TestRunAnOrder(t *testing.T) {
 	settle := func(name, args string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -812,8 +812,8 @@ provider:
 	})
 }
 
-// A model with no context window is refused before any request, and the error
-// names the model and the key to set: there is no table to guess from.
+// A model with no context window is rejected before any request, and the error
+// names the model and the key to set. There is no table to guess from.
 func TestRunRefusesAModelWithNoContextWindow(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
@@ -868,7 +868,7 @@ func TestRunRejectsAMissingConfigFile(t *testing.T) {
 	}
 }
 
-// A run leaves a record: one log per order, in .zot/orders of the project,
+// A run leaves a record. One log per order, in .zot/orders of the project,
 // with the task and the outcome. Running the order again appends a new run to
 // the same log rather than starting another file.
 func TestRunRecordsASession(t *testing.T) {
@@ -916,7 +916,7 @@ provider:
 
 	first := readLog(t, logPath)
 
-	// the task is the durable objective, recorded in the meta (and placed in the
+	// the task is the durable goal, recorded in the meta (and placed in the
 	// instructions), not as the opening user message
 	meta := first[0]
 
@@ -956,7 +956,7 @@ provider:
 	}
 }
 
-// The tasks tool end to end: a model lists its work, keeps going, and settles.
+// The tasks tool end to end. A model lists its work, keeps going, and settles.
 // The real tool handler answers the call, so the run carries on to a second turn
 // instead of ending on the list.
 func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
@@ -1052,7 +1052,7 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 
 // The example config is what `zot config` writes on first run, so it is the
 // first thing most people ever edit. Its knobs drifting from the code's own
-// defaults is not cosmetic: someone copies it, changes nothing, and gets
+// defaults is not cosmetic. Someone copies it, changes nothing, and gets
 // different behavior from someone who has no config file at all. The provider
 // and model are the exception - there are no defaults for those, and the
 // example shows the shape of declaring them.

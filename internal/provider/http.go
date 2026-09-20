@@ -12,14 +12,14 @@ import (
 
 // The bounds on a turn.
 //
-// None of them is a wall-clock cap on the exchange, and that is deliberate: an
+// None of them is a wall-clock cap on the exchange, and that is on purpose. An
 // http.Client.Timeout covers the body read as well, so it kills a stream that is
 // actively producing tokens - and it does so with "Client.Timeout exceeded while
 // reading body", which no retry classifier recognizes, ending the run. A
 // reasoning model can think for minutes before its first token and stream for
-// many more after it; a turn that is still producing is working, not hung.
+// many more after it. A turn that is still producing is working, not hung.
 //
-// What is bounded instead is silence: how long to wait for a connection, for the
+// What is bounded instead is silence. How long to wait for a connection, for the
 // response head, and - see stallReader - between two reads of the body.
 const (
 	dialTimeout           = 30 * time.Second
@@ -28,11 +28,11 @@ const (
 
 // streamStallTimeout is how long a stream may say nothing at all before it is
 // treated as hung. A variable only so tests can drive it without waiting
-// minutes; it is not a configuration knob.
+// minutes. It is not a configuration knob.
 var streamStallTimeout = 10 * time.Minute
 
 // newHTTPClient builds the shared transport, bounding the phases that can hang
-// without bounding the one that legitimately takes a long time.
+// without bounding the one that takes a long time.
 func newHTTPClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 
@@ -54,7 +54,7 @@ type stallTransport struct {
 //
 // The deadline moves forward on every read that returns data, so a turn is only
 // ever cut off once it stops saying anything at all. Firing closes the body,
-// which unblocks the read the consumer is parked in; the error that surfaces is
+// which unblocks the read the consumer is parked in. The error that surfaces is
 // replaced with one naming the stall, because "use of closed network connection"
 // is neither true nor recognizable as transient.
 type stallReader struct {

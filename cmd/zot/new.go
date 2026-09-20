@@ -18,7 +18,7 @@ import (
 	"github.com/openzot/openzot/internal/order"
 )
 
-// openInEditor opens a file in the user's editor and waits for it to close:
+// openInEditor opens a file in the user's editor and waits for it to close.
 // $VISUAL, then $EDITOR, then the first of nano, vi and vim that is installed.
 // With none of them it prints the path and says so, since the file itself is
 // already in place.
@@ -50,7 +50,7 @@ func openInEditor(path string) error {
 // <dir>/.zot/orders when --dir names another working directory - and opens it
 // in the editor, the way `zot config` opens the config.
 //
-// It takes no prose. The objective, the acceptance criteria and the constraints
+// It takes no prose. The goal, the acceptance criteria and the constraints
 // are written where they can be reviewed, in the file, not squeezed onto a
 // command line. The file is named for the moment it was made, so there is
 // nothing to invent and the orders sort in the order they were written.
@@ -81,9 +81,11 @@ func newOrder(args []string, out io.Writer) error {
 		return err
 	}
 
-	// An order left exactly as it was made is not an order, and a blank one lying
-	// in .zot/orders would only fail when someone ran it. Nothing was written, so
-	// nothing is kept.
+	/*
+		An order left exactly as it was made is not an order, and a blank one lying
+		in .zot/orders would only fail when someone ran it. Nothing was written, so
+		nothing is kept.
+	*/
 	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() { //nolint:gosec // G304: the order path is the one the operator named
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("remove the unedited order: %w", err)
@@ -101,7 +103,7 @@ func newOrder(args []string, out io.Writer) error {
 
 // editConfig ensures the config file exists - seeding it from the embedded
 // template on first run - and opens it in the user's editor. This is the setup
-// path: configure the provider, model and key by editing the file.
+// path. Configure the provider, model and key by editing the file.
 func editConfig() error {
 	path := config.DefaultConfigPath()
 

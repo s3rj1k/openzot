@@ -5,10 +5,10 @@ import "encoding/json"
 // A tool call and its result, as first-class fields rather than a bag of keys.
 //
 // The engine used to carry these in a `map[string]any` under a `meta.activity`
-// key, inherited from a hosted API whose messages are a generic envelope: one
+// key, inherited from a hosted API whose messages are a generic envelope. One
 // shape that has to carry attachments, ratings, triggers and a dozen other
 // things zot has no concept of. Zot has exactly one thing to put there - a tool
-// call - and a map buys nothing for it: every read is a type assertion that can
+// call - and a map buys nothing for it. Every read is a type assertion that can
 // fail silently, a misspelled key is a compile-time success and a runtime no-op,
 // and nothing tells you which keys are expected.
 //
@@ -25,8 +25,8 @@ const (
 	// ActivityResponse is what the tool returned.
 	ActivityResponse ActivityKind = "response"
 
-	// ActivityTrigger is an instruction to act now, carrying no call. Retained
-	// because a conversation loaded from elsewhere can hold one; the engine
+	// ActivityTrigger is an instruction to act now, carrying no call. Kept
+	// because a conversation loaded from elsewhere can hold one. The engine
 	// never produces them.
 	ActivityTrigger ActivityKind = "trigger"
 )
@@ -42,9 +42,11 @@ type Activity struct {
 	// Name is the tool being called.
 	Name string `json:"name,omitempty"`
 
-	// Arguments is the call's arguments as the provider sent them - a JSON
-	// string, kept verbatim rather than decoded, because it is replayed to the
-	// provider exactly as received and re-encoding could change it.
+	/*
+		Arguments is the call's arguments as the provider sent them - a JSON
+		string, kept verbatim rather than decoded, because it is replayed to the
+		provider exactly as received and re-encoding could change it.
+	*/
 	Arguments string `json:"arguments,omitempty"`
 
 	// Result is what the tool returned, on a response. Whatever a handler
@@ -57,8 +59,8 @@ type Activity struct {
 
 // IsPair reports whether two activities are the two halves of one call.
 //
-// Identity wins when both sides have one: providers issue a call id precisely so
-// a result can name its call, and two identical calls in the same turn are only
+// Identity wins when both sides have one. Providers issue a call id precisely so
+// a result can name its call, and two matching calls in the same turn are only
 // distinguishable that way. Name and arguments are the fallback, for histories
 // reconstructed from somewhere that did not keep ids.
 func (a *Activity) IsPair(other *Activity) bool {
@@ -84,7 +86,7 @@ func (a *Activity) IsPair(other *Activity) bool {
 	return a.Name == other.Name && a.Arguments == other.Arguments
 }
 
-// Output is what a response reports back, for comparison: the failure if there
+// Output is what a response reports back, for comparison. The failure if there
 // was one, otherwise the result.
 func (a *Activity) Output() any {
 	if a.Failure != "" {

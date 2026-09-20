@@ -144,7 +144,7 @@ func TestStreamAcceptsBothReasoningFields(t *testing.T) {
 }
 
 func TestStreamCapturesUsage(t *testing.T) {
-	// the shape real servers send: a trailing chunk with no choices
+	// the shape real servers send. A trailing chunk with no choices
 	trailing := collect(frames(t,
 		`{"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}`,
 		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}`,
@@ -289,7 +289,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 	}
 }
 
-// The shape of everything sent: the credential and model, the endpoint, the
+// The shape of everything sent. The credential and model, the endpoint, the
 // limit under the field every OpenAI-compatible server reads, and the tools.
 func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 	var seen wireRequest
@@ -367,7 +367,7 @@ func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 }
 
 // A model name that a hosted provider also uses must not change the wire
-// format: this is a chat-completions endpoint whatever the name says.
+// format. This is a chat-completions endpoint whatever the name says.
 func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
 	var seen wireRequest
 
@@ -379,7 +379,7 @@ func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
 }
 
 // A tool that produced no output still answers its call, and the message
-// carries its content: a server that validates the shape rejects one without.
+// carries its content. A server that validates the shape rejects one without.
 func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	prompt := fantasy.Prompt{
 		fantasy.NewUserMessage("go"),
@@ -417,7 +417,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	}
 }
 
-// Off by default: every endpoint zot reaches out of the box takes the string.
+// Off by default. Every endpoint zot reaches out of the box takes the string.
 func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 	var seen wireRequest
 
@@ -597,7 +597,7 @@ func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 	}
 }
 
-// A long turn is not a hung one: only silence is bounded, so a stream that keeps
+// A long turn is not a hung one. Only silence is bounded, so a stream that keeps
 // producing must not be cut off however long it runs.
 func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 	withStallTimeout(t, 300*time.Millisecond)
@@ -667,7 +667,7 @@ func TestAStalledStreamFailsRetriably(t *testing.T) {
 	}
 }
 
-// The silence bound covers the error path too: a server that sends a status and
+// The silence bound covers the error path too. A server that sends a status and
 // then holds the body open must not park the run.
 func TestAnErrorResponseWithAStalledBodyDoesNotWedge(t *testing.T) {
 	withStallTimeout(t, 100*time.Millisecond)

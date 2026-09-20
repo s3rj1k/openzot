@@ -9,7 +9,7 @@ import (
 )
 
 // DigestStatus maps a run's stop reason and exit code to the one human word a
-// digest shows: "done", "failed", or "canceled".
+// digest shows. "done", "failed", or "canceled".
 func DigestStatus(reason string, code int) string {
 	switch reason {
 	case string(loop.StopAborted):
@@ -32,7 +32,7 @@ func DigestStatus(reason string, code int) string {
 // operator what the run spent or where its record is. The digest is a small,
 // fixed block that survives on the main screen and carries both.
 type Digest struct {
-	// Status is the human-readable ending: "done", "failed", "canceled".
+	// Status is the human-readable ending. "done", "failed", "canceled".
 	Status string
 
 	// Session is the log the run was appended to, empty when none was written.
@@ -53,12 +53,12 @@ type Digest struct {
 
 // RenderDigest formats a Digest as an aligned two-column block.
 //
-// The shape is deliberately the simplest thing that is both readable and
-// trivial to parse: one row per line, a single-word key, then the value as the
+// The shape is by design the simplest thing that is both readable and
+// trivial to parse. One row per line, a single-word key, then the value as the
 // rest of the line. A consumer splits each line on its first run of spaces -
 // key left, value right - with no quoting or escaping to handle, because every
 // key is one token and every value is free to contain spaces. No borders, no
-// ANSI: a block that survives being piped through `grep` or `awk` unharmed.
+// ANSI. A block that survives being piped through `grep` or `awk` unharmed.
 //
 // Empty fields are omitted rather than shown blank, so a run with no session
 // simply has no session row.
@@ -86,9 +86,11 @@ func RenderDigest(d Digest) string {
 	)
 
 	if m := strings.TrimSpace(d.Message); m != "" {
-		// A multi-line message would break the one-row-per-line contract, so it
-		// is flattened to a single line - the digest is a pointer to the full
-		// record, not the record itself.
+		/*
+			A multi-line message would break the one-row-per-line contract, so it
+			is flattened to a single line - the digest is a pointer to the full
+			record, not the record itself.
+		*/
 		rows = append(rows, row{"message", strings.Join(strings.Fields(m), " ")})
 	}
 

@@ -47,7 +47,7 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 		t.Errorf("objective = %q", o.Objective)
 	}
 
-	// the book is one dotted directory: zot does not claim the generic
+	// the book is one dotted directory. Zot does not claim the generic
 	// top-level names in the root of somebody else's project
 	if _, err := os.Stat("orders"); err == nil {
 		t.Errorf("a top-level orders/ was created; the book lives under %s", order.BookDir)
@@ -122,7 +122,7 @@ func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 	}
 }
 
-// An editor that fails must not cost the operator the file: they may have
+// An editor that fails must not cost the operator the file. They may have
 // written the order before it went wrong.
 func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -158,7 +158,7 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 	}
 }
 
-// editConfig is the setup path: it must create the config from the template on
+// editConfig is the setup path. It must create the config from the template on
 // first run, and say something useful when there is no editor to open it with.
 func TestEditConfigSeedsTheTemplate(t *testing.T) {
 	dir := t.TempDir()
@@ -192,7 +192,7 @@ func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
 
 	t.Setenv("ZOT_CONFIG", path)
 
-	// a no-op "editor" that just succeeds; $VISUAL wins over $EDITOR, which here
+	// a no-op "editor" that just succeeds. $VISUAL wins over $EDITOR, which here
 	// would fail the edit if it were the one run
 	t.Setenv("VISUAL", "true")
 	t.Setenv("EDITOR", "false")

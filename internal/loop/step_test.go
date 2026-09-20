@@ -38,7 +38,7 @@ func countTool(calls *int) fantasy.AgentTool {
 	})
 }
 
-// A terminal call ends the run before anything else of its turn is acted on: a
+// A terminal call ends the run before anything else of its turn is acted on. A
 // shell command in the same turn as "success" is not run, and leaves nothing in
 // the conversation.
 func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
@@ -69,7 +69,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 }
 
 // The call that would overrun the budget is not made, and does not leave a
-// request with no answer behind: the next request would be invalid.
+// request with no answer behind. The next request would be invalid.
 func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 	ran := 0
 
@@ -125,7 +125,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 }
 
 // A turn cut off at the output limit can carry a call whose arguments were cut
-// off with it. It is never run; the model is asked to continue.
+// off with it. It is never run. The model is asked to continue.
 func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	ran := 0
 
@@ -150,7 +150,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 }
 
 // The engine never leaves a conversation ending on the model's own words, but
-// one it is handed might; fantasy will not start from it, so it is given a line
+// one it is handed might. Fantasy will not start from it, so it is given a line
 // to continue from rather than failing the run.
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 	result := run(t, &Options{
@@ -168,7 +168,7 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 }
 
 // A call to a tool that does not exist, or with input that cannot be read, is
-// answered by fantasy without the tool being touched. It is still a call: it
+// answered by fantasy without the tool being touched. It is still a call. It
 // counts, and it is written into the conversation as a request and a failure.
 func TestACallThatNeverReachedATool(t *testing.T) {
 	result := run(t, &Options{
@@ -195,7 +195,7 @@ func TestACallThatNeverReachedATool(t *testing.T) {
 }
 
 // A tool the engine was told never to repair is given no input the model did not
-// finish writing: a command cut off mid-string goes back to the model, and does
+// finish writing. A command cut off mid-string goes back to the model, and does
 // not run. The same slip in an ordinary tool is mended and the tool runs.
 func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 	unfinished := `{"value": "rm -rf build`
@@ -270,7 +270,7 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 	return body
 }
 
-// A model's reasoning_effort and extra_body go out with every request; a model
+// A model's reasoning_effort and extra_body go out with every request. A model
 // with neither sends a request without them.
 func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 	body := bodyOfTheFirstRequest(t, func(c *provider.ClientConfig) {
@@ -327,8 +327,8 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	}
 }
 
-// A model calling a tool with no parameters often sends "" for the arguments;
-// the call is announced with an empty object, not with nothing.
+// A model calling a tool with no parameters often sends "" for the arguments.
+// The call is announced with an empty object, not with nothing.
 func TestAnEmptyInputIsAnEmptyObject(t *testing.T) {
 	for _, input := range []string{"", "  ", "{}"} {
 		if arguments := decodeInput(input); arguments == nil || len(arguments) != 0 {

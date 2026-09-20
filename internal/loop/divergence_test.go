@@ -31,7 +31,7 @@ type notPortable struct {
 
 // notPortableCases is the complete set for this package.
 //
-// All three are the same hazard: a value containing a reference cycle. JSON has
+// All three are the same hazard. A value containing a reference cycle. JSON has
 // no way to express one, so they could not be seeded - but the question
 // survives the port, because a malformed payload from a provider must not be
 // the thing that aborts a run. A cycle check that panics is worse than no cycle
@@ -62,7 +62,7 @@ var notPortableCases = []notPortable{
 	},
 }
 
-// A replacement that no longer exists means the case was quietly dropped while
+// A replacement that no longer exists means the case was dropped while
 // the record still reads as though it were handled.
 func TestEveryNotPortableCaseHasItsReplacement(t *testing.T) {
 	sources, err := filepath.Glob("*_test.go")

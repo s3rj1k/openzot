@@ -1,4 +1,4 @@
-// Package skills loads a folder of skills into memory: subdirectories each
+// Package skills loads a folder of skills into memory. Subdirectories each
 // holding a SKILL.md of instructions the model reads when it decides the skill
 // applies. Serving them to the model is the tools package's job.
 package skills
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// Skill is one skill, loaded into memory at startup: a directory holding a
+// Skill is one skill, loaded into memory at startup. A directory holding a
 // SKILL.md of instructions the model reads when it decides the skill applies.
 // Until it does, only the name and a short description reach the conversation.
 type Skill struct {
@@ -35,7 +35,7 @@ const frontMatterFence = "---"
 
 // parseSkill reads the name and description out of a SKILL.md.
 //
-// Front matter is preferred; the first heading-free line is the fallback so a
+// Front matter is preferred. The first heading-free line is the fallback so a
 // skill written without front matter still works.
 func parseSkill(directoryName, dir, content string) Skill {
 	skill := Skill{Name: directoryName, Dir: dir, Content: content}
@@ -91,8 +91,8 @@ func parseSkill(directoryName, dir, content string) Skill {
 // A skill is a subdirectory containing a SKILL.md whose front matter supplies
 // the name and description. A subdirectory without one is skipped rather than
 // treated as an error - a skills folder routinely contains other things. Dir
-// itself must exist: it was named in the config, so a typo should stop the run
-// at startup rather than quietly leave the model without its skills.
+// itself must exist. It was named in the config, so a typo should stop the run
+// at startup rather than leave the model without its skills.
 func Load(dir string) ([]Skill, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

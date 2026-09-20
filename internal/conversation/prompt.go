@@ -28,9 +28,9 @@ func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt
 	return kept
 }
 
-// toPrompt renders the conversation into the prompt a model call carries.
+// ToPrompt renders the conversation into the prompt a model call carries.
 //
-// Activity messages are the interesting case: a request half becomes an
+// Activity messages are the interesting case. A request half becomes an
 // assistant turn carrying a tool call, and a response half becomes a tool
 // message referencing the same id. Providers validate that pairing, so a
 // response whose request was trimmed away is dropped rather than sent.
@@ -40,9 +40,11 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 		pending = map[string]bool{}
 	)
 
-	// repair the history before rendering it: a provider rejects the whole
-	// request rather than the invalid part, so anything left unpaired here ends
-	// an otherwise healthy run with an opaque 400
+	/*
+		repair the history before rendering it. A provider rejects the whole
+		request rather than the invalid part, so anything left unpaired here ends
+		an otherwise healthy run with an opaque 400
+	*/
 	for _, message := range Organize(messages) {
 		switch message.Type {
 		case TypeActivity:
@@ -92,9 +94,11 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 			})
 
 		case TypeReasoning:
-			// the reasoning channel is not replayed: providers reject their own
-			// reasoning content on the way back in, and it is the model's
-			// scratchpad rather than conversation
+			/*
+				the reasoning channel is not replayed. Providers reject their own
+				reasoning content on the way back in, and it is the model's
+				scratchpad rather than conversation
+			*/
 
 		case TypeInstructions:
 			prompt = append(prompt, fantasy.NewSystemMessage(message.Text))
@@ -105,7 +109,7 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 	}
 
 	// an assistant turn requesting a call that never got a result leaves the
-	// conversation invalid; drop the dangling halves
+	// conversation invalid. Drop the dangling halves
 	if len(pending) > 0 {
 		prompt = dropDangling(prompt, pending)
 	}

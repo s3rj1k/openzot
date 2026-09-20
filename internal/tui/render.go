@@ -40,7 +40,7 @@ func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
 
 // truncate flattens a string to one line and caps it at max characters.
 //
-// Characters, not bytes: slicing bytes cuts a multi-byte rune in half, so a task
+// Characters, not bytes. Slicing bytes cuts a multi-byte rune in half, so a task
 // or tool argument in CJK or emoji rendered a replacement character - and the
 // cap bit far earlier than the width it was given, since one glyph can be four
 // bytes.
@@ -65,7 +65,7 @@ func renderTasks(args map[string]any) string {
 
 	tasks, err := plan.ParseTasks(args)
 	if err != nil {
-		// the call itself is refused with the reason, so the log has nothing
+		// the call itself is rejected with the reason, so the log has nothing
 		// worth drawing beyond the header
 		return head
 	}
@@ -113,9 +113,9 @@ func pad(s string, n int) string {
 
 // renderToolStart turns a tool invocation into one or more styled log lines.
 //
-// The built-in tools each get a tailored, scannable representation; anything a
+// The built-in tools each get a tailored, scannable representation. Anything a
 // caller has added falls through to a generic one. The names here are the names
-// in the tools package - a mismatch is not a compile error, it just quietly
+// in the tools package - a mismatch is not a compile error, it just
 // renders the agent's most-used tool as an anonymous key/value dump.
 func renderToolStart(name string, args map[string]any) string {
 	switch name {
@@ -128,7 +128,7 @@ func renderToolStart(name string, args map[string]any) string {
 	}
 }
 
-// renderOutputLines renders captured output. It does not cap it: how much of a
+// renderOutputLines renders captured output. It does not cap it. How much of a
 // record fits is the viewer's call, made against the terminal's height (see
 // model.wrapRecord).
 func renderOutputLines(text string) string {
@@ -150,7 +150,7 @@ func renderOutputLines(text string) string {
 // renderTextResult summarizes a string result.
 //
 // A shell command's output is the thing the operator most wants to see, so it is
-// echoed; how much of it stays on screen is the viewer's call (see
+// echoed. How much of it stays on screen is the viewer's call (see
 // model.wrapRecord).
 func renderTextResult(name, text string) string {
 	trimmed := strings.TrimRight(text, "\n")
@@ -190,7 +190,7 @@ func commandOutput(m map[string]any) string {
 // renderToolEnd produces an optional follow-up line summarizing a tool result.
 // It returns "" when there is nothing worth showing.
 //
-// Zot's tools return plain strings, so that is the case handled first; the map
+// Zot's tools return plain strings, so that is the case handled first. The map
 // form is kept for a caller whose own tool returns something structured.
 func renderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
@@ -229,7 +229,7 @@ func renderToolEnd(name string, result any) string {
 // cut off. This drops whole leading segments instead and marks the cut with a
 // leading "…/", so the same path reads "…/repos/zot/tool".
 //
-// Segments are kept whole: half a directory name is not a directory name, and a
+// Segments are kept whole. Half a directory name is not a directory name, and a
 // path is read by recognizing its parts. Only when the final segment alone will
 // not fit is it cut, and then from the left, so the end of the name survives.
 func shortPath(path string, limit int) string {
@@ -264,7 +264,7 @@ func shortPath(path string, limit int) string {
 		kept = candidate
 	}
 
-	// not even the last segment fits whole: cut it from the left, keeping the
+	// not even the last segment fits whole. Cut it from the left, keeping the
 	// end of the name, which is where a project's identity usually lives
 	if kept == "" {
 		last := segments[len(segments)-1]

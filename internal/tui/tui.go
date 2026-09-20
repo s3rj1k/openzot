@@ -1,6 +1,6 @@
 // Package tui renders the read-only terminal view of an autonomous agent run.
 //
-// The UI deliberately has no text input: the user watches the agent work, they
+// The UI by design has no text input. The user watches the agent work, they
 // do not drive it. Everything on screen is derived from the event stream the
 // engine emits - tool calls, iterations, token narration - and the run's ending.
 package tui
@@ -21,10 +21,12 @@ type Meta struct {
 	// Task is the one-line instruction the agent is working on.
 	Task string
 
-	// Title is an optional short label for the work - a work order's title, or
-	// one derived from its file name. When set it is shown instead of the task
-	// text, which is the whole order rendered to prose and reads as a truncated
-	// paragraph in a one-line header. Empty falls back to Task.
+	/*
+		Title is an optional short label for the work - a work order's title, or
+		one derived from its file name. When set it is shown instead of the task
+		text, which is the whole order rendered to prose and reads as a truncated
+		paragraph in a one-line header. Empty falls back to Task.
+	*/
 	Title string
 	// Model is the model name driving the agent.
 	Model string
@@ -33,14 +35,18 @@ type Meta struct {
 	// Workdir is the directory the agent's tools operate in.
 	Workdir string
 
-	// MaxScrollback caps how many log lines the viewer keeps on screen. Zero uses
-	// DefaultMaxScrollback; a larger value keeps more history (at more memory).
-	// The full run is always in the session log regardless.
+	/*
+		MaxScrollback caps how many log lines the viewer keeps on screen. Zero uses
+		DefaultMaxScrollback. A larger value keeps more history (at more memory).
+		The full run is always in the session log regardless.
+	*/
 	MaxScrollback int
 
-	// MaxIterations and MaxDuration are the configured run limits, shown
-	// as "5/1000" progress in the meta bar. Zero means unbounded (or not worth
-	// showing, e.g. the default iteration backstop), so no denominator appears.
+	/*
+		MaxIterations and MaxDuration are the configured run limits, shown
+		as "5/1000" progress in the meta bar. Zero means unbounded (or not worth
+		showing, e.g. the default iteration fallback), so no denominator appears.
+	*/
 	MaxIterations int
 	MaxDuration   time.Duration
 }
@@ -54,7 +60,7 @@ func IsInteractive() bool {
 	return isatty.IsTerminal(fd)
 }
 
-// runViewer owns the viewer's lifetime: it starts the run, hands the program to
+// runViewer owns the viewer's lifetime. It starts the run, hands the program to
 // start, and shuts the run down once start returns. Start is a seam for tests,
 // which cannot open a terminal - Run passes (*tea.Program).Run. ProgramOptions is
 // a seam for tests, which cannot open a terminal and need a headless program that
@@ -66,10 +72,12 @@ func runViewer(
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,
 ) (loop.Result, error) {
-	// Quitting the viewer stops the agent rather than merely stopping watching
-	// it. The agent has shell and file-write access, so a process
-	// that returned from here with the run still going would leave something
-	// editing the working tree with nothing on screen reporting what it does.
+	/*
+		Quitting the viewer stops the agent rather than only stopping watching
+		it. The agent has shell and file-write access, so a process
+		that returned from here with the run still going would leave something
+		editing the working tree with nothing on screen reporting what it does.
+	*/
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -82,12 +90,14 @@ func runViewer(
 
 	final, err := start(p)
 
-	// The run must conclude before this returns: quitting cancels it, and the
-	// engine then ends with its aborted outcome - which the caller records into the
-	// session as soon as this function returns, so returning immediately would race
-	// that ending out of the log. Cancel explicitly, then give the engine a bounded
-	// moment to finish; the timeout only exists so a pathologically hung engine
-	// cannot hold the terminal hostage.
+	/*
+		The run must conclude before this returns. Quitting cancels it, and the
+		engine then ends with its aborted outcome - which the caller records into the
+		session as soon as this function returns, so returning immediately would race
+		that ending out of the log. Cancel explicitly, then give the engine a bounded
+		moment to finish. The timeout only exists so a pathologically hung engine
+		cannot hold the terminal hostage.
+	*/
 	cancel()
 
 	var result loop.Result

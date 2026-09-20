@@ -109,7 +109,7 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 }
 
 // A caller scripting against zot tells success from everything else by the exit
-// code: only a run that settled is a success.
+// code. Only a run that settled is a success.
 func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
 	for reason, want := range map[StopReason]int{
 		StopSettled:       0,

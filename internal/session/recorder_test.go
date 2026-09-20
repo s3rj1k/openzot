@@ -15,7 +15,7 @@ import (
 	"github.com/openzot/openzot/internal/loop"
 )
 
-// The model's reasoning is part of the record: the scratchpad is often the only
+// The model's reasoning is part of the record. The scratchpad is often the only
 // place that says why it did what it did. It arrives as its own message, kept in
 // order between what the user said and what the model answered.
 func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
@@ -233,8 +233,8 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	}
 }
 
-// The conversation only grows, and the recorder writes the tail it has not seen:
-// called with the seed, then with the whole conversation again and again, each
+// The conversation only grows, and the recorder writes the tail it has not seen.
+// Called with the seed, then with the whole conversation again and again, each
 // message lands once and in order.
 func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
@@ -274,7 +274,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 	}
 }
 
-// Usage numbers have dedicated fields the log has no column for: they are
+// Usage numbers have dedicated fields the log has no column for. They are
 // rendered into the event's text, or the log would say a usage event happened and
 // nothing more.
 func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
@@ -314,7 +314,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 }
 
 // The log's message records are loop's own types, and their JSON is the log's
-// format: a change to a tag there would rewrite what every log says.
+// format. A change to a tag there would rewrite what every log says.
 func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 

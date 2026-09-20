@@ -35,7 +35,7 @@ func TestNonASCIIInputIsPricedByUTF8Bytes(t *testing.T) {
 	}
 }
 
-// An under-count makes a provider reject a request, and an over-count merely
+// An under-count makes a provider reject a request, and an over-count only
 // trims a little early, so the estimate has to sit above what ordinary English
 // costs (about four bytes a token), not at it.
 func TestEstimateIsConservativeForDenseASCII(t *testing.T) {

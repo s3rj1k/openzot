@@ -107,7 +107,7 @@ func TestQuitKeys(t *testing.T) {
 	}
 }
 
-// `g` jumps to the top and stops following; `G` returns to the tail.
+// `g` jumps to the top and stops following. `G` returns to the tail.
 func TestJumpKeys(t *testing.T) {
 	m := sized(t, 80, 24)
 
@@ -172,8 +172,8 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 1})
 	m.handleEvent(&loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
 	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
-	// tokens are what the log shows; a MessageAgentEvent carries the same
-	// content and is deliberately not drawn twice
+	// tokens are what the log shows. A MessageAgentEvent carries the same
+	// content and is by design not drawn twice
 	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "here is "})
 	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "the answer"})
 	m.handleEvent(&loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
@@ -253,8 +253,8 @@ func stripANSI(s string) string {
 	return builder.String()
 }
 
-// A run the model declared a failure is not a crash and not a budget cut: it
-// reached a conclusion. Reporting it as "exited (code 1)" reads as a harness
+// A run the model declared a failure is not a crash and not a budget cut. It
+// reached a conclusion. Reporting it as "exited (code 1)" reads as a use
 // malfunction, which sends the operator looking in the wrong place.
 func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 	m := sized(t, 100, 30)
@@ -322,7 +322,7 @@ func TestIterationRuleIsFixedShort(t *testing.T) {
 }
 
 // A width-filling rule wraps at a narrow terminal and smears the divider over
-// two rows; the fixed rule must come through m.wrap as one intact line.
+// two rows. The fixed rule must come through m.wrap as one intact line.
 func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 	for _, width := range []int{40, 20} {
 		t.Run(fmt.Sprintf("%dcolumns", width), func(t *testing.T) {
@@ -468,7 +468,7 @@ func TestSpinnerStopsWhenTheRunEnds(t *testing.T) {
 }
 
 // The renderers have to know the real tool names. A mismatch is not a compile
-// error - it just quietly renders the agent's most-used tool as an anonymous
+// error - it just renders the agent's most-used tool as an anonymous
 // key/value dump, which is how `shell` went unstyled.
 func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 	tests := []struct {
@@ -527,7 +527,7 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 	}
 }
 
-// One record must not scroll the rest of the run off the screen: it is cut at a
+// One record must not scroll the rest of the run off the screen. It is cut at a
 // third of the terminal's height, the last row an ellipsis.
 func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 	lines := make([]string, 0, 50)
@@ -555,7 +555,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 	}
 }
 
-// Rows are what count, not source lines: a few long lines wrap into many rows.
+// Rows are what count, not source lines. A few long lines wrap into many rows.
 func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 	m := sized(t, 40, 30)
 
@@ -581,7 +581,7 @@ func TestARecordThatFitsIsNotClipped(t *testing.T) {
 	}
 }
 
-// The limit follows the terminal: growing the window shows more of a record that
+// The limit follows the terminal. Growing the window shows more of a record that
 // was cut, because the log is re-wrapped from the full record.
 func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 	lines := make([]string, 0, 50)
@@ -623,7 +623,7 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 }
 
 // A key nobody bound must reach the viewport rather than being swallowed, and
-// must not quit: an unattended run ended by a stray keystroke is a lost run.
+// must not quit. An unattended run ended by a stray keystroke is a lost run.
 func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 	for _, key := range []tea.KeyMsg{
 		{Type: tea.KeyRunes, Runes: []rune{'x'}},
@@ -635,9 +635,11 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 
 		updated, _ := m.Update(key)
 
-		// a quit would leave the model unchanged and end the program; what we
-		// can check without running the program is that the viewer is still
-		// there and still running
+		/*
+			a quit would leave the model unchanged and end the program. What we
+			can check without running the program is that the viewer is still
+			there and still running
+		*/
 		if updated.(*model).status != statusRunning {
 			t.Errorf("key %v ended the run", key)
 		}
@@ -665,7 +667,7 @@ func TestTheClockStopsWhenTheRunEnds(t *testing.T) {
 }
 
 // The footer tells the operator how to leave. While a run is going it shows the
-// keys; once it is over it says so explicitly, because the run no longer ends
+// keys. Once it is over it says so explicitly, because the run no longer ends
 // on its own.
 func TestFooterAddsAnExitHintWhenTheRunIsOver(t *testing.T) {
 	m := sized(t, 80, 24)
@@ -735,9 +737,11 @@ func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
 		{in: "two\nlines", max: 20, want: "two lines"},
 		{in: "two\nlines here", max: 6, want: "two l…"},
 
-		// a task or tool argument in CJK or emoji was cut mid-rune, so the meta
-		// bar and the tool lines rendered a replacement character - and the cap
-		// counted bytes, so the line was cut far short of the width it was given
+		/*
+			a task or tool argument in CJK or emoji was cut mid-rune, so the meta
+			bar and the tool lines rendered a replacement character - and the cap
+			counted bytes, so the line was cut far short of the width it was given
+		*/
 		{in: "日本語のタスク説明文です", max: 6, want: "日本語のタ…"},
 		{in: "🚀🚀🚀🚀🚀", max: 3, want: "🚀🚀…"},
 		{in: "日本語", max: 10, want: "日本語"},
@@ -769,9 +773,11 @@ func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
 }
 
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
-	// a not-yet-sized model: render() no-ops, so this exercises the scrollback cap
-	// without the per-append viewport cost (which is what a real, model-paced run
-	// pays anyway, now bounded to the cap)
+	/*
+		a not-yet-sized model. render() no-ops, so this exercises the scrollback cap
+		without the per-append viewport cost (which is what a real, model-paced run
+		pays anyway, now bounded to the cap)
+	*/
 	m := newModel("do the thing", "m", "b", "d")
 
 	limit := m.maxEntries // DefaultMaxScrollback
@@ -781,7 +787,7 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 		m.appendEntry(fmt.Sprintf("line %d", i))
 	}
 
-	// bounded: never more than the cap plus the trim slack, whatever the run length
+	// bounded. Never more than the cap plus the trim slack, whatever the run length
 	if len(m.entries) > limit+limit/4 {
 		t.Fatalf("scrollback must stay bounded, got %d entries", len(m.entries))
 	}
@@ -814,7 +820,7 @@ func TestTrimmedLogShowsAMarker(t *testing.T) {
 	}
 }
 
-// The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback): a
+// The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback). A
 // caller can keep fewer or more lines than the default.
 func TestScrollbackCapIsConfigurable(t *testing.T) {
 	m := newModel("t", "m", "b", "d")
@@ -876,7 +882,7 @@ func metaSegments(bar string) []string {
 // does not fit is dropped entirely.
 //
 // The narrow renders are checked against a wide one rather than against
-// hardcoded text: what a segment says is the bar's business, and a test that
+// hardcoded text. What a segment says is the bar's business, and a test that
 // restated it would fail on every wording change while still not proving
 // anything about fitting.
 func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
@@ -953,7 +959,7 @@ func TestMetaBarIsEmptyWhenNothingFits(t *testing.T) {
 }
 
 // The header shows the provider-reported token usage, and progress against any
-// configured limits (5/1000); a limit that is unset shows no denominator.
+// configured limits (5/1000). A limit that is unset shows no denominator.
 func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 	m := sized(t, 400, 30)
 	m.iteration = 5
@@ -1026,7 +1032,7 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	}
 }
 
-// A retry spends a continuation and then waits out a backoff; without a
+// A retry spends a continuation and then waits out a backoff. Without a
 // rendered line the wait shows as empty iteration dividers stacking up - a run
 // that is surviving looks like one that is hanging.
 func TestRetryEventIsRendered(t *testing.T) {
@@ -1041,7 +1047,7 @@ func TestRetryEventIsRendered(t *testing.T) {
 }
 
 // The header shows the order's title when it has one. The task is the whole
-// order rendered for the model - objective, criteria and constraints - so a
+// order rendered for the model - goal, criteria and constraints - so a
 // one-line header of it is a paragraph cut mid-word, which is exactly what
 // titles exist to replace.
 func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
@@ -1071,7 +1077,7 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 }
 
 // A live value growing a digit - nine iterations becoming ten, 999 tokens
-// becoming 1.0k - must not shove the segments after it sideways: a header that
+// becoming 1.0k - must not shove the segments after it sideways. A header that
 // jitters on every tick is unreadable at a glance, which is the only way a
 // header is read. Each volatile field is followed by a fixed one, and the test
 // asks whether that fixed one moved.
@@ -1138,7 +1144,7 @@ func tasksArgs(tasks ...[3]string) map[string]any {
 }
 
 // The task list is the one piece of the run worth reading in full, so it renders
-// as a checklist: what is done, what is under way, what is left, what is stuck.
+// as a checklist. What is done, what is under way, what is left, what is stuck.
 func TestRenderTasksShowsTheChecklist(t *testing.T) {
 	out := stripANSI(renderToolStart(litTasks, tasksArgs(
 		[3]string{"read the handler", litDone, ""},
@@ -1158,7 +1164,7 @@ func TestRenderTasksShowsTheChecklist(t *testing.T) {
 	}
 }
 
-// A call the tool refuses - no tasks, an unknown status - still shows its header
+// A call the tool rejects - no tasks, an unknown status - still shows its header
 // rather than crashing the render, and draws nothing it cannot vouch for.
 func TestRenderTasksIsRobust(t *testing.T) {
 	for name, args := range map[string]map[string]any{

@@ -25,7 +25,7 @@ func xdgConfigHome() string {
 }
 
 // DefaultConfigPath returns the resolved config file path using a fallback
-// chain:
+// chain.
 //
 //  1. $ZOT_CONFIG environment variable (if set and non-empty)
 //  2. $XDG_CONFIG_HOME/zot/config.yaml (if XDG_CONFIG_HOME is set)

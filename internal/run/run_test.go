@@ -117,7 +117,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 	})
 }
 
-// declared is the model list a provider needs to run the named models: each
+// declared is the model list a provider needs to run the named models. Each
 // with a context window, since a model without one cannot run.
 func declared(names ...string) map[string]config.ModelConfig {
 	models := make(map[string]config.ModelConfig, len(names))
@@ -129,8 +129,8 @@ func declared(names ...string) map[string]config.ModelConfig {
 	return models
 }
 
-// testDefaults is the built-in configuration with the one thing it deliberately
-// lacks: a model to run.
+// testDefaults is the built-in configuration without the one thing it lacks by
+// design. A model to run.
 func testDefaults() *config.Config {
 	cfg := config.Defaults()
 	cfg.Agent.Model = litGlm52
@@ -158,7 +158,7 @@ func stubProvider(t *testing.T) *config.Config {
 	return cfg
 }
 
-// quietly runs a function with stdout discarded, returning what it printed.
+// runs a function with stdout discarded, returning what it printed.
 func quietly(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
 
@@ -198,7 +198,7 @@ func quietly(t *testing.T, fn func() error) (string, error) {
 }
 
 // headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does: an error behind the run as itself, otherwise an agent-declared
+// viewer does. An error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
 func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
@@ -233,7 +233,7 @@ func logged(t *testing.T) Options {
 	return Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
 }
 
-// The whole path a skill takes: the model lists the skills, reads one by name,
+// The whole path a skill takes. The model lists the skills, reads one by name,
 // and each answer reaches its next request - from memory, with the folder gone.
 func TestTheModelListsAndReadsASkill(t *testing.T) {
 	project := t.TempDir()
@@ -280,7 +280,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// loaded at startup: the folder is not read again during the run
+	// loaded at startup. The folder is not read again during the run
 	if err := os.RemoveAll(skillsDir); err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func writeCfg(t *testing.T, body string) string {
 //
 // These assert on the Authorization header the provider actually receives,
 // because that is the only thing that proves a credential was resolved rather
-// than merely accepted by the parser.
+// than only accepted by the parser.
 func TestCredentialResolution(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -522,14 +522,14 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 		t.Fatal("a provider naming no endpoint must be rejected")
 	}
 
-	// the error has to be actionable: it names the field to set
+	// the error has to be actionable. It names the field to set
 	if !strings.Contains(err.Error(), "base_url") {
 		t.Errorf("error = %q, want it to name what is missing", err)
 	}
 }
 
 // shell acts on the machine, so a call the model did not finish writing is
-// refused, never mended into one that runs.
+// rejected, never mended into one that runs.
 func TestResolveNeverRepairsAShellCall(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: declared(litGlm52)}
@@ -545,8 +545,8 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 }
 
 // The window is the operator's to state and zot keeps no table of what models
-// can take, so a model with none cannot run. Load-time validation says so first;
-// resolve holds the same rule for a config that skipped it.
+// can take, so a model with none cannot run. Load-time validation says so first.
+// Resolve holds the same rule for a config that skipped it.
 func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 	cases := map[string]map[string]config.ModelConfig{
 		"the model is not declared":     declared("some-other-model"),
@@ -638,7 +638,7 @@ provider:
 	}
 }
 
-// Nothing is built in: with no provider declared a run does not resolve, whatever
+// Nothing is built in. With no provider declared a run does not resolve, whatever
 // the environment holds.
 func TestNoProviderIsBuiltIn(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
@@ -685,7 +685,7 @@ provider:
 		t.Errorf("max iterations = %d, want 50 (from custom model)", opts.MaxIterations)
 	}
 
-	// the operator declared the endpoint's real window; the run must budget to it
+	// the operator declared the endpoint's real window. The run must budget to it
 	if opts.ContextWindow != 32000 {
 		t.Errorf("context window = %d, want the per-model override", opts.ContextWindow)
 	}
@@ -723,7 +723,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 			meta.MaxIterations, opts.MaxIterations)
 	}
 
-	// the default is a 1,000,000 backstop rather than a budget, so there is
+	// the default is a 1,000,000 fallback rather than a budget, so there is
 	// nothing worth counting towards and the denominator stays hidden
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
 	cfg.Provider.Models["capped"] = config.ModelConfig{Model: litGpt5, Context: 100_000}
@@ -738,7 +738,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	}
 }
 
-// Run is the whole thing end to end: config in, a provider call out, a
+// Run is the whole thing end to end. Config in, a provider call out, a
 // transcript back. The tests' stand-in viewer prints what the run said, which is
 // what can be asserted on without a terminal.
 func TestRunTaskEndToEnd(t *testing.T) {
@@ -861,7 +861,7 @@ func readSession(t *testing.T, path string) []session.Record {
 	return records
 }
 
-// A run leaves a record of itself: what it was asked, which model answered, and
+// A run leaves a record of itself. What it was asked, which model answered, and
 // how it ended.
 func TestRunWithRecordsASession(t *testing.T) {
 	cfg := stubProvider(t)
@@ -894,8 +894,8 @@ func TestRunWithRecordsASession(t *testing.T) {
 		t.Errorf("the log must end with the outcome: %+v", last)
 	}
 
-	// the objective is the durable task, recorded in the meta and placed in the
-	// instructions; the opening message is the kickoff, not the task
+	// the goal is the durable task, recorded in the meta and placed in the
+	// instructions. The opening message is the kickoff, not the task
 	var opening bool
 
 	for _, record := range records {
@@ -910,7 +910,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 }
 
 // Running the same order again adds a run to its log rather than replacing it,
-// and starts from zero: the second run opens with the kickoff and carries
+// and starts from zero. The second run opens with the kickoff and carries
 // nothing of the first run's conversation.
 func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 	cfg := stubProvider(t)
@@ -955,7 +955,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 }
 
 // The log holds what the model thought, and holds it while a tool is still
-// running: a snapshot of the log taken by the command itself already carries the
+// running. A snapshot of the log taken by the command itself already carries the
 // turn's reasoning and the request being run, so a run killed inside a long
 // command loses nothing of the turn that started it.
 func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
@@ -1055,8 +1055,8 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 	}
 }
 
-// A run that cannot be recorded is refused before the provider is asked
-// anything: its log is its record and its agent's long-term memory.
+// A run that cannot be recorded is rejected before the provider is asked
+// anything. Its log is its record and its agent's long-term memory.
 func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	var asked atomic.Int32
 
@@ -1088,7 +1088,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	}
 }
 
-// There is no run without a log: the caller must say where it goes.
+// There is no run without a log. The caller must say where it goes.
 func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 	dir := t.TempDir()
 
@@ -1157,7 +1157,7 @@ func promptOf(t *testing.T, o order.Order) string {
 	return prompt
 }
 
-// newOrderNamed is the order zot new scaffolds, with its objective written in.
+// newOrderNamed is the order zot new scaffolds, with its goal written in.
 func newOrderNamed(t *testing.T, objective string) order.Order {
 	t.Helper()
 
@@ -1176,9 +1176,9 @@ func defaultPrompt(t *testing.T) string {
 	return promptOf(t, newOrderNamed(t, "build a parser"))
 }
 
-// The task is the durable objective, so it must land in the system prompt, which
+// The task is the durable goal, so it must land in the system prompt, which
 // trimming never drops and always orders first - not as a user message, which a
-// long run can trim away. An agent that forgets its own objective is the worst
+// long run can trim away. An agent that forgets its own goal is the worst
 // way for a run to fail.
 func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
@@ -1200,7 +1200,7 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 // The tools the prompt names come from the tool set the run really has, so it
 // cannot describe tools that are not offered. The prompt drifted once already -
 // it told the agent to call "edit", "exec", "exit" and "progress" when those
-// tools did not exist - which is what generating the list prevents; this pins it.
+// tools did not exist - which is what generating the list prevents. This pins it.
 func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 	prompt := defaultPrompt(t)
 
@@ -1240,7 +1240,7 @@ func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 	}
 }
 
-// A tool the run does not have is not in its prompt: no skills, no skills tool.
+// A tool the run does not have is not in its prompt. No skills, no skills tool.
 func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	without := defaultPrompt(t)
 
@@ -1287,7 +1287,7 @@ func TestTheDefaultPromptTeachesShellAsTheOnlyWayToTouchTheMachine(t *testing.T)
 }
 
 // The tasks tool only helps if the model keeps it current, and the prompt is the
-// only thing that says how: each status it may use, and that a blocker or an
+// only thing that says how. Each status it may use, and that a blocker or an
 // assumption belongs in a note.
 func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 	prompt := defaultPrompt(t)
@@ -1299,7 +1299,7 @@ func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 	}
 }
 
-// The prompt knows where the run is: the project's AGENTS.md, and the facts of the
+// The prompt knows where the run is. The project's AGENTS.md, and the facts of the
 // run itself.
 func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	cfg := stubProviderConfig(t)
@@ -1324,13 +1324,13 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	}
 }
 
-// zot has no input channel: no stdin, no chat turn, no approval prompt - a run
+// zot has no input channel. No stdin, no chat turn, no approval prompt - a run
 // is a work order, a provider and a read-only viewer. An agent that does not
 // know that asks a question and waits, and waiting is fatal in a way no other
-// prompt mistake is: nothing answers, the run burns its budget until a guard
+// prompt mistake is. Nothing answers, the run burns its budget until a guard
 // kills it, and the work it never wrote is lost. These pin the directives that
 // prevent it. A prompt cannot be tested against a model here, so the patterns
-// are deliberately loose - they assert the directive survives a rewrite of the
+// are by design loose - they assert the directive survives a rewrite of the
 // wording, not the wording itself.
 var nonInteractiveDirectives = []struct {
 	need    string
@@ -1398,7 +1398,7 @@ func TestACustomPromptKeepsTheNonInteractiveContract(t *testing.T) {
 	assertNonInteractive(t, "a custom prompt", got)
 }
 
-// The contract must not pile up: a prompt that carries it - the default one does,
+// The contract must not pile up. A prompt that carries it - the default one does,
 // or one that places it with {{ .Contract }} - must not get it again.
 func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 	custom := func(body string) order.Order {
@@ -1432,7 +1432,7 @@ func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 
 // The settle and call budgets are configurable, and the config values have to
 // actually reach the run - otherwise the knob in the example config is a lie.
-// Max_settles is the one the operator most wants: how hard zot pushes the model
+// The max_settles key is the one the operator most wants. How hard zot pushes the model
 // to record an outcome before giving up.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
@@ -1465,7 +1465,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 		t.Errorf("MaxDuration = %v, want 30m", timed.MaxDuration)
 	}
 
-	// zero passes through as zero: the engine, not the config, owns the default,
+	// zero passes through as zero. The engine, not the config, owns the default,
 	// and it never means "no settling"
 	cfg.Agent.MaxSettles = 0
 
@@ -1581,7 +1581,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 }
 
 // The config states the defaults of the context thresholds because the rule
-// between them is its own; the engine has fallbacks for a caller building its
+// between them is its own. The engine has fallbacks for a caller building its
 // options by hand. They are the same numbers, or a config that says nothing would
 // behave differently from an engine that was told nothing.
 func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {

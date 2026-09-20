@@ -38,7 +38,7 @@ func validConfig(tweak func(*Config)) *Config {
 	return c
 }
 
-// There is no default provider or model: both name something the operator runs
+// There is no default provider or model. Both name something the operator runs
 // against, so the defaults carry neither and Validate says what is missing.
 func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	c := Defaults()
@@ -55,7 +55,7 @@ func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	}
 }
 
-// Nothing is seeded, and no conventional credential variable is read: a config
+// Nothing is seeded, and no conventional credential variable is read. A config
 // that declares no provider has none, whatever the environment holds.
 func TestLoadSeedsNoProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -78,7 +78,7 @@ func TestLoadSeedsNoProvider(t *testing.T) {
 	}
 }
 
-// A provider that names no endpoint gets none, and no ambient key: nothing is
+// A provider that names no endpoint gets none, and no ambient key. Nothing is
 // filled in on its behalf.
 func TestAnEmptyProviderGetsNothing(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -258,7 +258,7 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// Several models on the one provider are the point: agent.model picks which runs,
+// Several models on the one provider are the point. Agent.model picks which runs,
 // and naming one the provider does not list says what is available.
 func TestAgentModelSelectsAmongTheProvidersModels(t *testing.T) {
 	models := map[string]ModelConfig{
@@ -291,7 +291,7 @@ func TestAgentModelSelectsAmongTheProvidersModels(t *testing.T) {
 	}
 }
 
-// The context window is the only source of what a model can take: there is no
+// The context window is the only source of what a model can take. There is no
 // table to fall back on, so a model without one cannot run, and the error says
 // which model and what to set.
 func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
@@ -310,8 +310,8 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 		}
 	}
 
-	// not only the selected model: a listed model with no window is a mistake
-	// whether or not this run uses it
+	// not only the selected model. A listed model with no window is a mistake
+	// whether this run uses it
 	err := validConfig(func(c *Config) {
 		c.Provider.Models = map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: litGpt54}}
 	}).Validate()
@@ -715,7 +715,7 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	}
 }
 
-// skills_dir names the folder skills are loaded from; it is read as written and
+// skills_dir names the folder skills are loaded from. It is read as written and
 // expanded by the caller, which knows the working directory.
 func TestSkillsDirIsRead(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "skills_dir: ~/skills\n"))
@@ -728,8 +728,8 @@ func TestSkillsDirIsRead(t *testing.T) {
 	}
 }
 
-// reasoning_effort and extra_body are per-model request settings: read as
-// written, and an effort the provider would refuse is refused at load.
+// reasoning_effort and extra_body are per-model request settings. Read as
+// written, and an effort the provider would reject is rejected at load.
 func TestAModelCarriesItsRequestSettings(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 agent:
@@ -794,8 +794,8 @@ ui:
 	}
 }
 
-// The header is fixed, so ui.stats is gone rather than ignored: a config that
-// still sets it must fail at load and name the key, not quietly show a header
+// The header is fixed, so ui.stats is gone rather than ignored. A config that
+// still sets it must fail at load and name the key, not show a header
 // the operator did not ask for.
 func TestUIStatsIsNoLongerAKey(t *testing.T) {
 	path := writeConfig(t, `
@@ -832,7 +832,7 @@ provider:
 }
 
 // The config is what everything else reads and validates itself against, so it
-// must not depend on any of it: a rule written here is written once.
+// must not depend on any of it. A rule written here is written once.
 func TestConfigImportsNoOtherPackageOfTheModule(t *testing.T) {
 	pkg, err := build.ImportDir(".", 0)
 	if err != nil {

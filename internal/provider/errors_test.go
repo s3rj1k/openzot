@@ -16,7 +16,7 @@ import (
 	"charm.land/fantasy"
 )
 
-// refused is an error as fantasy reports one: a status and the provider's words.
+// rejected is an error as fantasy reports one. A status and the provider's words.
 func refused(status int, message string) error {
 	return &fantasy.ProviderError{StatusCode: status, Message: message}
 }
@@ -50,7 +50,7 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 	}
 }
 
-// With no status to go by, what the error is decides: a stream that ended
+// With no status to go by, what the error is decides. A stream that ended
 // mid-turn, a reset connection and zot's own stall are transient however they
 // are worded around.
 func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
@@ -71,7 +71,7 @@ func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
 	}
 }
 
-// The other half of going by type: words alone decide nothing. These read like
+// The other half of going by type. Words alone decide nothing. These read like
 // transient faults and are not, unless something typed says so.
 func TestIsRetriableIgnoresWhatAnErrorMerelySays(t *testing.T) {
 	refused := &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
@@ -147,7 +147,7 @@ func TestRetryAfterReadsBothHeaderForms(t *testing.T) {
 		t.Errorf("date form = %v, %v, want about 30s", delay, ok)
 	}
 
-	// already past, or zero seconds: advice to retry now, which is not no advice
+	// already past, or zero seconds. Advice to retry now, which is not no advice
 	if delay, ok := RetryAfter(withHeader("0")); !ok || delay != 0 {
 		t.Errorf("zero = %v, %v, want 0 with advice", delay, ok)
 	}
@@ -156,7 +156,7 @@ func TestRetryAfterReadsBothHeaderForms(t *testing.T) {
 		t.Errorf("past date = %v, %v, want 0 with advice", delay, ok)
 	}
 
-	// no header, garbage, or not a provider error: no advice at all
+	// no header, garbage, or not a provider error. No advice at all
 	for _, err := range []error{refused(429, "x"), withHeader("soon"), withHeader(""), errors.New("x")} {
 		if _, ok := RetryAfter(err); ok {
 			t.Errorf("%v should carry no advice", err)

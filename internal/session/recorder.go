@@ -10,11 +10,11 @@ import (
 
 // Recorder writes a run into a session log as the engine hands it over.
 //
-// The engine knows nothing about files; it gives away the conversation, its events
+// The engine knows nothing about files. It gives away the conversation, its events
 // and its result, and this decides where they land. That is what keeps a session
 // log an operational concern rather than something the loop has to carry.
 //
-// A line that cannot be written is not ignored: the log is the agent's long-term
+// A line that cannot be written is not ignored. The log is the agent's long-term
 // memory and the operator's only record, so a run that has stopped being recorded
 // has stopped being what it was asked to be. The first failure is kept, and the
 // callback given to NewRecorder is told of it, so the caller can end the run.
@@ -68,9 +68,9 @@ func (r *Recorder) Conversation(messages []conversation.Message) {
 
 // Event records something that happened.
 //
-// Token-by-token narration is deliberately dropped: it is the same content the
-// finished message already carries, and keeping it would make the log an order
-// of magnitude larger for nothing.
+// Token-by-token narration is by design dropped. It is the same content the
+// finished message already carries, and keeping it would make the log ten times
+// larger for nothing.
 func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it is loop.Options.OnEvent, which takes the event by value
 	if event.Kind == loop.EventToken || event.Kind == loop.EventReasoningToken {
 		return
@@ -78,10 +78,12 @@ func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it 
 
 	text := event.Text
 
-	// a usage event carries its numbers in dedicated fields the log has no column
-	// for; render them into the text, or the log records a usage event that says
-	// nothing - and "why did this run cost 567k tokens" is exactly the question a
-	// session has to answer after the fact
+	/*
+		a usage event carries its numbers in dedicated fields the log has no column
+		for. Render them into the text, or the log records a usage event that says
+		nothing - and "why did this run cost 567k tokens" is exactly the question a
+		session has to answer after the fact
+	*/
 	if event.Kind == loop.EventUsage && text == "" {
 		text = fmt.Sprintf("input %d output %d", event.InputTokens, event.OutputTokens)
 	}
@@ -89,7 +91,7 @@ func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it 
 	r.wrote(r.writer.Event(Event{Kind: string(event.Kind), Tool: event.Tool, Text: text, Iteration: event.Iteration}))
 }
 
-// Result records the ending: the last of the conversation, then the outcome, which
+// Result records the ending. The last of the conversation, then the outcome, which
 // closes the log.
 func (r *Recorder) Result(result *loop.Result) {
 	// the run's last turn happened after the final hand-over, so the ending is

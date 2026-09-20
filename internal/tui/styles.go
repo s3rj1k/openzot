@@ -2,7 +2,7 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The brand color (accent) is zot's neutral identity; the rest are
+// The brand color (accent) is zot's neutral identity. The rest are
 // fixed semantic and neutral colors for state and log text.
 var (
 	colAccent = lipgloss.Color("#6B7280") // neutral slate (brand accent)
@@ -30,7 +30,7 @@ var (
 	metaKey   = lipgloss.NewStyle().Foreground(colFaint)
 
 	// Meta-bar value colors. Fixed functional hues (not the brand accent), so the
-	// header carries color and stays scannable even under a neutral theme: the
+	// header carries color and stays scannable even under a neutral theme. The
 	// model and provider are highlighted, the counters read by kind, and paths and
 	// timing stay muted.
 	metaModel    = lipgloss.NewStyle().Foreground(colCyan)

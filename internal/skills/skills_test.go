@@ -88,7 +88,7 @@ func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
 	writeSkill(t, root, "zebra", "---\nname: zebra\n---\n")
 	writeSkill(t, root, "apple", "---\nname: apple\n---\n")
 
-	// a skills folder routinely holds other things; they are skipped rather
+	// a skills folder routinely holds other things. They are skipped rather
 	// than failing the load
 	if err := os.MkdirAll(filepath.Join(root, "notaskill"), 0o755); err != nil {
 		t.Fatal(err)

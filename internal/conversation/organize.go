@@ -4,8 +4,8 @@ import "slices"
 
 // lastPairedIndex finds the most recent partner for a message.
 //
-// Searching backwards matters when the same call is made more than once: the
-// result belongs to the call that just happened, not the identical one earlier
+// Searching backwards matters when the same call is made more than once. The
+// result belongs to the call that just happened, not the matching one earlier
 // in the conversation.
 func lastPairedIndex(messages []Message, message Message) int {
 	for index, candidate := range slices.Backward(messages) {
@@ -19,7 +19,7 @@ func lastPairedIndex(messages []Message, message Message) int {
 
 // clusterActivities moves each tool result to sit directly after its call.
 //
-// Not cosmetic: several providers validate that a tool message immediately
+// Not cosmetic. Several providers validate that a tool message immediately
 // follows the assistant turn that requested it, and a history rebuilt from a
 // log or interleaved with reasoning does not naturally satisfy that.
 func clusterActivities(messages []Message) []Message {
@@ -35,7 +35,7 @@ func clusterActivities(messages []Message) []Message {
 		activity := message.Activity
 
 		if activity == nil || activity.Kind == "" {
-			// an activity message with no activity in it describes nothing; it
+			// an activity message with no activity in it describes nothing. It
 			// cannot be paired, rendered, or acted on
 			continue
 		}
@@ -56,7 +56,7 @@ func clusterActivities(messages []Message) []Message {
 			organized = slices.Insert(organized, partner+1, message)
 
 		case ActivityTrigger:
-			// a trigger says "act now"; anywhere but last it is describing a
+			// a trigger says "act now". Anywhere but last it is describing a
 			// moment that has already passed
 			if slices.ContainsFunc(messages[index+1:], func(later Message) bool { return later.Type != TypeInstructions }) {
 				continue
@@ -76,7 +76,7 @@ func clusterActivities(messages []Message) []Message {
 
 // dropOrphanedActivities removes halves of a pair whose partner is missing.
 //
-// Both directions, because trimming can take either end: a call whose result
+// Both directions, because trimming can take either end. A call whose result
 // fell outside the window, and a result whose call did.
 func dropOrphanedActivities(messages []Message) []Message {
 	kept := make([]Message, 0, len(messages))
@@ -103,7 +103,7 @@ func dropOrphanedActivities(messages []Message) []Message {
 // dropEmpty removes messages that carry nothing.
 //
 // A message with no text and no structure costs tokens and tells the model
-// nothing. The system prompt is exempt: an empty one is a configuration
+// nothing. The system prompt is exempt. An empty one is a configuration
 // choice, and silently dropping it would change which message comes first.
 func dropEmpty(messages []Message) []Message {
 	kept := make([]Message, 0, len(messages))
@@ -125,9 +125,11 @@ func sameMessage(a, b Message) bool {
 		return false
 	}
 
-	// activities are never duplicates of one another: two calls with the same
-	// arguments are two real calls the model made, and collapsing them would
-	// hide exactly the repetition the cycle guards look for
+	/*
+		activities are never duplicates of one another. Two calls with the same
+		arguments are two real calls the model made, and collapsing them would
+		hide exactly the repetition the cycle guards look for
+	*/
 	if a.Type == TypeActivity {
 		return false
 	}
@@ -162,20 +164,20 @@ func dropConsecutiveDuplicates(messages []Message) []Message {
 // invalid - and providers reject the whole request rather than the bad part, so
 // the failure arrives as an opaque 400 in the middle of a long unattended run.
 //
-// The rules here are the ones the TypeScript engine learned the hard way:
+// The rules here are the ones the TypeScript engine learned the hard way.
 //
 //   - a tool call and its result must be adjacent, in that order
 //   - a call with no result, or a result with no call, must not be sent
 //   - a trigger only makes sense as the last message
 //   - empty and repeated messages waste context and confuse the model
 //
-// Organize is deliberately a pure function over the message list rather than
+// Organize is by design a pure function over the message list rather than
 // something the loop does to its own state. The engine's history is the record
-// of what happened; this is how that record is presented to a provider.
+// of what happened. This is how that record is presented to a provider.
 
 // Organize repairs a conversation so a provider will accept it.
 //
-// The order of operations matters: pairs are clustered first, because the
+// The order of operations matters. Pairs are clustered first, because the
 // orphan checks that follow ask whether a partner exists anywhere, and a
 // response that has been moved next to its call is no longer an orphan.
 func Organize(messages []Message) []Message {

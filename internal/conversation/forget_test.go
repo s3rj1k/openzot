@@ -20,7 +20,7 @@ func ten(n int) []Message {
 	return messages
 }
 
-// The window here is 1000 with the marks at 50% and 90%: 500 and 900.
+// The window here is 1000 with the marks at 50% and 90%. 500 and 900.
 func TestForget(t *testing.T) {
 	tests := []struct {
 		name string

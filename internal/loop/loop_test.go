@@ -87,7 +87,7 @@ func tool(id, name, arguments string) string {
 	)
 }
 
-// settle is a turn that ends the run: the model calls the success tool.
+// settle is a turn that ends the run. The model calls the success tool.
 func settle(summary string) string {
 	return tool("done", SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
 }
@@ -95,9 +95,11 @@ func settle(summary string) string {
 func run(t *testing.T, options *Options) Result {
 	t.Helper()
 
-	// tests opt out of the retry backoff unless they are about it: a test that
-	// merely drives a retriable failure should not silently sleep through the
-	// production default. A test of the backoff itself sets its own value.
+	/*
+		tests opt out of the retry backoff unless they are about it. A test that
+		only drives a retriable failure should not silently sleep through the
+		production default. A test of the backoff itself sets its own value.
+	*/
 	if options.RetryBackoff == 0 {
 		options.RetryBackoff = -1
 	}
@@ -113,7 +115,7 @@ func run(t *testing.T, options *Options) Result {
 // noInput is the argument struct of the engine tests' tools, which take none.
 type noInput struct{}
 
-// namedTool is a tool for engine tests: it takes no arguments and answers with
+// namedTool is a tool for engine tests. It takes no arguments and answers with
 // what the handler returns. A handler error is reported the way the real tools
 // report a failure - as an error response, not a critical error.
 func namedTool(name string, handler func(context.Context) (any, error)) fantasy.AgentTool {
@@ -154,7 +156,7 @@ func TestNewAppliesDefaults(t *testing.T) {
 	}
 
 	// calls and time are unbounded unless set - only the iteration count is a
-	// hard default backstop
+	// hard default fallback
 	if engine.maxCalls != 0 {
 		t.Errorf("maxCalls = %d, want 0 (unbounded) by default", engine.maxCalls)
 	}
@@ -163,7 +165,7 @@ func TestNewAppliesDefaults(t *testing.T) {
 		t.Errorf("maxDuration = %v, want unbounded by default", engine.maxDuration)
 	}
 
-	// Settlement cannot be switched off: an unattended run needs an unambiguous
+	// Settlement cannot be switched off. An unattended run needs an unambiguous
 	// ending, so an unset budget is the default budget, never "no settling".
 	if engine.maxSettles != DefaultMaxSettles {
 		t.Errorf("maxSettles = %d, want the default %d - there is no way to opt out", engine.maxSettles, DefaultMaxSettles)
@@ -528,7 +530,7 @@ func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
 	}
 }
 
-// The terminal tools are always offered: the model cannot settle without them.
+// The terminal tools are always offered. The model cannot settle without them.
 func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
@@ -581,7 +583,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 }
 
 // The runaway guard ends a turn while the provider is still streaming, so the
-// stream it walks away from has to be canceled. It was not: the transport's
+// stream it walks away from has to be canceled. It was not. The transport's
 // producer goroutine stayed parked on a send nobody would ever receive, holding
 // its HTTP response body open for the life of the process, and every trip of the
 // guard - a routine event in a long run, which is why the guard exists - leaked
@@ -596,7 +598,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 		flusher, _ := w.(http.Flusher)
 
-		// stream a repeating phrase forever: past RunawayGuardMinChars the guard
+		// stream a repeating phrase forever. Past RunawayGuardMinChars the guard
 		// recognizes the repetition and cuts the turn short mid-stream
 		for {
 			select {
@@ -660,7 +662,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	}
 }
 
-// The window is the operator's to state: there is no table of what models can
+// The window is the operator's to state. There is no table of what models can
 // take, and a serving endpoint's real ceiling can be smaller than any model's
 // card. Forgetting follows the window that was given.
 func TestTheWindowIsTheConfiguredOne(t *testing.T) {
@@ -674,7 +676,7 @@ func TestTheWindowIsTheConfiguredOne(t *testing.T) {
 	}
 }
 
-// The thresholds are the operator's, and zero means the default; whether they
+// The thresholds are the operator's, and zero means the default. Whether they
 // make sense together is the config's to say, so the engine takes what it is given.
 func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: 1000})
@@ -714,7 +716,7 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 // Forgetting takes the oldest first, which is the run's opening user message -
 // leaving a conversation with no
 // user turn at all, which strict providers reject wholesale with an opaque
-// 400 from that iteration on (bisected live: the identical request with one
+// 400 from that iteration on (bisected live. The same request with one
 // user message injected was accepted). The request must always carry a user
 // turn.
 func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
@@ -768,7 +770,7 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	}
 }
 
-// A run killed inside a tool call still leaves the turn that made it: the
+// A run killed inside a tool call still leaves the turn that made it. The
 // reasoning, the words and the request are handed over before the handler runs,
 // not at the next iteration boundary the killed run never reaches.
 func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {

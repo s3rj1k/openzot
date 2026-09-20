@@ -9,27 +9,27 @@ import (
 )
 
 // The cycle heuristics decide whether a conversation has stopped making
-// progress. They overlap deliberately - each covers a blind spot of the others -
+// progress. They overlap by design - each covers a blind spot of the others -
 // and the first to fire is the one reported, because a stuck run is otherwise
 // only ever "stopped for looping" and the four fail in very different ways.
 //
-// Their behavior was pinned against the implementation they were ported from;
-// see corpus_test.go.
+// Their behavior was pinned against the implementation they were ported from.
+// See corpus_test.go.
 
 const (
-	// CycleMinRepetitions is how many consecutive repeats of a pattern make a
-	// cycle: [A B A B] is cyclic.
+	// How many consecutive repeats of a pattern make a
+	// cycle. [A B A B] is cyclic.
 	cycleMinRepetitions = 2
 
-	// CycleMinPatternLength is the shortest pattern considered, in messages. Two
+	// The shortest pattern considered, in messages. Two
 	// catches the common ask/answer/ask/answer loop.
 	cycleMinPatternLength = 2
 
-	// CycleMinResultRepetitions is how many consecutive identical tool results
+	// How many consecutive matching tool results
 	// make a loop.
 	cycleMinResultRepetitions = 3
 
-	// CycleMinTail is how many trailing activity messages the activity-tail
+	// How many trailing activity messages the activity-tail
 	// heuristic needs before it will judge them.
 	cycleMinTail = 8
 )
@@ -41,7 +41,7 @@ const (
 // including structures that cannot be marshaled. A cycle check must never be
 // the thing that aborts a run, so an unserialisable value collapses to a
 // constant - which makes two such values compare equal, and is the intended
-// trade: the alternative is no check at all.
+// trade. The alternative is no check at all.
 func safeStringify(value any) string {
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -59,8 +59,8 @@ func safeStringify(value any) string {
 // are tried shortest-first because tight loops are both more common and more
 // urgent than long ones.
 //
-// It requires the repeats to be byte-identical and adjacent, which is its
-// blind spot: one interleaved message - a reasoning turn between tool calls -
+// It requires the repeats to be byte-for-byte the same and adjacent, which is its
+// blind spot. One interleaved message - a reasoning turn between tool calls -
 // breaks the run. HasRepeatedResultRun covers that case.
 func hasRepeatedSuffix(messages []conversation.Message) bool {
 	if len(messages) < cycleMinPatternLength*cycleMinRepetitions {
@@ -101,7 +101,7 @@ type activityTailEntry struct {
 	input  string
 	output string
 
-	// hasOutput is whether the entry reports a result: a response does, a request
+	// hasOutput is whether the entry reports a result. A response does, a request
 	// does not.
 	hasOutput bool
 }
@@ -124,7 +124,7 @@ func distinct(values []string) int {
 // tolerates the text around the calls varying, which catches a model that
 // narrates differently each time while doing the same thing.
 //
-// A request whose repeats produce genuinely different outputs is spared: polling
+// A request whose repeats produce really different outputs is spared. Polling
 // an endpoint until it changes is progress, not a loop.
 func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
@@ -231,11 +231,11 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 		!progressing
 }
 
-// hasRepeatedResultRun reports whether the last few tool results are identical -
+// hasRepeatedResultRun reports whether the last few tool results are the same -
 // the model issuing the same call and getting the same answer, learning nothing.
 //
-// It walks only the tool-result stream, skipping every message in between. That
-// is the gap it fills: hasRepeatedSuffix needs the surrounding messages to
+// It walks only the tool-result stream, skipping every message between. That
+// is the gap it fills. HasRepeatedSuffix needs the surrounding messages to
 // repeat byte-for-byte, and hasRepeatedActivityTail needs a contiguous run of
 // activities, so a single interleaved reasoning message defeats both - and a
 // reasoning model emits one between every tool call.
@@ -287,11 +287,11 @@ func hasRepeatedResultRun(messages []conversation.Message) bool {
 }
 
 // hasRepeatedMessageTextRun is the conversation-level adapter around
-// hasRepeatedTextRun: a backstop for a degenerate message that reached the
+// hasRepeatedTextRun. A fallback for a degenerate message that reached the
 // conversation despite the streaming guard.
 //
 // Reasoning and activity messages are exempt. The reasoning channel is the
-// model's scratchpad and activity carries tool output; both are legitimately
+// model's scratchpad and activity carries tool output. Both are properly
 // repetitive - enumerations, grids, table rows - and neither is the answer the
 // user sees.
 func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
@@ -310,7 +310,7 @@ func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
 	return false
 }
 
-// cycleHeuristics is ordered: the first to fire is the one reported.
+// cycleHeuristics is ordered. The first to fire is the one reported.
 var cycleHeuristics = []struct {
 	name   string
 	detect func([]conversation.Message) bool

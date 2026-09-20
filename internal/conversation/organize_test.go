@@ -9,8 +9,8 @@ import (
 
 // These cases are ported from the TypeScript engine's organizeMessages suite.
 // They are the shapes that actually reached production - a result whose call
-// was trimmed away, two identical calls in one turn, a trigger stranded in the
-// middle of a history - and each one is a request a provider rejects outright.
+// was trimmed away, two matching calls in one turn, a trigger stranded in the
+// middle of a history - and each one is a request a provider rejects.
 
 // request builds a tool-call message.
 func request(id, name, arguments string) Message {
@@ -76,7 +76,7 @@ func TestOrganizeKeepsAWellFormedConversation(t *testing.T) {
 	}
 }
 
-// The rule providers enforce: a result immediately follows the call it answers.
+// The rule providers enforce. A result immediately follows the call it answers.
 func TestOrganizeClustersASeparatedPair(t *testing.T) {
 	got := Organize([]Message{
 		request("call_1", "shell", "{}"),
@@ -155,7 +155,7 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 	}
 }
 
-// Two identical calls in one turn are only distinguishable by id, which is why
+// Two matching calls in one turn are only distinguishable by id, which is why
 // the pairing prefers it over the arguments.
 func TestOrganizePairsIdenticalCallsByID(t *testing.T) {
 	got := Organize([]Message{
@@ -357,7 +357,7 @@ func TestOrganizeHandlesAnEmptyConversation(t *testing.T) {
 	}
 }
 
-// Organize is used on the way to the provider; the engine's own history is the
+// Organize is used on the way to the provider. The engine's own history is the
 // record of what happened and must not be rewritten under it.
 func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 	messages := []Message{
@@ -375,7 +375,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 	}
 }
 
-// The whole point, end to end: a history that trimming and interleaving have
+// The whole point, end to end. A history that trimming and interleaving have
 // mangled still renders into something a provider accepts.
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 	chat := ToPrompt([]Message{

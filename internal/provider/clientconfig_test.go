@@ -92,7 +92,7 @@ func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 	}
 }
 
-// The effort is normalised and forwarded: which values exist is the config's
+// The effort is normalised and forwarded. Which values exist is the config's
 // rule and the endpoint's, not the connection's.
 func TestResolveNormalisesTheReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"", "low", "HIGH", " medium ", "somethingnew"} {

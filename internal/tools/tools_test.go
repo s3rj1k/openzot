@@ -24,7 +24,7 @@ func findTool(tools []fantasy.AgentTool, name string) (fantasy.AgentTool, bool) 
 	return nil, false
 }
 
-// call runs a tool with the given arguments the way the engine does: as a JSON
+// call runs a tool with the given arguments the way the engine does. As a JSON
 // input. A response the tool flags as an error comes back as an error.
 // AsString is a tool's answer as the text it is.
 func asString(t *testing.T, answer any) string {
@@ -63,7 +63,7 @@ func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]
 	return response.Content, nil
 }
 
-// The handlers are methods on a toolSet now; these shims let the existing
+// The handlers are methods on a toolSet now. These shims let the existing
 // tests exercise them directly at an ordinary output ceiling.
 const maxToolOutput = 100_000
 
@@ -203,7 +203,7 @@ func TestTheToolboxIsShellAndTasks(t *testing.T) {
 	}
 }
 
-// With no file tools, shell has to be enough: create a file, read a range of it
+// With no file tools, shell has to be enough. Create a file, read a range of it
 // back, and list the directory, all with ordinary commands.
 func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 	dir := t.TempDir()
@@ -230,7 +230,7 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 }
 
 // Reading a file with cat is how the model reads now, so the output ceiling
-// that used to bound the read tool has to bound shell: one cat of a large file
+// that used to bound the read tool has to bound shell. One cat of a large file
 // must not flood the context.
 func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
@@ -272,7 +272,7 @@ func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
 	}
 }
 
-// No ceiling means what it says: a caller that does not want one gets the whole
+// No ceiling means what it says. A caller that does not want one gets the whole
 // output, and no marker.
 func TestNoCeilingReturnsEverything(t *testing.T) {
 	got, err := call(t, New(0, nil), "shell", map[string]any{

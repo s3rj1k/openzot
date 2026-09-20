@@ -102,7 +102,7 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 	}
 }
 
-// The mirror case: a request whose result never arrived leaves the conversation
+// The mirror case. A request whose result never arrived leaves the conversation
 // invalid, so the assistant turn goes too.
 func TestToPromptDropsDanglingRequest(t *testing.T) {
 	messages := []Message{

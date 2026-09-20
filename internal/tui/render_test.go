@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// A path is read from its end: the last segment names the project, the first
+// A path is read from its end. The last segment names the project, the first
 // are shared by every project on the machine. Cutting the head is the whole
 // point - truncate does the opposite and was wrong here.
 func TestShortPathKeepsTheInformativeEnd(t *testing.T) {

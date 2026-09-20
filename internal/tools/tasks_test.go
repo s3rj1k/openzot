@@ -8,7 +8,7 @@ import (
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model
-// sends them: JSON-decoded, so lists are []any and objects are map[string]any.
+// sends them. JSON-decoded, so lists are []any and objects are map[string]any.
 func taskCall(tasks ...map[string]any) map[string]any {
 	list := make([]any, 0, len(tasks))
 
@@ -48,7 +48,7 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 }
 
 // Every call carries the whole list and replaces the last. There is no state in
-// the tool, so a second call is never merged into the first: a task left out of
+// the tool, so a second call is never merged into the first. A task left out of
 // it is a task that is no longer wanted.
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
 	tools := New(maxToolOutput, nil)
@@ -103,7 +103,7 @@ func schemaAt(t *testing.T, schema map[string]any, path ...string) any {
 
 // What the model is told the tool accepts has to be what the tool accepts. The
 // schema names the statuses, so a status the schema offers but the parser
-// refuses would be a trap.
+// rejects would be a trap.
 func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
 	tasks, _ := findTool(New(maxToolOutput, nil), litTasks)
 

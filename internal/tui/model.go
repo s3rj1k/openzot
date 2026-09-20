@@ -22,13 +22,13 @@ const (
 	statusFailed
 )
 
-// reserved counts the non-viewport rows: title + meta + a blank gap + footer.
+// reserved counts the non-viewport rows. Title + meta + a blank gap + footer.
 const reserved = 4
 
 // tickMsg drives the elapsed-time clock once a second while the agent runs.
 type tickMsg struct{}
 
-// model is the entire read-only UI. It holds no input field by design: the user
+// model is the entire read-only UI. It holds no input field by design. The user
 // watches, they do not type. Everything it shows is derived from the agent's
 // event stream plus a couple of counters.
 type model struct {
@@ -44,9 +44,11 @@ type model struct {
 	width   int
 	height  int
 
-	// Activity log. entries are the committed, logical lines; committedWrapped
-	// caches them word-wrapped to the current width so per-token redraws stay
-	// cheap. pending holds the assistant's in-flight narration.
+	/*
+		Activity log. entries are the committed, logical lines. committedWrapped
+		caches them word-wrapped to the current width so per-token redraws stay
+		cheap. pending holds the assistant's in-flight narration.
+	*/
 	entries          []string
 	committedWrapped string
 	pending          string
@@ -79,7 +81,7 @@ type model struct {
 // DefaultMaxScrollback is the on-screen log cap used when a caller does not set
 // its own (Meta.MaxScrollback). An autonomous run can emit an unbounded number of
 // events (millions of iterations, unbounded tool calls), so keeping every line
-// would grow the viewer's memory without limit; once the cap is reached the
+// would grow the viewer's memory without limit. Once the cap is reached the
 // oldest lines are dropped, and the full untrimmed run is always in the session
 // log on disk. A caller that wants to keep more on screen raises the cap.
 const DefaultMaxScrollback = 5000
@@ -118,7 +120,7 @@ func (m *model) wrap(s string) string {
 	return lipgloss.NewStyle().Width(m.vp.Width).Render(s)
 }
 
-// recordHeight is the most rows one log record may take: a third of the
+// recordHeight is the most rows one log record may take. A third of the
 // terminal's height, so no single record - a chatty command, a long task list, a
 // wall of narration - can push the rest of the run off the screen. Zero, meaning
 // no limit, until the terminal has reported a size.
@@ -140,7 +142,7 @@ func (m *model) wrapRecord(s string) string {
 	}
 
 	// Every source line takes at least one row, so lines past the limit can never
-	// be shown; dropping them first keeps a huge output from being wrapped whole.
+	// be shown. Dropping them first keeps a huge output from being wrapped whole.
 	source := strings.Split(s, "\n")
 	cut := len(source) > limit
 
@@ -207,15 +209,19 @@ func (m *model) rewrap() {
 func (m *model) appendEntry(s string) {
 	m.entries = append(m.entries, s)
 
-	// The buffer may grow a quarter past the cap before trimming, so the (linear)
-	// re-wrap a trim costs is amortized over many appends rather than paid on every
-	// append once the cap is reached.
+	/*
+		The buffer may grow a quarter past the cap before trimming, so the (linear)
+		re-wrap a trim costs is amortized over many appends rather than paid on every
+		append once the cap is reached.
+	*/
 	slack := m.maxEntries / 4
 
 	if len(m.entries) > m.maxEntries+slack {
-		// Keep the most recent m.maxEntries, copied into a fresh slice so the old
-		// backing array is released rather than retained behind a reslice, then
-		// rebuild the wrapped cache from the trimmed set.
+		/*
+			Keep the most recent m.maxEntries, copied into a fresh slice so the old
+			backing array is released rather than kept behind a reslice, then
+			rebuild the wrapped cache from the trimmed set.
+		*/
 		kept := make([]string, m.maxEntries)
 		copy(kept, m.entries[len(m.entries)-m.maxEntries:])
 		m.entries = kept
@@ -225,10 +231,12 @@ func (m *model) appendEntry(s string) {
 		return
 	}
 
-	// Append only the newly wrapped entry to the cache. Wrapping each entry to the
-	// viewport width is equivalent to wrapping the whole joined buffer - the wrap
-	// is per line - so per-append cost stays independent of how long the run has
-	// been, instead of re-wrapping the entire history on every line.
+	/*
+		Append only the newly wrapped entry to the cache. Wrapping each entry to the
+		viewport width is equivalent to wrapping the whole joined buffer - the wrap
+		is per line - so per-append cost stays independent of how long the run has
+		been, instead of re-wrapping the entire history on every line.
+	*/
 	wrapped := m.wrapRecord(s)
 	if m.committedWrapped == "" {
 		m.committedWrapped = wrapped
@@ -257,7 +265,7 @@ func (m *model) handleEvent(ev *loop.Event) {
 	case loop.EventIteration:
 		m.iteration = ev.Iteration
 		m.flushPending()
-		// A fixed short rule: one that fills the width would wrap at a narrow
+		// A fixed short rule. One that fills the width would wrap at a narrow
 		// terminal and smear the divider across two rows.
 		m.appendEntry(dividerStyle.Render(fmt.Sprintf("─── iteration %d ───", ev.Iteration)))
 
@@ -278,16 +286,20 @@ func (m *model) handleEvent(ev *loop.Event) {
 		m.appendEntry(errStyle.Render("    ✗ " + ev.Tool + ": " + ev.Text))
 
 	case loop.EventNotice:
-		// a corrective nudge - an empty turn, a truncation continuation, a
-		// settle reminder; without this line the recovery renders as bare
-		// iteration dividers, indistinguishable from a hang
+		/*
+			a corrective nudge - an empty turn, a truncation continuation, a
+			settle reminder. Without this line the recovery renders as bare
+			iteration dividers, indistinguishable from a hang
+		*/
 		m.flushPending()
 		m.appendEntry(statusRunningStyle.Render("⚠ ") + metaStyle.Render(ev.Text))
 
 	case loop.EventRetry:
-		// a retried provider failure spends a continuation and then waits out a
-		// backoff; without this line the wait renders as empty iterations
-		// stacking up - a run that is surviving looks like one that is hanging
+		/*
+			a retried provider failure spends a continuation and then waits out a
+			backoff. Without this line the wait renders as empty iterations
+			stacking up - a run that is surviving looks like one that is hanging
+		*/
 		m.flushPending()
 		m.appendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(ev.Text))
 
@@ -297,12 +309,12 @@ func (m *model) handleEvent(ev *loop.Event) {
 		m.outputTokens = ev.OutputTokens
 
 	default:
-		// reasoning, whole messages and a runaway cut are for the log; the
+		// reasoning, whole messages and a runaway cut are for the log. The
 		// tokens and the notices already show what they say
 	}
 }
 
-// finish folds the run's ending into the UI state: the verdict, and the error
+// finish folds the run's ending into the UI state. The conclusion, and the error
 // behind it when there is one. The error is usually the run's only diagnostic -
 // "the provider failed" on screen with the actual 404 dropped on the floor was
 // how that got lost - so it is kept and shown.
@@ -416,7 +428,7 @@ func (m *model) badge() string {
 	case statusFailed:
 		return statusFailStyle.Render("✗ failed")
 	default:
-		// Keep the spinner and label as separate same-color pieces: nesting the
+		// Keep the spinner and label as separate same-color pieces. Nesting the
 		// spinner's own ANSI inside another style breaks the run of color.
 		return m.spinner.View() + statusRunningStyle.Render("working")
 	}
@@ -429,7 +441,7 @@ func (m *model) titleBar() string {
 	if room < 8 {
 		return left
 	}
-	// A title is what the header wants: the task is the whole order rendered
+	// A title is what the header wants. The task is the whole order rendered
 	// for the model, so a one-line header of it is a paragraph cut mid-word.
 	label := m.title
 	if label == "" {
@@ -441,8 +453,8 @@ func (m *model) titleBar() string {
 
 // cell pads v on the right to at least width columns, so a value that changes
 // length - a count gaining a digit, a rate dropping its decimal - keeps the
-// segments after it where they were. The value stays flush against its label;
-// the slack trails. A value wider than the cell is returned whole.
+// segments after it where they were. The value stays flush against its label.
+// The slack trails. A value wider than the cell is returned whole.
 func cell(v string, width int) string {
 	if pad := width - lipgloss.Width(v); pad > 0 {
 		return v + strings.Repeat(" ", pad)
@@ -451,7 +463,7 @@ func cell(v string, width int) string {
 	return v
 }
 
-// fmtTokens renders a token count compactly: 532, 45.2k, 1.2M.
+// fmtTokens renders a token count compactly. 532, 45.2k, 1.2M.
 func fmtTokens(n int) string {
 	switch {
 	case n >= 1_000_000:
@@ -468,12 +480,12 @@ func fmtDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// metaBar is the header: provider, model, iteration, elapsed time, tokens and
+// metaBar is the header. Provider, model, iteration, elapsed time, tokens and
 // directory, in that order.
 //
-// The order is load-bearing. The bar is one line and drops what does not fit, so
+// The order is essential. The bar is one line and drops what does not fit, so
 // what comes first is what survives a narrow terminal. "dir" is last despite
-// being useful because it never changes: a static path is not worth the live
+// being useful because it never changes. A static path is not worth the live
 // numbers it would push off the end.
 func (m *model) metaBar() string {
 	seg := func(k, v string, value lipgloss.Style) string {
@@ -495,11 +507,13 @@ func (m *model) metaBar() string {
 		elapsed += "/" + fmtDuration(m.maxDuration)
 	}
 
-	// Live values sit in fixed-width cells (see cell) so a number growing a digit
-	// - 9 to 10 iterations, 999 to 1.0k tokens - does not shove every segment
-	// after it sideways. The cell widths are the widest value each field normally
-	// shows; a value that outgrows its cell still renders whole, and the bar shifts
-	// once rather than clipping.
+	/*
+		Live values sit in fixed-width cells (see cell) so a number growing a digit
+		- 9 to 10 iterations, 999 to 1.0k tokens - does not shove every segment
+		after it sideways. The cell widths are the widest value each field normally
+		shows. A value that outgrows its cell still renders whole, and the bar shifts
+		once rather than clipping.
+	*/
 	segments := []string{
 		seg("provider", m.provider, metaProvider),
 		seg("model", m.model, metaModel),
@@ -509,13 +523,15 @@ func (m *model) metaBar() string {
 		seg("dir", shortPath(m.workdir, 28), metaStyle),
 	}
 
-	// A segment is shown whole or not at all. Clipping the line to the terminal
-	// width left whichever segment straddled the edge half-rendered - "elap",
-	// "tok" - which reads as a broken UI rather than a narrow one, and a
-	// half-written number is worse than no number: it can be misread. So the
-	// bar takes segments in order for as long as they fit and stops at the first
-	// that does not, giving a prefix that grows and shrinks predictably as the
-	// terminal is resized.
+	/*
+		A segment is shown whole or not at all. Clipping the line to the terminal
+		width left whichever segment straddled the edge half-rendered - "elap",
+		"tok" - which reads as a broken UI rather than a narrow one, and a
+		half-written number is worse than no number. It can be misread. So the
+		bar takes segments for as long as they fit and stops at the first
+		that does not, giving a prefix that grows and shrinks predictably as the
+		terminal is resized.
+	*/
 	separator := metaStyle.Render("  ·  ")
 	separatorWidth := lipgloss.Width(separator)
 
@@ -528,7 +544,7 @@ func (m *model) metaBar() string {
 			needed += separatorWidth
 		}
 
-		// width is zero until the first WindowSizeMsg arrives; there is no
+		// width is zero until the first WindowSizeMsg arrives. There is no
 		// terminal to fit yet, so nothing is dropped for not fitting it.
 		if m.width > 0 && used+needed > m.width {
 			break

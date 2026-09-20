@@ -30,7 +30,7 @@ type Event struct {
 	MessageType conversation.MessageType
 	Activity    *conversation.Activity
 
-	// Args are a tool call's decoded arguments; Result is what it returned.
+	// Args are a tool call's decoded arguments. Result is what it returned.
 	Args   map[string]any
 	Result any
 
@@ -39,8 +39,10 @@ type Event struct {
 	InputTokens  int
 	OutputTokens int
 
-	// Failure is the provider error behind an EventRetry, so a consumer can
-	// persist the failing exchange the moment it happens rather than waiting
-	// for the run to end - which a kill would never reach.
+	/*
+		Failure is the provider error behind an EventRetry, so a consumer can
+		persist the failing exchange the moment it happens rather than waiting
+		for the run to end - which a kill would never reach.
+	*/
 	Failure error
 }

@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// The startup line shows before the first frame; once sized the title badge
+// The startup line shows before the first frame. Once sized the title badge
 // takes over.
 func TestStartupLineThenTitleBadge(t *testing.T) {
 	m := newModel("hunt bugs", "model", "openai", "/tmp")

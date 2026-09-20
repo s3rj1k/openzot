@@ -15,10 +15,10 @@ import (
 // about the run, and three functions - and is defined by Env and data here.
 
 // Contract is the half of the prompt no order may leave out. Every other prompt
-// rule is a preference; this one is a fact about the machine the agent is running
+// rule is a preference. This one is a fact about the machine the agent is running
 // on. Zot has no input channel at all - a run is a work order, a provider and a
 // read-only viewer - so an agent that asks a question is not answered tersely, it
-// is not answered at all: it waits until a guard kills the run, and everything it
+// is not answered at all. It waits until a guard kills the run, and everything it
 // had not yet written is lost. That failure is silent and expensive, and it costs
 // a whole run to discover, so the contract is re-attached to whatever an order
 // renders to rather than left to whoever wrote it.
@@ -34,7 +34,7 @@ Nothing you address to the user is delivered. There is no reader, no reply, and 
 - Where the task is ambiguous or underspecified, decide it the way a careful engineer would, act on the decision, and record the assumption in a task's note and again in your final summary. A stated assumption is reviewable afterwards; an unasked question is not.
 - Only a terminal tool call ends the task: "success" with a summary when the objective is met, or "failure" with the reason when it genuinely cannot be. Uncertainty is not a reason to stop - it is a reason to choose, act, and say what you chose. Do not simply stop.`
 
-// promptIntro opens the default prompt: who the agent is, and that no one is
+// promptIntro opens the default prompt. Who the agent is, and that no one is
 // listening.
 const promptIntro = `You are zot, a fully autonomous software engineering agent operating inside a real working directory on the user's machine.
 
@@ -61,9 +61,9 @@ const promptRules = `Operating rules:
 - Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarize, interpret, or analyze tool output - keep working, and use "tasks" for status.`
 
 // promptMemory tells the agent where its long-term memory is. The context window
-// is short-term memory and is forgotten oldest first as it fills; the session log
+// is short-term memory and is forgotten oldest first as it fills. The session log
 // keeps every message, so a model that knows it exists can go back for what it
-// lost. Every run has one: zot refuses to run without.
+// lost. Every run has one. Zot will not run without one.
 const promptMemory = `
 
 ## Memory
@@ -84,10 +84,10 @@ const promptProject = `
 {{ .Project }}
 {{- end }}`
 
-// promptTask is where the objective goes. It lives in the system prompt rather
-// than as a user message so it survives trimming: the oldest messages are dropped
+// promptTask is where the goal goes. It lives in the system prompt rather
+// than as a user message so it survives trimming. The oldest messages are dropped
 // first to fit the window, so a user message can fall out of a long run, and an
-// autonomous agent that forgets its own objective is the worst way for a run to
+// autonomous agent that forgets its own goal is the worst way for a run to
 // fail. The instructions are never dropped and always ordered first.
 const promptTask = `
 
@@ -113,7 +113,7 @@ Constraints - these hold for the whole run:
 // DefaultBody is the prompt zot writes into a new order.
 const DefaultBody = promptIntro + promptTools + promptRules + promptMemory + "\n\n" + Contract + promptProject + promptTask
 
-// frontMatterBlank is the data block a new order starts from. The objective is
+// frontMatterBlank is the data block a new order starts from. The goal is
 // left empty, so the order will not run until it is written.
 const frontMatterBlank = `---
 # zot work order. This block says what to do and what "done" means; everything
@@ -148,7 +148,7 @@ objective:
 ---
 `
 
-// Blank returns the form a new order starts from: an empty front matter and the
+// Blank returns the form a new order starts from. An empty front matter and the
 // default prompt.
 func Blank() string { return frontMatterBlank + DefaultBody }
 
@@ -177,9 +177,11 @@ type Env struct {
 	// carry for every run in them (their AGENTS.md files), or empty.
 	Project string
 
-	// Session is the path of the log this run is recorded in. It is the run's
-	// long-term memory: every message, including the ones the context window has
-	// forgotten.
+	/*
+		Session is the path of the log this run is recorded in. It is the run's
+		long-term memory. Every message, including the ones the context window has
+		forgotten.
+	*/
 	Session string
 }
 
@@ -234,12 +236,12 @@ func inc(n int) int { return n + 1 }
 
 // functions are what a prompt may call.
 //
-//   - file "path" inlines a file: relative to the working directory, or absolute,
+//   - file "path" inlines a file. Relative to the working directory, or absolute,
 //     or under ~. A house style guide or a checklist stays a file of its own.
 //   - env "NAME" reads an environment variable.
-//   - inc N is N+1, for numbering a list: templates have no arithmetic of their own.
+//   - inc N is N+1, for numbering a list. Templates have no arithmetic of their own.
 //
-// An order is trusted the way a script is: it can already tell the agent to run
+// An order is trusted the way a script is. It can already tell the agent to run
 // anything, so what it can read into its own prompt is no larger a power.
 func functions(workdir string) template.FuncMap {
 	return template.FuncMap{
@@ -270,7 +272,7 @@ func functions(workdir string) template.FuncMap {
 }
 
 // Render runs the order's prompt for a run in env. The result always carries the
-// non-interactive contract: whatever the order's own text says, it cannot opt a
+// non-interactive contract. Whatever the order's own text says, it cannot opt a
 // run into an interactivity zot does not have.
 func (o Order) Render(env Env) (string, error) {
 	rendered, err := o.execute(env, functions(env.Workdir))
@@ -290,7 +292,7 @@ func (o Order) Render(env Env) (string, error) {
 // check runs the prompt once against stand-in data, so that a template that
 // cannot be rendered - a syntax error, a field that does not exist - is found
 // when the order is loaded. The stand-in fills every field, so the branches that
-// depend on a field being there are exercised too; the file and env functions are
+// depend on a field being there are exercised too. The file and env functions are
 // stubs, as what they read is a fact about the machine, not about the order.
 func (o Order) check() error {
 	stub := template.FuncMap{

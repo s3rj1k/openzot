@@ -8,9 +8,9 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 )
 
-// The cycle budget counts CONSECUTIVE cyclic rounds: a clean round in between
+// The cycle budget counts CONSECUTIVE cyclic rounds. A clean round between
 // must reset it, so two unrelated repetitions far apart in a long run do not add
-// up to a false StopCycle. (Regressed once: the counter never reset.)
+// up to a false StopCycle. (Regressed once. The counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	// varied text so BPE cannot merge it away - this must genuinely exceed the
+	// varied text so BPE cannot merge it away - this must really exceed the
 	// window once counted
 	huge := strings.Repeat("lorem ipsum dolor sit amet consectetur adipiscing ", 2000)
 	args := fmt.Sprintf(`{"content":%q}`, huge)
@@ -86,7 +86,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 		}
 	}
 
-	// the recent turns must survive (sanity: forgetting did keep something)
+	// the recent turns must survive (sanity. Forgetting did keep something)
 	var keptRecent bool
 
 	for _, message := range req.messages {
@@ -152,18 +152,18 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 	}
 }
 
-// The empty budget counts CONSECUTIVE empty turns, as its own documentation says:
-// a productive turn in between must reset it, so single stalls scattered over a
-// long run do not add up to a false StopEmpty. (Regressed once: the counter was
+// The empty budget counts CONSECUTIVE empty turns, as its own documentation says.
+// A productive turn between must reset it, so single stalls scattered over a
+// long run do not add up to a false StopEmpty. (Regressed once. The counter was
 // cumulative, so a run could die to its third stall hundreds of iterations after
 // the first.)
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{stop()},                        // empty: 1/3
+			[]string{stop()},                        // empty. 1/3
 			[]string{tool("call_1", litEcho, "{}")}, // productive - resets
-			[]string{stop()},                        // empty: 1/3 again
+			[]string{stop()},                        // empty. 1/3 again
 			[]string{tool("call_2", litEcho, "{}")}, // productive - resets
 			[]string{settle("done")},                // settling ends the run
 		),

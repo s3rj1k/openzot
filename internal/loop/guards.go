@@ -1,4 +1,4 @@
-// Package loop runs the agentic conversation: call the model, execute the tools
+// Package loop runs the agentic conversation. Call the model, execute the tools
 // it asks for, feed the results back, repeat until the task settles.
 //
 // Most of this file is bounds. Each one exists because an unbounded agent fails
@@ -15,7 +15,7 @@ import (
 const (
 	// DefaultMaxIterations caps agentic rounds - one model call plus the tools
 	// it requests. The loop is iterative rather than recursive, so any value is
-	// safe; this is a behavioral bound, not a stack one.
+	// safe. This is a behavioral bound, not a stack one.
 	DefaultMaxIterations = 1000
 
 	// DefaultMaxContinuations caps CONSECUTIVE recovery attempts - output
@@ -27,17 +27,17 @@ const (
 	// spread over four hours - each one recovered from, each one followed by
 	// real work - left the run with no budget at all, and the twenty-first
 	// blip ended it however healthy it was. The bound is meant to catch a run
-	// that cannot get going again, so it asks that question and no other: it
+	// that cannot get going again, so it asks that question and no other. It
 	// zeroes the moment a turn comes back whole, exactly like the empty and
 	// cycle counters.
 	DefaultMaxContinuations = 20
 
 	// DefaultMaxRecoveries caps recovery attempts across a whole run, however
-	// they are spaced: the point at which a provider stops being given the
+	// they are spaced. The point at which a provider stops being given the
 	// benefit of the doubt.
 	//
 	// MaxContinuations catches a provider refusing right now - twenty in a row
-	// and the run is stuck. It cannot catch the other shape: one that answers
+	// and the run is stuck. It cannot catch the other shape. One that answers
 	// often enough to keep resetting the consecutive count, while the run
 	// spends most of its life retrying rather than working. Every good turn
 	// says the upstream is fine and the tally says it is not, and without this
@@ -48,11 +48,11 @@ const (
 	// 500, a context-limit retry - across an iteration budget that
 	// defaults to a thousand. Two hundred is a fifth of that budget spent on
 	// recovery instead of progress, which no working provider does. Set high
-	// enough not to punish a long, output-heavy run that legitimately
-	// continues a lot; low enough that a chronically failing endpoint is
+	// enough not to punish a long, output-heavy run that
+	// continues a lot. Low enough that a chronically failing endpoint is
 	// called what it is instead of nursed for hours.
 	//
-	// Deliberately absolute rather than a multiple of MaxContinuations. The two
+	// By design absolute rather than a multiple of MaxContinuations. The two
 	// answer unrelated questions, and tying them together means lowering the
 	// consecutive bound - the obvious thing to want, to fail fast on a stuck
 	// provider - silently lowers this one into a range a long healthy run
@@ -65,9 +65,9 @@ const (
 	DefaultMaxCycles = 2
 
 	// DefaultRetryBackoff is the pause before the first retry of a retriable
-	// provider failure; each consecutive retry doubles it, up to MaxRetryBackoff.
+	// provider failure. Each consecutive retry doubles it, up to MaxRetryBackoff.
 	//
-	// Retrying instantly is worse than not retrying: a provider outage burns the
+	// Retrying instantly is worse than not retrying. A provider outage burns the
 	// whole continuation budget inside a few milliseconds - so a run dies to a
 	// blip it would have outlived - while hammering an endpoint that is already
 	// failing. The delay is what turns the continuation budget into a window of
@@ -94,8 +94,8 @@ const (
 	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
 
-	// NarrowFloor is the share of the configured window a rejection can narrow
-	// the effective window down to, as a divisor: a provider that keeps saying
+	// The share of the configured window a rejection can narrow
+	// the effective window down to, as a divisor. A provider that keeps saying
 	// "too long" is wrong about its own ceiling only so far.
 	narrowFloor = 4
 
@@ -108,12 +108,12 @@ const (
 	DefaultPlanNudgeEvery = 5
 
 	// DefaultPlanMinTurns is how few turns may be left in the window, after
-	// forgetting, before the plan is posted again: a window that holds fewer than
+	// forgetting, before the plan is posted again. A window that holds fewer than
 	// this has probably lost the model's last word on it.
 	DefaultPlanMinTurns = 5
 
 	// DefaultContextHard is the share of the window a request is never allowed to
-	// reach: past it, as many of the oldest messages are forgotten as it takes.
+	// reach. Past it, as many of the oldest messages are forgotten as it takes.
 	DefaultContextHard = 90
 
 	// RunawayGuardMinChars is the output length below which the streaming
@@ -135,7 +135,7 @@ const (
 	// StopSettled - the model called the success tool. The only clean ending.
 	StopSettled StopReason = "settled"
 
-	// StopFailed - the model called the failure tool: it reached a conclusion,
+	// StopFailed - the model called the failure tool. It reached a conclusion,
 	// and the conclusion is that the task cannot be done. A settled ending, but
 	// not a successful one, so it must never be reported as StopSettled is.
 	StopFailed StopReason = "failed"
@@ -174,10 +174,12 @@ type Budget struct {
 	Iterations int
 	Calls      int
 
-	// Continuations counts CONSECUTIVE recovery attempts; a turn that comes
-	// back whole zeroes it. Recoveries is the total across the run, which only
-	// ever rises - it is what the run is reported to have spent, and what
-	// DefaultMaxRecoveries backstops.
+	/*
+		Continuations counts CONSECUTIVE recovery attempts. A turn that comes
+		back whole zeroes it. Recoveries is the total across the run, which only
+		ever rises - it is what the run is reported to have spent, and what
+		DefaultMaxRecoveries fallbacks.
+	*/
 	Continuations int
 	Recoveries    int
 
@@ -185,15 +187,17 @@ type Budget struct {
 	Empties int
 	Settles int
 
-	// InputTokens and OutputTokens accumulate the provider-reported prompt and
-	// completion tokens across the run - the actual billed usage, not the local
-	// estimate. Each model call bills its full prompt, so these are summed per
-	// turn.
+	/*
+		InputTokens and OutputTokens accumulate the provider-reported prompt and
+		completion tokens across the run - the actual billed usage, not the local
+		estimate. Each model call bills its full prompt, so these are summed per
+		turn.
+	*/
 	InputTokens  int
 	OutputTokens int
 }
 
-// spendContinuation records one recovery attempt against both counts: the
+// spendContinuation records one recovery attempt against both counts. The
 // consecutive run of them, and the total across the run.
 func (b *Budget) spendContinuation() {
 	b.Continuations++

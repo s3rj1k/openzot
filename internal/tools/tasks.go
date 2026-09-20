@@ -9,7 +9,7 @@ import (
 	"github.com/openzot/openzot/internal/plan"
 )
 
-// tasksInput is what the tasks tool is called with; the struct is the schema.
+// tasksInput is what the tasks tool is called with. The struct is the schema.
 type tasksInput struct {
 	Tasks []taskInput `json:"tasks" description:"Every task, in the order you will do them, each with its current status"`
 }
@@ -22,12 +22,12 @@ type taskInput struct {
 
 // tasksTool records the task list.
 //
-// Tasks is a reflective tool: it changes nothing on disk. Its value is that the
+// Tasks is a reflective tool. It changes nothing on disk. Its value is that the
 // model has to state what the work needs and where each part stands, in a
 // structured form, which both organizes its own reasoning and makes the run
 // followable in the viewer and the session log. Every call carries the whole
-// list and replaces the last, so there is nothing to merge and no state here:
-// the latest call is the truth.
+// list and replaces the last, so there is nothing to merge and no state here.
+// The latest call is the truth.
 //
 // The call is still read through ParseTasks, the one place the schema is
 // interpreted, so what the tool accepts and what the viewer shows cannot drift.

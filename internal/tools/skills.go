@@ -13,10 +13,10 @@ import (
 
 // maxListedDescription bounds one skill's description in the listing the skills
 // tool returns. The listing is meant to be scanned, so a long description is
-// cut; the skill itself, read by name, is always whole.
+// cut. The skill itself, read by name, is always whole.
 const maxListedDescription = 200
 
-// skillsInput is what the skills tool is called with; the struct is the schema.
+// skillsInput is what the skills tool is called with. The struct is the schema.
 type skillsInput struct {
 	Name string `json:"name,omitempty" description:"The skill to read in full. Omit to list the available skills."`
 }
@@ -33,7 +33,7 @@ func shorten(text string, limit int) string {
 	return string([]rune(text)[:limit-1]) + "…"
 }
 
-// listSkills renders the listing: one line per skill, name then description.
+// listSkills renders the listing. One line per skill, name then description.
 func listSkills(offered []skills.Skill) string {
 	var b strings.Builder
 
@@ -60,7 +60,7 @@ func skillNames(offered []skills.Skill) string {
 	return strings.Join(names, ", ")
 }
 
-// skillsTool is the model's way to the skills: called with no name it lists them
+// skillsTool is the model's way to the skills. Called with no name it lists them
 // with their short descriptions, called with one it returns that skill's full
 // instructions. Everything is already in memory, so a call reads no file.
 func (s toolSet) skillsTool(offered []skills.Skill) fantasy.AgentTool {

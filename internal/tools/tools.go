@@ -1,4 +1,4 @@
-// Package tools is the tools a run offers the model: shell, which is the only one
+// Package tools is the tools a run offers the model. Shell, which is the only one
 // that touches the machine, tasks, which keeps the run's plan followable, and
 // skills, which serves instructions on request. Each is a typed fantasy tool.
 package tools
@@ -22,8 +22,8 @@ const DefaultOutputPercent = 25
 // ShellTool is the name of the tool that acts on the machine.
 const ShellTool = "shell"
 
-// shellInput is what the shell tool is called with. The struct is the schema:
-// fantasy generates the tool's parameters from its tags, and a field is required
+// shellInput is what the shell tool is called with. The struct is the schema.
+// Fantasy generates the tool's parameters from its tags, and a field is required
 // unless it is omitempty.
 type shellInput struct {
 	Command string `json:"command" description:"The command to run"`
@@ -40,7 +40,7 @@ type toolSet struct {
 
 // truncate bounds what a tool may return.
 //
-// An unbounded result is a context-window hazard: one cat of a large file can
+// An unbounded result is a context-window hazard. One cat of a large file can
 // consume the whole budget and evict the conversation that explains why it was
 // read - or, on an endpoint with a small window, be rejected wholesale so the
 // run cannot even send it. Truncation is visible so the model knows it is
@@ -54,7 +54,7 @@ func (s toolSet) truncate(text string) string {
 }
 
 // shell runs a command and returns its combined output. Every outcome is output,
-// including a failed or timed-out command: none of them is an error the model
+// including a failed or timed-out command. None of them is an error the model
 // could not act on.
 func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) string {
 	timeout := 120 * time.Second
@@ -69,23 +69,27 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command) //nolint:gosec // G204: running the model's command is what the shell tool is for
 
-	// Killing the shell is not enough. A command that leaves a process behind -
-	// `npm start &`, anything that daemonises - hands the inherited output pipe
-	// to a grandchild, and reading that pipe blocks until every holder of it is
-	// gone. Without a WaitDelay the tool call simply never returns, and nothing
-	// upstream can recover: the run's time budget is only checked between
-	// iterations, and canceling the run kills the shell, not the process
-	// holding the pipe. WaitDelay gives up on the pipe shortly after the process
-	// is killed, so a wedged command costs a timeout instead of the whole run.
+	/*
+		Killing the shell is not enough. A command that leaves a process behind -
+		`npm start &`, anything that daemonises - hands the inherited output pipe
+		to a grandchild, and reading that pipe blocks until every holder of it is
+		gone. Without a WaitDelay the tool call simply never returns, and nothing
+		upstream can recover. The run's time budget is only checked between
+		iterations, and canceling the run kills the shell, not the process
+		holding the pipe. WaitDelay gives up on the pipe shortly after the process
+		is killed, so a stuck command costs a timeout instead of the whole run.
+	*/
 	cmd.WaitDelay = 2 * time.Second
 
 	setProcessGroup(cmd)
 
 	output, err := cmd.CombinedOutput()
 
-	// @note a non-zero exit is returned to the model as output rather than as an
-	// error. A failing command is information - a compiler error, a failing test -
-	// and the model is usually the thing best placed to act on it.
+	/*
+		@note a non-zero exit is returned to the model as output rather than as an
+		error. A failing command is information - a compiler error, a failing test -
+		and the model is usually the thing best placed to act on it.
+	*/
 	if err != nil && ctx.Err() == nil {
 		return s.truncate(fmt.Sprintf("%s\n[exit: %v]", output, err))
 	}
@@ -112,10 +116,10 @@ func (s toolSet) shellTool() fantasy.AgentTool {
 // New returns the standard tool set, with a ceiling of maxOutput bytes on a
 // single tool result. Zero or negative means no ceiling.
 //
-// The set is two tools. Shell is the only one that touches the machine: the
+// The set is two tools. Shell is the only one that touches the machine. The
 // model reads, lists, creates and changes files with ordinary commands, the way
 // anyone does at a terminal, so there is one place a run's effects come from and
-// one place to bound them. Tasks changes nothing on disk; it exists so the work
+// one place to bound them. The tasks tool changes nothing on disk. It exists so the work
 // a run has set itself, and how far along it is, can be followed. A third, skills,
 // is added when there are skills to offer.
 //
@@ -124,7 +128,7 @@ func (s toolSet) shellTool() fantasy.AgentTool {
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
 //
-// The ceiling is the caller's to derive from the model's context window: a
+// The ceiling is the caller's to derive from the model's context window. A
 // single result that overflows the window is rejected wholesale, and the run
 // cannot recover from a message it cannot even send.
 func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {

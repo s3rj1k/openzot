@@ -21,14 +21,14 @@ import (
 // recursion suites.
 //
 // The budgets look interchangeable and are not. Iterations count every trip
-// round the loop; continuations count only the times the model was cut off
+// round the loop. Continuations count only the times the model was cut off
 // mid-answer. Conflating them is how a run that is making steady progress
 // through tool calls gets killed for "running out of output space", and how a
 // model that never stops being truncated runs forever. Both were real.
 
 // A time cap ends a run at the iteration boundary. Unbounded by default, but a
 // run pinned to a deadline must stop with StopTime rather than running to the
-// iteration backstop.
+// iteration fallback.
 func TestATimeBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
@@ -111,7 +111,7 @@ func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
 	}
 }
 
-// The two budgets are independent: a run can exhaust one while the other is
+// The two budgets are independent. A run can exhaust one while the other is
 // barely touched, and neither may end the run on the other's behalf.
 func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	calls := 0
@@ -134,7 +134,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 		t.Errorf("Continuations = %d, want the continuation budget untouched", result.Budget.Recoveries)
 	}
 
-	// and the other way round: truncated forever, with plenty of iterations
+	// and the other way round. Truncated forever, with plenty of iterations
 	result = run(t, &Options{
 		ContextWindow:    testWindow,
 		Client:           stub(t, []string{text("more"), truncated()}),
@@ -152,7 +152,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 }
 
 // Everything that goes round the loop costs an iteration - tool rounds,
-// truncation retries, empty turns and settle nudges alike. It is the backstop
+// truncation retries, empty turns and settle nudges alike. It is the fallback
 // that bounds a run no matter which way the model misbehaves.
 func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 	tests := []struct {
@@ -198,7 +198,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 	}
 }
 
-// One iteration is single-step mode: one model call, then stop. It is what a
+// One iteration is single-step mode. One model call, then stop. It is what a
 // caller uses to drive the loop themselves.
 func TestASingleIterationIsOneModelCall(t *testing.T) {
 	calls := 0
@@ -226,10 +226,10 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 
 // A non-positive budget means "unset", not "zero".
 //
-// The distinction: the iteration count and the no-progress guards (cycles,
-// empties) are hard backstops - a non-positive value must never leave them
+// The distinction. The iteration count and the no-progress guards (cycles,
+// empties) are hard fallbacks - a non-positive value must never leave them
 // unbounded, because that is how a runaway run fails dangerously. The call and
-// time budgets are the opposite: unbounded is their intended default, so a
+// time budgets are the opposite. Unbounded is their intended default, so a
 // non-positive value means exactly that.
 func TestBudgetDefaults(t *testing.T) {
 	for _, value := range []int{0, -1, -1000} {
@@ -245,7 +245,7 @@ func TestBudgetDefaults(t *testing.T) {
 			t.Fatalf("New: %v", err)
 		}
 
-		// backstops fall back to their finite defaults
+		// fallbacks fall back to their finite defaults
 		if engine.maxIterations != DefaultMaxIterations {
 			t.Errorf("a budget of %d left iterations at %d, want the default backstop",
 				value, engine.maxIterations)
@@ -264,7 +264,7 @@ func TestBudgetDefaults(t *testing.T) {
 }
 
 // Deep agentic loops must be stack-safe. The TypeScript engine recursed per
-// round and had to be rewritten when a long run overflowed; this documents that
+// round and had to be rewritten when a long run overflowed. This documents that
 // zot's loop is iterative and cannot.
 func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 	calls := 0
@@ -466,7 +466,7 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	// the filtered turn is answered like any turn that stops without acting: a
+	// the filtered turn is answered like any turn that stops without acting. A
 	// nudge to settle, and the run carries on
 	if result.Reason != StopSettled || result.Budget.Settles != 1 {
 		t.Errorf("Reason = %q after %d nudges, want the run to carry on and settle after one", result.Reason, result.Budget.Settles)
@@ -541,15 +541,17 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 		t.Fatalf("continuations = %d, want the budget spent", result.Budget.Recoveries)
 	}
 
-	// 20ms, then 40ms, then 80ms: the doubling means three retries cannot fit
+	// 20ms, then 40ms, then 80ms. The doubling means three retries cannot fit
 	// into anything close to the zero delay they used to take.
 	if want := 100 * time.Millisecond; elapsed < want {
 		t.Errorf("three retries took %s, want at least %s of backoff between them", elapsed, want)
 	}
 
-	// A failed model call is not an agentic round. Continuations are the bound
-	// on recovery attempts; charging the iteration budget too would make an
-	// outage cost the run twice.
+	/*
+		A failed model call is not an agentic round. Continuations are the bound
+		on recovery attempts. Charging the iteration budget too would make an
+		outage cost the run twice.
+	*/
 	if result.Budget.Iterations != 0 {
 		t.Errorf("Iterations = %d, want 0 - no round ever completed", result.Budget.Iterations)
 	}
@@ -603,15 +605,17 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		t.Errorf("reason = %q, want the cancellation to end the run", result.Reason)
 	}
 
-	// The abort landed during a backoff wait, but the provider failure that
-	// preceded it is carried along as the evidence - it is the exchange the
-	// operator quit to go and read. A bare "context canceled" would discard it.
+	/*
+		The abort landed during a backoff wait, but the provider failure that
+		preceded it is carried along as the evidence - it is the exchange the
+		operator quit to go and read. A bare "context canceled" would discard it.
+	*/
 	if result.Err == nil || !provider.IsProviderError(result.Err) {
 		t.Errorf("aborted result carries %v, want the last provider failure preserved", result.Err)
 	}
 }
 
-// The default backoff must be a real pause: a zero default would silently
+// The default backoff must be a real pause. A zero default would silently
 // restore the tight retry loop. Asserted on the constructed engine because
 // reaching it behaviourally costs a second of wall clock per retry.
 func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
@@ -657,14 +661,14 @@ func TestBackoffDoublesAndIsCapped(t *testing.T) {
 		t.Errorf("a long outage waits %s, want the cap %s", got, MaxRetryBackoff)
 	}
 
-	// the cap binds the base too: a caller-configured backoff above it must not
+	// the cap binds the base too. A caller-configured backoff above it must not
 	// make the first retry the longest wait of the run
 	if got := backoffFor(2*MaxRetryBackoff, 1); got != MaxRetryBackoff {
 		t.Errorf("a base above the cap waits %s on the first retry, want the cap %s", got, MaxRetryBackoff)
 	}
 }
 
-// A rate limit must not kill a run. 429 is deliberately excluded from
+// A rate limit must not kill a run. 429 is by design excluded from
 // IsRetriable because it needs the provider's own schedule rather than a tight
 // loop - but nothing waited on that schedule, so the loop fell straight through
 // to StopError. One throttle response at iteration 400 of an overnight run ended
@@ -725,7 +729,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 		t.Errorf("continuations = %d, want the rate limit to cost exactly one", result.Budget.Recoveries)
 	}
 
-	// the provider asked for a second; honoring that is the whole point, so a
+	// the provider asked for a second. Honoring that is the whole point, so a
 	// retry that came back sooner means the advice was ignored
 	if elapsed < time.Second {
 		t.Errorf("retried after %s, want the advised second to be waited out", elapsed)
@@ -733,7 +737,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 }
 
 // A provider that advises an absurd Retry-After must not park an unattended run
-// for hours: the advice is honored up to a cap, and no further.
+// for hours. The advice is honored up to a cap, and no further.
 func TestAnAbsurdRetryAfterIsCapped(t *testing.T) {
 	if got := rateLimitWait(48*time.Hour, true, time.Second); got != MaxRateLimitWait {
 		t.Errorf("wait = %s, want the cap %s", got, MaxRateLimitWait)
@@ -761,13 +765,13 @@ func TestAZeroRetryAfterIsFlooredByTheBackoff(t *testing.T) {
 		t.Errorf("wait = %s, want the 4s backoff floor under \"retry now\"", got)
 	}
 
-	// advice above the floor still wins: the provider knows its own window
+	// advice above the floor still wins. The provider knows its own window
 	if got := rateLimitWait(90*time.Second, true, 4*time.Second); got != 90*time.Second {
 		t.Errorf("wait = %s, want the advised 90s over the smaller backoff", got)
 	}
 }
 
-// And end to end: repeated 429s advising "retry now" must still space their
+// And end to end. Repeated 429s advising "retry now" must still space their
 // retries out on the backoff schedule rather than burning the continuation
 // budget in milliseconds.
 func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
@@ -810,7 +814,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 		t.Fatalf("continuations = %d, want the budget spent", result.Budget.Recoveries)
 	}
 
-	// 20ms, then 40ms, then 80ms: the advised zero must not undercut the floor
+	// 20ms, then 40ms, then 80ms. The advised zero must not undercut the floor
 	if want := 100 * time.Millisecond; elapsed < want {
 		t.Errorf("three rate-limited retries took %s, want at least %s of backoff between them", elapsed, want)
 	}
@@ -834,7 +838,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 		switch request {
 		case 1, 2:
-			// a two-deep outage: retries wait base, then 2x base
+			// a two-deep outage. Retries wait base, then 2x base
 			w.WriteHeader(http.StatusInternalServerError)
 
 		case 3:
@@ -844,7 +848,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 			fmt.Fprint(w, "data: [DONE]\n\n")
 
 		case 4:
-			// a fresh, unrelated blip: it must wait base again, not 4x base
+			// a fresh, unrelated blip. It must wait base again, not 4x base
 			w.WriteHeader(http.StatusInternalServerError)
 
 		default:
@@ -893,9 +897,11 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		t.Fatalf("continuations = %d, want 3", result.Budget.Recoveries)
 	}
 
-	// base + 2x base + base = 4x base when the counter resets on success; a
-	// counter that kept escalating would wait base + 2x + 4x = 7x base. The
-	// bound sits between the two with generous slack for a loaded machine.
+	/*
+		base + 2x base + base = 4x base when the counter resets on success. A
+		counter that kept escalating would wait base + 2x + 4x = 7x base. The
+		bound sits between the two with generous slack for a loaded machine.
+	*/
 	if floor := 4 * base; elapsed < floor {
 		t.Fatalf("the retries took %s, want at least %s of backoff", elapsed, floor)
 	}
@@ -924,14 +930,14 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 		switch request {
 		case 1, 2, 3:
-			// truncated answers: each spends a continuation, none is a failure
+			// truncated answers. Each spends a continuation, none is a failure
 			w.Header().Set("Content-Type", "text/event-stream")
 			fmt.Fprintf(w, "data: %s\n\n", text("more to say"))
 			fmt.Fprintf(w, "data: %s\n\n", truncated())
 			fmt.Fprint(w, "data: [DONE]\n\n")
 
 		case 4:
-			// the run's first retriable failure: it must wait base, not 8x base
+			// the run's first retriable failure. It must wait base, not 8x base
 			w.WriteHeader(http.StatusInternalServerError)
 
 		default:
@@ -977,7 +983,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 	}
 
 	// one failure, one wait of base. Keyed off the shared budget it would have
-	// been 8x base; the bound leaves generous slack for a loaded machine.
+	// been 8x base. The bound leaves generous slack for a loaded machine.
 	if floor := base; elapsed < floor {
 		t.Fatalf("the retry took %s, want at least the %s base backoff", elapsed, floor)
 	}
@@ -988,7 +994,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 }
 
 // A stuck or stalling provider that returns an empty turn renders as bare
-// iteration dividers unless the nudge is surfaced: a run being nudged back to
+// iteration dividers unless the nudge is surfaced. A run being nudged back to
 // life looked exactly like a hang (a live provider held a stream for three
 // silent minutes and returned nothing - and the viewer showed nothing).
 func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
@@ -1041,7 +1047,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		requests int
 	)
 
-	// alternating: blip, good turn, blip, good turn... six blips in all, well
+	// alternating. Blip, good turn, blip, good turn... six blips in all, well
 	// past a continuation budget of two, none of them consecutive
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
@@ -1088,7 +1094,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		MaxContinuations: 2,
 		MaxIterations:    40,
 		MaxSettles:       5,
-		// the identical echo rounds are the point of the fixture, not a
+		// the matching echo rounds are the point of the fixture, not a
 		// repetition the run should be nudged out of
 		MaxCycles:    10_000,
 		RetryBackoff: -1,
@@ -1107,7 +1113,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 	}
 }
 
-// The other side of the reset: consecutive failures still end the run, and at
+// The other side of the reset. Consecutive failures still end the run, and at
 // the bound rather than somewhere past it.
 func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1144,7 +1150,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 	}
 }
 
-// The shape MaxContinuations cannot see: a provider that answers just often
+// The shape MaxContinuations cannot see. A provider that answers just often
 // enough to keep resetting the consecutive count, while the run spends its life
 // retrying rather than working. Every good turn says the upstream is fine and
 // the tally says it is not, so the tally has to be the thing that ends it.
@@ -1157,7 +1163,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		requests int
 	)
 
-	// every odd request fails; every even one is an empty-ish tool round that
+	// every odd request fails. Every even one is an empty-ish tool round that
 	// resets the consecutive count. This never settles on its own.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
@@ -1200,7 +1206,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		// generous, so a consecutive bound cannot be what fires
 		MaxContinuations: 1_000,
 		MaxRecoveries:    recoveries,
-		// far above what the backstop allows, so it is the backstop that stops
+		// far above what the fallback allows, so it is the fallback that stops
 		// this and not the round budget
 		MaxIterations: 10_000,
 		MaxCycles:     10_000,
@@ -1222,8 +1228,8 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 	}
 }
 
-// The bound is deliberately absolute rather than a multiple of
-// MaxContinuations, because tying them together would put this bug back: a
+// The bound is by design absolute rather than a multiple of
+// MaxContinuations, because tying them together would put this bug back. A
 // caller who lowers the consecutive bound to fail fast on a stuck provider
 // would silently lower the total too, and a long healthy run would then die of
 // scattered blips it had already recovered from - the accumulating budget the

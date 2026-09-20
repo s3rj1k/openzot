@@ -107,7 +107,7 @@ func TestLoadErrors(t *testing.T) {
 }
 
 // A field that only exists on the branch a real run takes is still found at
-// load: the stand-in data fills every list, so the branch is exercised.
+// load. The stand-in data fills every list, so the branch is exercised.
 func TestATypoInABranchIsFoundAtLoad(t *testing.T) {
 	_, err := Parse([]byte(simple("{{ if .Acceptance }}{{ .Acceptnce }}{{ end }}")))
 	if err == nil || !strings.Contains(err.Error(), "Acceptnce") {
@@ -120,7 +120,7 @@ func TestATypoInABranchIsFoundAtLoad(t *testing.T) {
 	}
 }
 
-// Blank lines before the opening line are harmless; a --- inside the prompt is
+// Blank lines before the opening line are harmless. A --- inside the prompt is
 // just prompt.
 func TestFrontMatterSplitting(t *testing.T) {
 	order, err := Parse([]byte("\n\n---\r\nobjective: go\r\n---\r\nabove\n---\nbelow\n"))
@@ -210,7 +210,7 @@ func TestTheFileAndEnvFunctions(t *testing.T) {
 		t.Errorf("rendered = %q", got)
 	}
 
-	// a file that is not there is an error, not an empty string: a prompt that
+	// a file that is not there is an error, not an empty string. A prompt that
 	// silently lost its style guide is a worse failure than one that says so
 	missing, err := Parse([]byte(simple(`{{ file "nope.txt" }}`)))
 	if err != nil {
@@ -270,7 +270,7 @@ func TestTheContractIsAlwaysThereExactlyOnce(t *testing.T) {
 	}
 }
 
-// The scaffold is a blank form: it must be written before it can run, and once it
+// The scaffold is a blank form. It must be written before it can run, and once it
 // is, the default prompt it carries has to render into the prompt zot has always
 // run with.
 func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
@@ -318,7 +318,7 @@ func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
 	}
 }
 
-// The task section reads as it always has: the objective, then the criteria as a
+// The task section reads as it always has. The goal, then the criteria as a
 // numbered list, then the constraints as bullets.
 func TestTheDefaultTaskSectionListsCriteriaAndConstraints(t *testing.T) {
 	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\nacceptance:\n  - a works\n  - b works\nconstraints:\n  - keep it small\n", 1)
@@ -342,9 +342,9 @@ func TestTheDefaultTaskSectionListsCriteriaAndConstraints(t *testing.T) {
 	}
 }
 
-// A title is a label for people. A declared one wins; without one the file name
+// A title is a label for people. A declared one wins. Without one the file name
 // is already a perfectly good name, because order files are named from their
-// objective. Sentence case, not Title Case - the name is a sentence.
+// goal. Sentence case, not Title Case - the name is a sentence.
 func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -471,7 +471,7 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 	}
 }
 
-// The default prompt tells the agent about its long-term memory: where the log is,
+// The default prompt tells the agent about its long-term memory. Where the log is,
 // and that it outlives the context window.
 func TestTheDefaultPromptPointsAtTheSessionLog(t *testing.T) {
 	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\n", 1)

@@ -1,13 +1,13 @@
 // Command zot is an automated software factory you watch, not drive.
 //
-// Zot takes work orders, not prompts. A work order is one file: a front matter
-// block with the durable objective, the acceptance criteria that define "done"
+// Zot takes work orders, not prompts. A work order is one file. A front matter
+// block with the durable goal, the acceptance criteria that define "done"
 // and the constraints the work must hold to, then the system prompt itself, a
-// Go template that reads that block. Each order becomes one autonomous run: the
+// Go template that reads that block. Each order becomes one autonomous run. The
 // agent reads files, edits them, and runs shell commands on its own while the
 // terminal streams a live, read-only view of everything it does.
 //
-// Usage:
+// Usage.
 //
 //	# declare the provider (base_url, api_key, models) and pick agent.model
 //	zot config
@@ -40,23 +40,25 @@ import (
 	"github.com/openzot/openzot/internal/tui"
 )
 
-// Seams for tests, which have no terminal: production always uses the real
+// Seams for tests, which have no terminal. Production always uses the real
 // terminal check and the real full-screen viewer.
 var (
 	isTerminal = tui.IsInteractive
 	runViewer  = tui.Run
 
-	// Execute is the engine entry point - run.Run everywhere in production,
+	// The engine entry point - run.Run everywhere in production,
 	// replaced by tests so no provider is ever reached.
 	execute = run.Run
 )
 
-// orderOptions is how an order is run: its log goes in logs, named after it, and
+// orderOptions is how an order is run. Its log goes in logs, named after it, and
 // the viewer calls it by its title, or by its file name.
 func orderOptions(logs string, o order.Order) run.Options {
-	// the log is the order's own name with .jsonl for its extension, so the record
-	// of a task is the file beside the task: one file per task, whatever the number
-	// of runs - each appends to it
+	/*
+		the log is the order's own name with .jsonl for its extension, so the record
+		of a task is the file beside the task. One file per task, whatever the number
+		of runs - each appends to it
+	*/
 	base := filepath.Base(o.Path)
 
 	return run.Options{
@@ -110,7 +112,7 @@ Flags:`)
 }
 
 // loadOrder loads the one order this invocation is about. It explains itself
-// rather than failing silently when there is none or more than one: zot runs a
+// rather than failing silently when there is none or more than one. Zot runs a
 // single order per invocation, and running several is a shell loop away.
 func loadOrder(args []string) (order.Order, error) {
 	switch len(args) {
@@ -127,7 +129,7 @@ func loadOrder(args []string) (order.Order, error) {
 
 	loaded, err := order.Load(path)
 	if err != nil {
-		// The retraining moment: someone typed prose where an order file goes. The
+		// The retraining moment. Someone typed prose where an order file goes. The
 		// error has to teach the new shape, not just report a missing file.
 		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
 			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  zot new")
@@ -156,10 +158,12 @@ func command() error {
 		return editConfig()
 	}
 
-	// `zot new` scaffolds a work order. The two-step shape is deliberate: the
-	// pause between writing the order and running it is where acceptance
-	// criteria get written, and it is what keeps zot from feeling like a
-	// prompt box.
+	/*
+		`zot new` scaffolds a work order. The two-step shape is chosen. The
+		pause between writing the order and running it is where acceptance
+		criteria get written, and it is what keeps zot from feeling like a
+		prompt box.
+	*/
 	if len(os.Args) > 1 && os.Args[1] == "new" {
 		return newOrder(os.Args[2:], os.Stdout)
 	}
@@ -170,26 +174,32 @@ func command() error {
 
 	pflag.Parse()
 
-	// The run is shown in the full-screen viewer and nowhere else, so with no
-	// terminal there is nothing to show it in: say so before any order is read
-	// or any provider is touched.
+	/*
+		The run is shown in the full-screen viewer and nowhere else, so with no
+		terminal there is nothing to show it in. Say so before any order is read
+		or any provider is touched.
+	*/
 	if !isTerminal() {
 		return errors.New("zot runs in a terminal: stdout is not one")
 	}
 
-	// Every run leaves a log in the project it works on, beside its orders in
-	// .zot/. Resolved to an absolute path while the original working directory is
-	// still current, so a relative --dir means what the user typed rather than
-	// what it happens to mean after the chdir below.
+	/*
+		Every run leaves a log in the project it works on, beside its orders in
+		.zot/. Resolved to an absolute path while the original working directory is
+		still current, so a relative --dir means what the user typed rather than
+		what it happens to mean after the chdir below.
+	*/
 	logs := order.OrdersDir(*dir)
 	if abs, err := filepath.Abs(logs); err == nil {
 		logs = abs
 	}
 
-	// The order is loaded while the original working directory is still current,
-	// because its path means what the user typed, not what it happens to mean
-	// after the chdir below. A bad order fails the run here, before any provider
-	// is touched.
+	/*
+		The order is loaded while the original working directory is still current,
+		because its path means what the user typed, not what it happens to mean
+		after the chdir below. A bad order fails the run here, before any provider
+		is touched.
+	*/
 	o, err := loadOrder(pflag.Args())
 	if err != nil {
 		return err
@@ -204,17 +214,21 @@ func command() error {
 		return err
 	}
 
-	// Resolve the config directory (source of any global AGENTS.md) while
-	// the original working directory is still current, so a relative --config
-	// resolves correctly before the chdir below.
+	/*
+		Resolve the config directory (source of any global AGENTS.md) while
+		the original working directory is still current, so a relative --config
+		resolves correctly before the chdir below.
+	*/
 	configDir := config.ConfigDir(*configPath)
 	if abs, err := filepath.Abs(configDir); err == nil {
 		configDir = abs
 	}
 
-	// Set the default working directory before the agent starts. This is not a
-	// filesystem sandbox: absolute paths and shell commands retain the process's
-	// host permissions.
+	/*
+		Set the default working directory before the agent starts. This is not a
+		filesystem sandbox: absolute paths and shell commands keep the process's
+		host permissions.
+	*/
 	if err := os.Chdir(*dir); err != nil {
 		return fmt.Errorf("cannot enter --dir %q: %w", *dir, err)
 	}
@@ -224,25 +238,31 @@ func command() error {
 	workDir, _ := os.Getwd()
 	project := run.LoadProjectContext(configDir, workDir)
 
-	// Skills are read once, here, into memory: the run offers them through the
-	// skills tool and never touches the folder again. Loaded after the chdir so a
-	// relative skills_dir means the project being worked on.
+	/*
+		Skills are read once, here, into memory. The run offers them through the
+		skills tool and never touches the folder again. Loaded after the chdir so a
+		relative skills_dir means the project being worked on.
+	*/
 	offered, err := run.LoadSkills(cfg.SkillsDir)
 	if err != nil {
 		return err
 	}
 
-	// A signal cancels the run rather than killing the process outright, so the
-	// engine records its aborted outcome - and, mid-failure, dumps the exchange -
-	// before exiting. Without this a `kill` (or a supervisor stopping the
-	// process) left the session with no ending at all. SIGKILL is uncatchable;
-	// the incrementally-written conversation is the answer there.
+	/*
+		A signal cancels the run rather than killing the process, so the
+		engine records its aborted outcome - and, mid-failure, dumps the exchange -
+		before exiting. Without this a `kill` (or a supervisor stopping the
+		process) left the session with no ending at all. SIGKILL is uncatchable.
+		The incrementally-written conversation is the answer there.
+	*/
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The run is a fresh conversation with its own session log, whatever ran
-	// before: nothing of an earlier run of the same order is read, continued or
-	// skipped.
+	/*
+		The run is a fresh conversation with its own session log, whatever ran
+		before. Nothing of an earlier run of the same order is read, continued or
+		skipped.
+	*/
 	options := orderOptions(logs, o)
 	options.Project = project
 	options.Skills = offered

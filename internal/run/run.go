@@ -1,4 +1,4 @@
-// Package run is one run of an order, from a configuration to a finished log: it
+// Package run is one run of an order, from a configuration to a finished log. It
 // resolves the provider and the engine's options, renders the order into a system
 // prompt, opens the session log, shows the run in the viewer and prints its
 // digest. The command line is only how it is asked for.
@@ -30,13 +30,13 @@ import (
 // The file zot looks for under each context directory.
 const agentFile = "AGENTS.md"
 
-// taskKickoff is the user message that starts a run. The objective is in the
-// instructions; this only has to get the agent moving.
+// taskKickoff is the user message that starts a run. The goal is in the
+// instructions. This only has to get the agent moving.
 const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
 // LoadProjectContext reads the instructions found on disk under the given
 // directories, searched in order (typically the config directory first, then the
-// working directory):
+// working directory).
 //
 //   - <dir>/AGENTS.md
 //
@@ -65,7 +65,7 @@ func LoadProjectContext(dirs ...string) string {
 }
 
 // LoadSkills reads the skills folder named by skills_dir. An unset skills_dir
-// means no skills; a set one that cannot be read is an error, since the config
+// means no skills. A set one that cannot be read is an error, since the config
 // asked for skills the run would otherwise silently lack.
 func LoadSkills(skillsDir string) ([]skills.Skill, error) {
 	dir := strings.TrimSpace(skillsDir)
@@ -92,14 +92,16 @@ func LoadSkills(skillsDir string) ([]skills.Skill, error) {
 
 // Options configures a run beyond the configuration itself.
 type Options struct {
-	// SessionPath is the log this run is appended to: one file per task, so a
+	// SessionPath is the log this run is appended to. One file per task, so a
 	// run of the same task again adds to it. Empty disables recording.
 	SessionPath string
 
-	// Title is a short label for the work, shown in the viewer instead of the
-	// task text. A work order's title, or one derived from its file name;
-	// empty falls back to the task. It is presentation only and never reaches
-	// the model - the objective is the contract, a title is a label.
+	/*
+		Title is a short label for the work, shown in the viewer instead of the
+		task text. A work order's title, or one derived from its file name.
+		Empty falls back to the task. It is presentation only and never reaches
+		the model - the goal is the contract, a title is a label.
+	*/
 	Title string
 
 	// Project is the instructions found in the AGENTS.md files of the config
@@ -110,12 +112,12 @@ type Options struct {
 	// skills tool.
 	Skills []skills.Skill
 
-	// Viewer shows the run. Nil is the full-screen viewer; it is a field so that
+	// Viewer shows the run. Nil is the full-screen viewer. It is a field so that
 	// what needs a terminal can be replaced by what does not.
 	Viewer func(context.Context, tui.Meta, *loop.Options) (loop.Result, error)
 }
 
-// orderEnv is what an order's prompt can know about the run beyond the order: the
+// orderEnv is what an order's prompt can know about the run beyond the order. The
 // tools it really has, where it is working, and what it is talking to.
 func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
@@ -136,7 +138,7 @@ func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, w
 	return env
 }
 
-// printDigest writes the end-of-run digest: the outcome, what the run spent,
+// printDigest writes the end-of-run digest. The outcome, what the run spent,
 // and - when the run was recorded - the session log it was appended to.
 func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	digest := tui.Digest{
@@ -155,12 +157,12 @@ func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 // viewerMeta describes the run to the viewer.
 //
 // The budgets it carries are the ones the run was resolved with, not the raw
-// configuration: a per-model max_iterations lowers the limit the engine
+// configuration. A per-model max_iterations lowers the limit the engine
 // enforces, and a meta bar counting up to a number the run will never reach is
 // worse than no number at all.
 func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
-	// the default is a 1,000,000 backstop, which is not a budget worth displaying.
+	// the default is a 1,000,000 fallback, which is not a budget worth displaying.
 	iterLimit := 0
 	if opts.MaxIterations != config.Defaults().Agent.MaxIterations {
 		iterLimit = opts.MaxIterations
@@ -178,7 +180,7 @@ func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tu
 }
 
 // Resolve turns a configuration into a provider client and the agent options a
-// run uses. The returned options carry no messages; callers supply those.
+// run uses. The returned options carry no messages. Callers supply those.
 func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
@@ -194,9 +196,11 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
 
-	// Every model is declared, with its own context window. Validate says so at
-	// load; the same rule holds here because a run with no window has nothing to
-	// decide how much of a conversation to keep.
+	/*
+		Every model is declared, with its own context window. Validate says so at
+		load. The same rule holds here because a run with no window has nothing to
+		decide how much of a conversation to keep.
+	*/
 	mc, ok := providerConfig.Models[model]
 	if !ok || mc.Context <= 0 {
 		return nil, empty, fmt.Errorf(
@@ -228,7 +232,7 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 		return nil, empty, fmt.Errorf("provider %s: %w", cfg.Provider.Label(), err)
 	}
 
-	// max_time was validated at load, so a parse error here would be a bug; treat
+	// max_time was validated at load, so a parse error here would be a bug. Treat
 	// it as unbounded rather than failing a run that already passed validation.
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
@@ -240,7 +244,7 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 		Tools: tools.New(toolOutput, offered),
 
 		// shell acts on the machine, so a command the model did not finish
-		// writing is refused rather than repaired into one that runs
+		// writing is rejected rather than repaired into one that runs
 		Unrepaired: []string{tools.ShellTool},
 
 		MaxIterations:    maxIterations,
@@ -260,7 +264,7 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	}
 
 	// MaxTokens is a pointer so that "unset" (provider decides) is distinct from
-	// a deliberate zero; the config uses a positive value to mean "cap here".
+	// an explicit zero. The config uses a positive value to mean "cap here".
 	if cfg.Agent.MaxTokens > 0 {
 		opts.MaxTokens = new(cfg.Agent.MaxTokens)
 	}
@@ -282,15 +286,17 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	workdir, _ := os.Getwd()
 
-	// The order is the system prompt: its objective, criteria and constraints go
-	// in it, where they survive trimming however long the run grows, and the
-	// opening user message only has to get the agent moving. It is rendered here,
-	// once the provider secrets are out of the environment, so nothing it reads
-	// can be one of them.
-	//
-	// @note there is deliberately no way to open a run with a prompt of the
-	// caller's own. zot takes a work order, not a conversation; anything worth
-	// saying to the agent belongs in the order, where it is durable.
+	/*
+		The order is the system prompt. Its goal, criteria and constraints go
+		in it, where they survive trimming however long the run grows, and the
+		opening user message only has to get the agent moving. It is rendered here,
+		once the provider secrets are out of the environment, so nothing it reads
+		can be one of them.
+
+		@note there is by design no way to open a run with a prompt of the
+		caller's own. zot takes a work order, not a conversation. Anything worth
+		saying to the agent belongs in the order, where it is durable.
+	*/
 	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
@@ -302,9 +308,11 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	task := o.Objective
 
-	// The session log is not optional. It is the run's record and, once the
-	// context window has forgotten something, the agent's long-term memory: a run
-	// that cannot be recorded is refused rather than run without either.
+	/*
+		The session log is not optional. It is the run's record and, once the
+		context window has forgotten something, the agent's long-term memory. A run
+		that cannot be recorded is rejected rather than run without either.
+	*/
 	if options.SessionPath == "" {
 		return errors.New("no session log: a run is always recorded")
 	}
@@ -321,7 +329,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	defer writer.Close()
 
-	// A log that stops being writable ends the run: what it cannot record it
+	// A log that stops being writable ends the run. What it cannot record it
 	// should not go on doing.
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()

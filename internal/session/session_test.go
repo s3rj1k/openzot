@@ -13,7 +13,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 )
 
-// readLog reads a log the way anyone does: one JSON value per line. A line that
+// readLog reads a log the way anyone does. One JSON value per line. A line that
 // is not JSON fails the test, which is the point - the format is the contract.
 func readLog(t *testing.T, path string) []Record {
 	t.Helper()
@@ -136,7 +136,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 		t.Errorf("records = %v, want %v", got, want)
 	}
 
-	// a message with newlines in it is still one line: the newline is escaped
+	// a message with newlines in it is still one line. The newline is escaped
 	data, _ := os.ReadFile(path)
 
 	if lines := bytes.Count(data, []byte("\n")); lines != len(want) {
@@ -181,7 +181,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 }
 
 // A record is on disk when the call that wrote it returns, not when the run
-// ends: what a killed run leaves behind is everything it had recorded.
+// ends. What a killed run leaves behind is everything it had recorded.
 func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
@@ -245,7 +245,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 }
 
 // A run killed mid-write leaves a torn last line. The next run must not glue its
-// meta record onto it: that would lose the new run's opening and leave one line
+// meta record onto it. That would lose the new run's opening and leave one line
 // that is neither.
 func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
@@ -258,7 +258,7 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	_ = first.Message(conversation.Message{Type: litUser, Text: "before the kill"})
 	_ = first.Close()
 
-	// what a kill mid-write leaves: half a record, no newline
+	// what a kill mid-write leaves. Half a record, no newline
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -394,7 +394,7 @@ func TestOpenReportsAnUnusableLocation(t *testing.T) {
 	}
 }
 
-// An activity round-trips through the log with its whole payload: the arguments
+// An activity round-trips through the log with its whole payload. The arguments
 // verbatim, the result as the tool returned it.
 func TestAToolCallIsRecordedInFull(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")

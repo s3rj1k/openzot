@@ -10,15 +10,15 @@ import (
 )
 
 // The corpus pins the cycle heuristics and the runaway guards against the
-// implementation they were ported from. Each record is one call: a
+// implementation they were ported from. Each record is one call. A
 // function, its arguments and the value it must return.
 //
-// The corpus was captured from an engine whose messages are open maps; zot's are
+// The corpus was captured from an engine whose messages are open maps. Zot's are
 // typed. So each record is first read into conversation.Message, and a record whose shape
 // the typed model cannot express - a message field zot has no place for, a
 // recorded usage, an option the port turned into a constant - is counted and
 // skipped rather than bent to fit. The floors in TestCorpus fail the suite if the
-// share that is checked shrinks, so skipping cannot quietly become the default.
+// share that is checked shrinks, so skipping cannot become the default.
 //
 // Ids are digests rather than names on purpose - the corpus is published and the
 // suite it came from is not. To trace a failing id, look it up in the private
@@ -107,9 +107,11 @@ func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool)
 		return nil, false
 	}
 
-	// zot's activities always carry their arguments, and only a response carries
-	// a result; a record that says otherwise is a shape the typed model cannot
-	// tell apart from the ones it can
+	/*
+		zot's activities always carry their arguments, and only a response carries
+		a result. A record that says otherwise is a shape the typed model cannot
+		tell apart from the ones it can
+	*/
 	arguments, present := function["arguments"]
 	if !present {
 		return nil, false
@@ -215,7 +217,7 @@ func typedMessages(t *testing.T, raw json.RawMessage) ([]conversation.Message, b
 	return messages, true
 }
 
-// hasCycleOptions reports whether a cycle record tunes the heuristic; the port
+// hasCycleOptions reports whether a cycle record tunes the heuristic. The port
 // fixed those knobs, so such a record has nothing to run.
 func hasCycleOptions(args []json.RawMessage) bool {
 	if len(args) < 2 {
@@ -431,7 +433,7 @@ func TestCorpus(t *testing.T) {
 	skipped := map[string]int{}
 
 	for _, record := range corpus.Records {
-		// the trimming these records pin is not what runs any more: the
+		// the trimming these records pin is not what runs any more. The
 		// conversation is forgotten lazily, see forget_test.go
 		if record.Fn == "buildThread" {
 			continue

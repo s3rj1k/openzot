@@ -6,10 +6,10 @@ import (
 )
 
 // The runaway detectors look for a model stuck cycling the same words, inside a
-// single block of text: the streaming guard while a turn is still being
-// generated, and the backstop that scans a committed message.
+// single block of text. The streaming guard while a turn is still being
+// generated, and the fallback that scans a committed message.
 
-// clamp resolves an optional setting: unset yields fallback, set yields the
+// clamp resolves an optional setting. Unset yields fallback, set yields the
 // value floored at minimum.
 func clamp(value *int, minimum, fallback int) int {
 	if value == nil {
@@ -23,25 +23,29 @@ func clamp(value *int, minimum, fallback int) int {
 	return *value
 }
 
-// runawayTextRunTailLimit bounds how much of a committed message the backstop
+// runawayTextRunTailLimit bounds how much of a committed message the fallback
 // inspects, so its cost does not grow with message length.
 const runawayTextRunTailLimit = 4000
 
 // textRunOptions tunes hasRepeatedTextRun. The zero value is the production
 // default.
 type textRunOptions struct {
-	// MinUnits is the number of trailing sentence-like units required before a
-	// runaway is even considered. Short repetitive snippets end on their own.
-	// Clamped to at least 2.
+	/*
+		MinUnits is the number of trailing sentence-like units required before a
+		runaway is even considered. Short repetitive snippets end on their own.
+		Clamped to at least 2.
+	*/
 	MinUnits *int
 
 	// Window bounds how many trailing units are inspected, so a degenerate tail
 	// is still caught after a long healthy prefix. Clamped to at least MinUnits.
 	Window *int
 
-	// MaxUniqueRatio is the unique-to-inspected ratio at or below which the text
-	// counts as a runaway. Healthy prose almost never repeats whole normalised
-	// sentences that densely.
+	/*
+		MaxUniqueRatio is the unique-to-inspected ratio at or below which the text
+		counts as a runaway. Healthy prose almost never repeats whole normalised
+		sentences that densely.
+	*/
 	MaxUniqueRatio *float64
 }
 
@@ -69,7 +73,7 @@ func (o textRunOptions) maxUniqueRatio() float64 {
 //
 // Lowercasing, stripping punctuation and collapsing whitespace means phrases
 // differing only in spacing or trailing punctuation collapse to the same key,
-// while genuinely different sentences stay apart.
+// while really different sentences stay apart.
 func segmentNormalizedUnits(text string) []string {
 	var units []string
 
@@ -78,9 +82,11 @@ func segmentNormalizedUnits(text string) []string {
 	}) {
 		var builder strings.Builder
 
-		// @note ASCII-only on purpose: this mirrors the normalisation the
-		// corpus pins. Non-ASCII collapses to a separator, which is why the CJK
-		// cases are covered by the streaming guard rather than here.
+		/*
+			@note ASCII-only on purpose. This mirrors the normalisation the
+			corpus pins. Non-ASCII collapses to a separator, which is why the CJK
+			cases are covered by the streaming guard rather than here.
+		*/
 		for _, r := range strings.ToLower(part) {
 			switch {
 			case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
@@ -148,19 +154,19 @@ func hasRepeatedTextRun(text string, options textRunOptions) bool {
 
 // Guard thresholds for the structural-enumeration exemption.
 const (
-	// StructureAggressiveGate is the MaxUniqueRatio at or above which a caller
+	// The MaxUniqueRatio at or above which a caller
 	// has explicitly opted into aggressive detection, lifting the exemption.
 	structureAggressiveGate = 0.5
 
-	// MinStructureNewlines is how many newlines the window needs before it can
+	// How many newlines the window needs before it can
 	// count as a multi-line block at all.
 	minStructureNewlines = 2
 
-	// StructureHapaxFloor is the novelty ratio above which a repeating phrase is
+	// The novelty ratio above which a repeating phrase is
 	// treated as part of a progressing list.
 	structureHapaxFloor = 0.1
 
-	// MinDistinctLineLeads is the complementary signal: a real list starts each
+	// The complementary signal. A real list starts each
 	// line with a different token, a loop repeats the same one.
 	minDistinctLineLeads = 3
 )
@@ -180,14 +186,18 @@ type guardOptions struct {
 	// the guard latches. Clamped to at least 2.
 	MaxRepeats *int
 
-	// MaxUniqueRatio is the lexical-diversity ceiling. A stuck loop churns the
-	// same few words; a progressing list keeps introducing new ones and must not
-	// be cut off. Clamped to [0, 1].
+	/*
+		MaxUniqueRatio is the lexical-diversity ceiling. A stuck loop churns the
+		same few words. A progressing list keeps introducing new ones and must not
+		be cut off. Clamped to [0, 1].
+	*/
 	MaxUniqueRatio *float64
 
-	// MinChars is the minimum output length before the guard may trip. Short
-	// repetitive output is harmless - it ends on its own - and was the bulk of
-	// the false positives this exists to prevent.
+	/*
+		MinChars is the minimum output length before the guard may trip. Short
+		repetitive output is harmless - it ends on its own - and was the bulk of
+		the false positives this exists to prevent.
+	*/
 	MinChars *int
 }
 
@@ -203,20 +213,22 @@ type guardReason struct {
 	// back to a user or to the model.
 	Text string `json:"text"`
 
-	// UniqueRatio and HapaxRatio are the window's diversity and novelty at the
-	// trip - the signals that separate a stuck loop (both low) from a wrongly
-	// flagged progressing list (both higher). Reported so a stop can be triaged
-	// from telemetry rather than re-derived by hand.
+	/*
+		UniqueRatio and HapaxRatio are the window's diversity and novelty at the
+		trip - the signals that separate a stuck loop (both low) from a wrongly
+		flagged progressing list (both higher). Reported so a stop can be triaged
+		from telemetry rather than re-derived by hand.
+	*/
 	UniqueRatio float64 `json:"uniqueRatio"`
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
 
 // runawayGuard is an incremental runaway-repetition detector.
 //
-// Where hasRepeatedTextRun re-scans a whole block, runawayGuard maintains a rolling
+// Where hasRepeatedTextRun re-scans a whole block, runawayGuard keeps a rolling
 // window of normalised words and a running count of every phrase in it. Each
 // pushed chunk costs O(1) amortized, so it can run on every streamed token and
-// latch within a few repeats - long before the heavier backstop would react.
+// latch within a few repeats - long before the heavier fallback would react.
 type runawayGuard struct {
 	ngram          int
 	window         int
@@ -293,7 +305,7 @@ func (g *runawayGuard) hapaxRatio() float64 {
 }
 
 // distinctLineLeads counts distinct line-leading tokens. A stuck loop repeats
-// the same line so has one or two; a progressing enumeration keeps starting
+// the same line so has one or two. A progressing enumeration keeps starting
 // lines with new keys. This rescues lists whose long shared suffix sinks the
 // hapax ratio.
 func (g *runawayGuard) distinctLineLeads() int {
@@ -323,16 +335,18 @@ func (g *runawayGuard) addWord(word, original string, newlines int) {
 
 		next := g.counts[gram]
 
-		// a phrase recurring often enough is necessary but not sufficient: the
+		// a phrase recurring often enough is necessary but not sufficient. The
 		// surrounding window must also lack diversity
 
 		uniqueRatio := float64(len(g.wordCount)) / float64(len(g.words))
 
 		if g.totalChars >= g.minChars && next >= g.maxRepeats && uniqueRatio <= g.maxUniqueRatio {
-			// structural-enumeration exemption: a recurring phrase inside a
-			// multi-line block that still introduces novel tokens is a
-			// progressing list or table. The cheap newline check short-circuits
-			// the hapax scan, so a single-line loop never pays for it.
+			/*
+				structural-enumeration exemption. A recurring phrase inside a
+				multi-line block that still introduces novel tokens is a
+				progressing list or table. The cheap newline check short-circuits
+				the hapax scan, so a single-line loop never pays for it.
+			*/
 			enumerated := g.maxUniqueRatio < structureAggressiveGate &&
 				g.windowNewlines >= minStructureNewlines &&
 				(g.hapaxRatio() >= structureHapaxFloor ||
@@ -379,7 +393,7 @@ func (g *runawayGuard) addWord(word, original string, newlines int) {
 
 // normalizeWord strips a token to letters and digits, preserving Unicode.
 //
-// Keeping non-ASCII letters is deliberate: an ASCII-only strip left CJK text as
+// Keeping non-ASCII letters is on purpose. An ASCII-only strip left CJK text as
 // a run of bare digits, which read as a phantom loop.
 func normalizeWord(raw string) string {
 	var builder strings.Builder
@@ -421,9 +435,11 @@ func splitKeepingSeparators(text string) []string {
 		parts = append(parts, current.String())
 	}
 
-	// @note JavaScript's split with a capturing group yields a leading empty
-	// string when the input starts with a separator, which keeps the
-	// word/separator alternation aligned. Reproduce it.
+	/*
+		@note JavaScript's split with a capturing group yields a leading empty
+		string when the input starts with a separator, which keeps the
+		word/separator alternation aligned. Reproduce it.
+	*/
 	if len(parts) > 0 && strings.TrimSpace(parts[0]) == "" && parts[0] != "" {
 		parts = append([]string{""}, parts...)
 	}

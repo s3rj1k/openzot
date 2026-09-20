@@ -1,23 +1,23 @@
 // Package session records a run to disk, one JSON record per line.
 //
-// An autonomous run is unattended by definition: nobody watched it, and by the
+// An autonomous run is unattended by definition. Nobody watched it, and by the
 // time anyone looks the terminal is gone. A session log is what turns "it
 // failed overnight" into something answerable - what it tried, what the tools
 // returned, and where it stopped.
 //
 // There is one log per task, and it is append-only. A run opens with a meta
 // record and adds a record for every message, event and the outcome, each as one
-// line written in a single call and synced to disk before the next; nothing is
+// line written in a single call and synced to disk before the next. Nothing is
 // ever rewritten, truncated or reordered. Running the task again appends a new
 // run to the same file rather than replacing the last, so the file is the whole
 // history of the task, one run after another. Because a line is the unit, a log
 // is readable while the run is still going, and a crashed run leaves everything
-// up to the crash: at worst the final line is torn, and the next run starts on a
+// up to the crash. At worst the final line is torn, and the next run starts on a
 // fresh one.
 //
 // Zot itself never reads a log back, and a run is not resumed from one. It is a
 // record for a person, with `cat` and `jq` - and the agent is told where its own
-// is, so what its context window has forgotten it can look up: the log is its
+// is, so what its context window has forgotten it can look up. The log is its
 // long-term memory.
 package session
 
@@ -38,7 +38,7 @@ import (
 type Kind string
 
 const (
-	// KindMeta opens a run in the log: the task, model and settings it started
+	// KindMeta opens a run in the log. The task, model and settings it started
 	// with. One per run, always the first record of it.
 	KindMeta Kind = "meta"
 
@@ -99,15 +99,19 @@ type Result struct {
 	Reason  string `json:"reason"`
 	Message string `json:"message,omitempty"`
 
-	// Error is the underlying failure on an error ending - the provider's own
-	// words, not the loop's summary of them. "the provider failed" answers
-	// nothing at three in the morning; the 404 naming the wrong model does.
+	/*
+		Error is the underlying failure on an error ending - the provider's own
+		words, not the loop's summary of them. "the provider failed" answers
+		nothing at three in the morning. The 404 naming the wrong model does.
+	*/
 	Error string `json:"error,omitempty"`
 
-	// Failure is the wire evidence behind Error, when the failure was a
-	// provider response. The raw exchange is what troubleshooting needs: an
-	// opaque upstream "ERROR" and a proper context-length message read the
-	// same in Error, but the refused request's size tells them apart.
+	/*
+		Failure is the wire evidence behind Error, when the failure was a
+		provider response. The raw exchange is what troubleshooting needs. An
+		opaque upstream "ERROR" and a proper context-length message read the
+		same in Error, but the rejected request's size tells them apart.
+	*/
 	Failure *provider.Failure `json:"failure,omitempty"`
 
 	Code int `json:"code"`
@@ -118,16 +122,18 @@ type Result struct {
 	Cycles        int `json:"cycles"`
 	Settles       int `json:"settles"`
 
-	// InputTokens and OutputTokens are the provider-billed totals for the run,
-	// persisted so an audit can see cost rather than only the terminal that
-	// produced it.
+	/*
+		InputTokens and OutputTokens are the provider-billed totals for the run,
+		persisted so an audit can see cost rather than only the terminal that
+		produced it.
+	*/
 	InputTokens  int `json:"inputTokens,omitzero"`
 	OutputTokens int `json:"outputTokens,omitzero"`
 }
 
 // Writer appends records to a session log.
 //
-// Safe for concurrent use: the engine emits events from its own goroutine while
+// Safe for concurrent use. The engine emits events from its own goroutine while
 // the caller may be recording messages.
 type Writer struct {
 	mu   sync.Mutex
@@ -167,7 +173,7 @@ func (w *Writer) endTornLine() error {
 //
 // The line is built whole and handed to the kernel in one write on an
 // append-only file, so a record is never interleaved with another and never
-// lands anywhere but the end. Synced per record on purpose: the log has to be
+// lands anywhere but the end. Synced per record on purpose. The log has to be
 // readable while the run is in flight, and a crashed run has to leave
 // everything up to the crash. Buffering would lose exactly the tail that
 // explains a failure.
@@ -197,7 +203,7 @@ func (w *Writer) write(record Record) error {
 // Open starts a run in the log at path, appending to the file if it exists and
 // creating it, and its directory, if not.
 //
-// The file is opened append-only: whatever an earlier run left is never touched.
+// The file is opened append-only. Whatever an earlier run left is never touched.
 // If that run was killed mid-line, the torn line is ended first, so the new
 // run's meta record starts on a line of its own instead of being glued to the
 // wreckage of the last.
@@ -206,7 +212,7 @@ func Open(path string, meta Meta) (*Writer, error) {
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
 
-	// read access is only for looking at the last byte; every write appends
+	// read access is only for looking at the last byte. Every write appends
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600) //nolint:gosec // G304: the session log path is the one the run was given
 	if err != nil {
 		return nil, fmt.Errorf("open session log: %w", err)

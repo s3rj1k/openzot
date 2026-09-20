@@ -9,7 +9,7 @@ import (
 )
 
 // requestFor is what the engine would send for a conversation it has not seen
-// before: forgetting applied from scratch, then the request built. It also
+// before. Forgetting applied from scratch, then the request built. It also
 // returns how many messages were forgotten.
 func requestFor(engine *Engine, messages []conversation.Message) (turnRequest, int) {
 	forgotten := 0
@@ -19,8 +19,8 @@ func requestFor(engine *Engine, messages []conversation.Message) (turnRequest, i
 	return engine.buildRequest(messages, forgotten), forgotten
 }
 
-// The heuristics must see what the engine actually records: a model repeating one
-// call and getting one answer is a loop, however it words the turns in between.
+// The heuristics must see what the engine actually records. A model repeating one
+// call and getting one answer is a loop, however it words the turns between.
 func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 	messages := make([]conversation.Message, 0, 8)
 
@@ -50,7 +50,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 	}
 }
 
-// A conversation growing round by round: nothing is forgotten until the soft
+// A conversation growing round by round. Nothing is forgotten until the soft
 // mark, then the request loses one message per round, and it never reaches the
 // hard mark. The conversation handed in is never touched.
 func TestARequestNeverReachesTheHardMark(t *testing.T) {
@@ -112,7 +112,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	}
 }
 
-// Forgetting is a matter of the wire: a run long enough to fill a small window
+// Forgetting is a matter of the wire. A run long enough to fill a small window
 // keeps every message in its conversation - what the session log records - and
 // tells the viewer, not the model, what was dropped.
 func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {

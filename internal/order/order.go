@@ -1,20 +1,20 @@
-// Package order defines the work order: the document a zot run is dispatched
+// Package order defines the work order. The document a zot run is dispatched
 // from.
 //
-// Zot deliberately takes no prose on the command line. A factory accepts a work
-// order, not a conversation. The order is a file so it outlives the invocation:
-// it can be edited, committed and re-run, and every run of it starts from zero.
+// Zot by design takes no prose on the command line. A factory accepts a work
+// order, not a conversation. The order is a file so it outlives the invocation.
+// It can be edited, committed and re-run, and every run of it starts from zero.
 //
 // An order is the run's whole system prompt. The file opens with a front matter
-// block - the objective, the acceptance criteria that define "done", the
+// block - the goal, the acceptance criteria that define "done", the
 // constraints the work must hold to - and the rest is the prompt itself, a Go
 // text/template that reads that block and a few facts about the run. Someone who
 // only wants to say what to do fills in the front matter and leaves the prompt as
-// zot wrote it; someone who wants to change how the agent works rewrites it.
+// zot wrote it. Someone who wants to change how the agent works rewrites it.
 //
 // An order is advisory input - what to do - and may therefore live anywhere,
 // including the repository being worked on. How the result is judged (quality
-// gates) is deliberately not part of the order schema: adjudication belongs to
+// gates) is by design not part of the order schema. Adjudication belongs to
 // the operator's configuration, never to a document the agent can write.
 package order
 
@@ -35,7 +35,7 @@ import (
 )
 
 // The book's layout. A project's orders live under one dotted directory at its
-// root, the way every other tool that keeps state in a repository does it:
+// root, the way every other tool that keeps state in a repository does it.
 // .zot/orders/<name>.md. A top-level orders/ directory would claim a generic
 // name in the root of somebody else's project, which is not zot's to take.
 //
@@ -47,7 +47,7 @@ const (
 
 	ordersName = "orders"
 
-	// Ext is the extension of an order file: front matter and a prompt, which is
+	// Ext is the extension of an order file. Front matter and a prompt, which is
 	// Markdown-shaped text.
 	Ext = ".md"
 )
@@ -55,20 +55,24 @@ const (
 // OrdersDir is where new orders for the project rooted at dir are created.
 func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersName) }
 
-// Order is one work order: a single run's brief, and the prompt it is run with.
+// Order is one work order. A single run's brief, and the prompt it is run with.
 type Order struct {
-	// Title is an optional short label for the order, for people rather than
-	// for the agent: it is how a human recognizes the order in a list or a
-	// viewer. The prompt may use it, but nothing does by default.
+	/*
+		Title is an optional short label for the order, for people rather than
+		for the agent. It is how a human recognizes the order in a list or a
+		viewer. The prompt may use it, but nothing does by default.
+	*/
 	Title string
 
-	// Objective is the durable goal of the run. The prompt puts it where the
+	// The durable goal of the run. The prompt puts it where the
 	// agent cannot forget it on a long run.
 	Objective string
 
-	// Acceptance are the criteria that define "done". They travel with the
-	// objective into the prompt, and they are the contract a future
-	// verification gate judges the result against.
+	/*
+		Acceptance are the criteria that define "done". They travel with the
+		goal into the prompt, and they are the contract a future
+		verification gate judges the result against.
+	*/
 	Acceptance []string
 
 	// Constraints are rules the work must hold to throughout - boundaries, not
@@ -92,7 +96,7 @@ type frontMatter struct {
 }
 
 // splitFrontMatter separates the data block from the prompt. The block opens the
-// file with a line of three dashes and closes with another; the prompt is what
+// file with a line of three dashes and closes with another. The prompt is what
 // follows.
 func splitFrontMatter(text string) (header, body string, err error) {
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
@@ -130,7 +134,7 @@ func cleanList(items []string) []string {
 	return out
 }
 
-// Parse reads an order: the front matter, then the prompt.
+// Parse reads an order. The front matter, then the prompt.
 //
 // Unknown front matter keys are rejected - a typo like "acceptance:" must fail
 // loudly rather than silently dropping the criteria the operator thought they
@@ -192,9 +196,9 @@ func Load(path string) (Order, error) {
 	return order, nil
 }
 
-// titleFromFilename turns an order's file name into a label: dashes and
+// titleFromFilename turns an order's file name into a label. Dashes and
 // underscores become spaces, and the first word is capitalised. Sentence case
-// rather than Title Case, because an objective-derived name is a sentence -
+// rather than Title Case, because a goal-derived name is a sentence -
 // "Fix The Flaky Test" reads like a headline for something that is not one.
 func titleFromFilename(path string) string {
 	name := filepath.Base(path)
@@ -220,12 +224,12 @@ func titleFromFilename(path string) string {
 
 // DisplayTitle is what to call this order on screen.
 //
-// A declared title wins. Failing that the file name is one: order files are
-// named from their objective already, so fix-the-flaky-test.md is a
+// A declared title wins. Failing that the file name is one. Order files are
+// named from their goal already, so fix-the-flaky-test.md is a
 // perfectly good "Fix the flaky test" and deriving it costs the operator
 // nothing. An order that is neither titled nor a file - one synthesized in
-// memory by a dispatcher - has no name to show, and gets none: inventing a
-// label from the objective would put a truncated sentence where a title goes,
+// memory by a dispatcher - has no name to show, and gets none. Inventing a
+// label from the goal would put a truncated sentence where a title goes,
 // which is the thing having titles is meant to stop.
 func (o Order) DisplayTitle() string {
 	if o.Title != "" {
@@ -243,7 +247,7 @@ func (o Order) DisplayTitle() string {
 // returns its path. The file is named for the moment it was made, in unix
 // seconds, so orders sort in the order they were written and no name has to be
 // invented. A name already taken moves on to the next second rather than
-// overwriting: creating two orders in a second is routine, not an error.
+// overwriting. Creating two orders in a second is routine, not an error.
 func Create(dir string, now time.Time) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create order directory: %w", err)

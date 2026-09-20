@@ -11,7 +11,7 @@ import (
 //
 // Both concern a value containing a reference cycle. JSON has no way to express
 // one, so these could not be seeded - but the underlying question survives the
-// port: a tool result that cannot be marshaled must not be the thing that aborts
+// port. A tool result that cannot be marshaled must not be the thing that aborts
 // a run. A cycle check that panics is worse than no cycle check.
 
 // cyclicValue returns a map that contains itself, which json.Marshal rejects.
@@ -41,13 +41,15 @@ func TestCycleCircularResult(t *testing.T) {
 		cyclic,
 	}
 
-	// must not panic, and must still reach a verdict
+	// must not panic, and must still reach a conclusion
 
 	got := hasRepeatedSuffix(messages)
 
-	// @note both cyclic results collapse to the same sentinel, so the two halves
-	// fingerprint identically and the pair reads as a cycle. That is the
-	// intended trade-off in safeStringify: a degraded comparison beats none.
+	/*
+		@note both cyclic results collapse to the same sentinel, so the two halves
+		fingerprint the same and the pair reads as a cycle. That is the
+		intended trade-off in safeStringify. A degraded comparison beats none.
+	*/
 	if !got {
 		t.Errorf("hasRepeatedSuffix = false, want true (a cyclic result must degrade, not disable)")
 	}
@@ -64,7 +66,7 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 		t.Error("hasRepeatedResultRun = false, want true (identical cyclic results are still a loop)")
 	}
 
-	// a genuinely different result must still break the run, even alongside a
+	// a really different result must still break the run, even alongside a
 	// cyclic one
 
 	mixed := []conversation.Message{
@@ -79,7 +81,7 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 }
 
 // TestDescribeAttributesTheHeuristic pins that attribution reports which check
-// fired, not merely that one did.
+// fired, not only that one did.
 func TestDescribeAttributesTheHeuristic(t *testing.T) {
 	messages := []conversation.Message{
 		{Type: conversation.TypeUser, Text: "hello"},
