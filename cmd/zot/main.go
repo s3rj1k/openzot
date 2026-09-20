@@ -166,19 +166,15 @@ func command() error {
 // orderOptions is how an order is run: its log goes in logs, named after it, and
 // the viewer calls it by its title, or by its file name.
 func orderOptions(logs string, o order.Order) run.Options {
+	// the log is the order's own name with .jsonl for its extension, so the record
+	// of a task is the file beside the task: one file per task, whatever the number
+	// of runs - each appends to it
+	base := filepath.Base(o.Path)
+
 	return run.Options{
-		SessionPath: filepath.Join(logs, sessionFile(o.Path)),
+		SessionPath: filepath.Join(logs, strings.TrimSuffix(base, filepath.Ext(base))+".jsonl"),
 		Title:       o.DisplayTitle(),
 	}
-}
-
-// sessionFile names an order's log: the order's own name with .jsonl for its
-// extension, so the record of a task is the file beside the task. One file per
-// task, whatever the number of runs - each appends to it.
-func sessionFile(orderPath string) string {
-	base := filepath.Base(orderPath)
-
-	return strings.TrimSuffix(base, filepath.Ext(base)) + ".jsonl"
 }
 
 // loadOrder loads the one order this invocation is about. It explains itself

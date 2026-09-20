@@ -58,5 +58,5 @@ func Cost(message Message) int {
 		}
 	}
 
-	return EstimateMessageTokens(text)
+	return EstimateTokens(text) + messageOverhead
 }

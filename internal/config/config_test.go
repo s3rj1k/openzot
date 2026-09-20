@@ -102,7 +102,7 @@ providers:
 
 	provider := cfg.Providers["openai"]
 
-	if provider.BaseURL != "" || ProviderCredential(provider) != "" {
+	if provider.BaseURL != "" || provider.APIKey != "" {
 		t.Errorf("provider = %+v, want no endpoint and no key filled in", provider)
 	}
 
@@ -504,7 +504,7 @@ func TestAnEnvReferenceIsExpanded(t *testing.T) {
 
 			resolveProviders(&cfg)
 
-			if got := ProviderCredential(cfg.Providers["mine"]); got != "sk-resolved" {
+			if got := cfg.Providers["mine"].APIKey; got != "sk-resolved" {
 				t.Errorf("credential = %q, want the expanded value", got)
 			}
 		})
@@ -522,7 +522,7 @@ func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
 
 	resolveProviders(&cfg)
 
-	if got := ProviderCredential(cfg.Providers["mine"]); got != "" {
+	if got := cfg.Providers["mine"].APIKey; got != "" {
 		t.Errorf("credential = %q, want nothing", got)
 	}
 }
@@ -536,7 +536,7 @@ func TestALiteralCredentialIsUntouched(t *testing.T) {
 
 	resolveProviders(&cfg)
 
-	if got := ProviderCredential(cfg.Providers["mine"]); got != "sk-literal-with-$-inside" {
+	if got := cfg.Providers["mine"].APIKey; got != "sk-literal-with-$-inside" {
 		t.Errorf("credential = %q, want it untouched", got)
 	}
 }
@@ -550,7 +550,7 @@ func TestNoConventionalVariableIsRead(t *testing.T) {
 
 	resolveProviders(&cfg)
 
-	if got := ProviderCredential(cfg.Providers["openai"]); got != "" {
+	if got := cfg.Providers["openai"].APIKey; got != "" {
 		t.Errorf("credential = %q, want none: nothing is read on the provider's behalf", got)
 	}
 }

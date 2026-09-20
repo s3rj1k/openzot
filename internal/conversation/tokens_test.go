@@ -65,11 +65,11 @@ func TestEstimateGrowsWithTheText(t *testing.T) {
 func TestAMessageCostsMoreThanItsText(t *testing.T) {
 	const text = "a short message"
 
-	if got, bare := EstimateMessageTokens(text), EstimateTokens(text); got <= bare {
+	if got, bare := Cost(Message{Text: text}), EstimateTokens(text); got <= bare {
 		t.Errorf("message estimate = %d, want more than the bare text's %d", got, bare)
 	}
 
-	if got := EstimateMessageTokens(""); got <= 0 {
+	if got := Cost(Message{}); got <= 0 {
 		t.Errorf("an empty message estimated %d, want its envelope priced", got)
 	}
 }

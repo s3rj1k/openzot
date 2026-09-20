@@ -80,11 +80,6 @@ type ModelConfig struct {
 	ExtraBody map[string]any `yaml:"extra_body"`
 }
 
-// ProviderCredential returns the credential configured for a provider.
-func ProviderCredential(provider ProviderConfig) string {
-	return provider.APIKey
-}
-
 // ProviderModels returns the model names a provider was configured with, sorted.
 func ProviderModels(provider ProviderConfig) []string {
 	names := make([]string, 0, len(provider.Models))

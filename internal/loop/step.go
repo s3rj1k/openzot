@@ -263,7 +263,7 @@ func (s *step) onToolCall(call fantasy.ToolCallContent) error {
 
 	s.turn.ToolCalls = append(s.turn.ToolCalls, call)
 
-	if isTerminal(call.ToolName) {
+	if call.ToolName == SuccessTool || call.ToolName == FailureTool {
 		s.terminalSeen = true
 	}
 
@@ -413,11 +413,6 @@ func (g guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	s.end(content, response.Content, "")
 
 	return response, nil
-}
-
-// isTerminal reports whether a tool name is one of the terminal tools.
-func isTerminal(name string) bool {
-	return name == SuccessTool || name == FailureTool
 }
 
 // decodeInput reads a call's JSON input for the event that announces it. An empty

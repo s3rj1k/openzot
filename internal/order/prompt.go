@@ -209,7 +209,13 @@ func (o Order) Render(env Env) (string, error) {
 		return "", err
 	}
 
-	return withContract(rendered), nil
+	// a prompt that already carries the contract - the default one does - is left
+	// untouched, so the text is never repeated
+	if strings.Contains(rendered, Contract) {
+		return rendered, nil
+	}
+
+	return strings.TrimRight(rendered, "\n") + "\n\n" + Contract, nil
 }
 
 // execute renders the body with the given functions.
@@ -321,14 +327,3 @@ func functions(workdir string) template.FuncMap {
 }
 
 func inc(n int) int { return n + 1 }
-
-// withContract appends the contract to a prompt that lacks it. A prompt that
-// already carries it - the default one does - is left untouched, so the text is
-// never repeated.
-func withContract(prompt string) string {
-	if strings.Contains(prompt, Contract) {
-		return prompt
-	}
-
-	return strings.TrimRight(prompt, "\n") + "\n\n" + Contract
-}

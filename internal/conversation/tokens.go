@@ -32,11 +32,6 @@ func EstimateTokens(text string) int {
 	return (base*5 + 3) / 4
 }
 
-// estimateMessageTokens is a message's text cost plus its wire envelope.
-func EstimateMessageTokens(text string) int {
-	return EstimateTokens(text) + messageOverhead
-}
-
 // BytesForTokens is roughly how many bytes of text a number of tokens stands for,
 // by the same conservative measure the estimates use.
 func BytesForTokens(tokens int) int {

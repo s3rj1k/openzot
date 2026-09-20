@@ -269,17 +269,6 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 	}
 }
 
-// toolOutputLimit is the bytes a single tool result may take: a share of the
-// context window, so a small-window model is bounded tighter without being told
-// to be.
-func toolOutputLimit(window, percent int) int {
-	if percent <= 0 {
-		percent = tools.DefaultOutputPercent
-	}
-
-	return conversation.BytesForTokens(window * percent / 100)
-}
-
 // Resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
 func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
@@ -300,7 +289,7 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 	// entry's settings take priority over the run defaults.
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
-	credential := config.ProviderCredential(providerConfig)
+	credential := providerConfig.APIKey
 
 	// Every model is declared, with its own context window. Validate says so at
 	// load; the same rule holds here because a run with no window has nothing to
@@ -345,8 +334,12 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 	// it as unbounded rather than failing a run that already passed validation.
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
+	// A single tool result may take a share of the context window, so a
+	// small-window model is bounded tighter without being told to be.
+	toolOutput := conversation.BytesForTokens(contextWindow * cmp.Or(cfg.Agent.MaxToolOutputPercent, tools.DefaultOutputPercent) / 100)
+
 	opts := loop.Options{
-		Tools: tools.New(toolOutputLimit(contextWindow, cfg.Agent.MaxToolOutputPercent), offered),
+		Tools: tools.New(toolOutput, offered),
 
 		// shell acts on the machine, so a command the model did not finish
 		// writing is refused rather than repaired into one that runs
