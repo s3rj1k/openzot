@@ -24,7 +24,7 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	recorder.Conversation([]loop.Message{
 		{Type: loop.TypeUser, Text: "add a health endpoint"},
@@ -59,7 +59,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	conversation := []loop.Message{{Type: loop.TypeUser, Text: "add a health endpoint"}}
 
@@ -125,7 +125,7 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	for _, kind := range []loop.EventKind{loop.EventToken, loop.EventReasoningToken} {
 		recorder.Event(loop.Event{Kind: kind, Text: "hello", Iteration: 1})
@@ -146,21 +146,54 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 	}
 }
 
-// A recorder with nowhere to write is a run that is not recorded, and it has to
-// be silent rather than an error the run has to handle.
-func TestANilRecorderIsHarmless(t *testing.T) {
-	var recorder *Recorder
+// A log that stops taking lines is a run that has stopped being recorded, and the
+// caller is told at once - once, however many lines follow - so it can end the run.
+func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
+	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// none of these may panic
-	recorder.Conversation([]loop.Message{{Type: loop.TypeUser}})
+	var told []error
+
+	recorder := NewRecorder(writer, func(err error) { told = append(told, err) })
+
+	recorder.Event(loop.Event{Kind: loop.EventIteration})
+
+	if recorder.Err() != nil || len(told) != 0 {
+		t.Fatalf("a write that went through was reported: %v %v", recorder.Err(), told)
+	}
+
+	writer.Close()
+
+	recorder.Conversation([]loop.Message{{Type: loop.TypeUser, Text: "a"}})
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 	recorder.Result(loop.Result{})
 
-	empty := NewRecorder(nil)
+	if recorder.Err() == nil {
+		t.Fatal("writes to a closed log were not reported")
+	}
 
-	empty.Conversation([]loop.Message{{Type: loop.TypeUser}})
-	empty.Event(loop.Event{Kind: loop.EventIteration})
-	empty.Result(loop.Result{})
+	if len(told) != 1 || told[0] != recorder.Err() {
+		t.Errorf("the caller was told %d times (%v), want once, with the first failure", len(told), told)
+	}
+}
+
+// Without anyone to tell, the failure is still kept.
+func TestARecorderKeepsAFailureNobodyAskedAbout(t *testing.T) {
+	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writer.Close()
+
+	recorder := NewRecorder(writer, nil)
+	recorder.Event(loop.Event{Kind: loop.EventIteration})
+
+	if recorder.Err() == nil {
+		t.Error("the failure was lost")
+	}
 }
 
 func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
@@ -171,7 +204,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	recorder.Result(loop.Result{
 		Reason:  loop.StopError,
@@ -208,7 +241,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 		t.Fatal(err)
 	}
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	conversation := []loop.Message{{Type: loop.TypeUser, Text: "the original task"}, {Type: loop.TypeUser, Text: "carry on"}}
 
@@ -242,7 +275,7 @@ func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	recorder := NewRecorder(writer)
+	recorder := NewRecorder(writer, nil)
 
 	recorder.Event(loop.Event{Kind: loop.EventUsage, InputTokens: 567000, OutputTokens: 1200, Iteration: 4})
 
@@ -263,7 +296,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 
 		writer, _ := Open(path, Meta{Task: "t"})
 
-		NewRecorder(writer).Result(loop.Result{Reason: reason})
+		NewRecorder(writer, nil).Result(loop.Result{Reason: reason})
 
 		records := readLog(t, path)
 
@@ -280,7 +313,7 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	NewRecorder(writer).Conversation([]loop.Message{{
+	NewRecorder(writer, nil).Conversation([]loop.Message{{
 		Type: loop.TypeActivity,
 		Text: "ok",
 		Activity: &loop.Activity{

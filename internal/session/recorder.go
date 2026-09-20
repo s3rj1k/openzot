@@ -10,19 +10,43 @@ import (
 //
 // The engine knows nothing about files; it gives away the conversation, its events
 // and its result, and this decides where they land. That is what keeps a session
-// log an operational concern rather than something the loop has to carry. Write
-// errors are ignored by design: losing a log line is bad, but never worse than
-// losing the work the log describes.
+// log an operational concern rather than something the loop has to carry.
+//
+// A line that cannot be written is not ignored: the log is the agent's long-term
+// memory and the operator's only record, so a run that has stopped being recorded
+// has stopped being what it was asked to be. The first failure is kept, and the
+// callback given to NewRecorder is told of it, so the caller can end the run.
 type Recorder struct {
-	writer *Writer
+	writer    *Writer
+	onFailure func(error)
 
 	// recorded is how many messages of the conversation are in the log already.
 	recorded int
+
+	// failed is the first write that did not go through.
+	failed error
 }
 
-// NewRecorder wraps a writer.
-func NewRecorder(writer *Writer) *Recorder {
-	return &Recorder{writer: writer}
+// NewRecorder wraps a writer. onFailure, when set, is called once, with the first
+// write that fails.
+func NewRecorder(writer *Writer, onFailure func(error)) *Recorder {
+	return &Recorder{writer: writer, onFailure: onFailure}
+}
+
+// Err is the first write that failed, or nil if every one went through.
+func (r *Recorder) Err() error { return r.failed }
+
+// wrote keeps the first failure and reports it.
+func (r *Recorder) wrote(err error) {
+	if err == nil || r.failed != nil {
+		return
+	}
+
+	r.failed = err
+
+	if r.onFailure != nil {
+		r.onFailure(err)
+	}
 }
 
 // Conversation records what the conversation has gained since the last call.
@@ -33,12 +57,8 @@ func NewRecorder(writer *Writer) *Recorder {
 // a run is seeded with, it records them ahead of the run, so a session that dies
 // in its first turn still says what it was asked to do.
 func (r *Recorder) Conversation(messages []loop.Message) {
-	if r == nil || r.writer == nil {
-		return
-	}
-
 	for r.recorded < len(messages) {
-		_ = r.writer.Message(messages[r.recorded])
+		r.wrote(r.writer.Message(messages[r.recorded]))
 
 		r.recorded++
 	}
@@ -50,10 +70,6 @@ func (r *Recorder) Conversation(messages []loop.Message) {
 // finished message already carries, and keeping it would make the log an order
 // of magnitude larger for nothing.
 func (r *Recorder) Event(event loop.Event) {
-	if r == nil || r.writer == nil {
-		return
-	}
-
 	switch event.Kind {
 	case loop.EventToken, loop.EventReasoningToken:
 		return
@@ -69,16 +85,12 @@ func (r *Recorder) Event(event loop.Event) {
 		text = fmt.Sprintf("input %d output %d", event.InputTokens, event.OutputTokens)
 	}
 
-	_ = r.writer.Event(Event{Kind: string(event.Kind), Tool: event.Tool, Text: text, Iteration: event.Iteration})
+	r.wrote(r.writer.Event(Event{Kind: string(event.Kind), Tool: event.Tool, Text: text, Iteration: event.Iteration}))
 }
 
 // Result records the ending: the last of the conversation, then the outcome, which
 // closes the log.
 func (r *Recorder) Result(result loop.Result) {
-	if r == nil || r.writer == nil {
-		return
-	}
-
 	// the run's last turn happened after the final hand-over, so the ending is
 	// written down here
 	r.Conversation(result.Messages)
@@ -89,7 +101,7 @@ func (r *Recorder) Result(result loop.Result) {
 		cause = result.Err.Error()
 	}
 
-	_ = r.writer.Result(Result{
+	r.wrote(r.writer.Result(Result{
 		Reason:        string(result.Reason),
 		Message:       result.Message,
 		Error:         cause,
@@ -102,5 +114,5 @@ func (r *Recorder) Result(result loop.Result) {
 		Settles:       result.Budget.Settles,
 		InputTokens:   result.Budget.InputTokens,
 		OutputTokens:  result.Budget.OutputTokens,
-	})
+	}))
 }

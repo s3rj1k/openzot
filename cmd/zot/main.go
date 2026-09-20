@@ -504,40 +504,38 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 
 	task := o.Objective
 
-	var (
-		sessionPath string
-		recorder    *session.Recorder
-	)
-
-	if options.SessionPath != "" {
-		meta := session.Meta{
-			Task:     task,
-			Model:    client.Config().Model,
-			Provider: cfg.DefaultProvider,
-			Workdir:  workdir,
-		}
-
-		writer, err := session.Open(options.SessionPath, meta)
-
-		// @note a log that cannot be opened is reported but not fatal: the run
-		// is the point, and refusing to work because a directory is read-only
-		// would be a worse failure than losing the record of it.
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "zot: session log unavailable: %v\n", err)
-		} else {
-			defer writer.Close()
-
-			sessionPath = writer.Path()
-
-			// The seed is recorded before the run starts so a session that dies in
-			// its first turn still says what it was asked to do.
-			recorder = session.NewRecorder(writer)
-			recorder.Conversation(opts.Messages)
-
-			opts.OnConversation = recorder.Conversation
-			opts.OnEvent = recorder.Event
-		}
+	// The session log is not optional. It is the run's record and, once the
+	// context window has forgotten something, the agent's long-term memory: a run
+	// that cannot be recorded is refused rather than run without either.
+	if options.SessionPath == "" {
+		return errors.New("no session log: a run is always recorded")
 	}
+
+	writer, err := session.Open(options.SessionPath, session.Meta{
+		Task:     task,
+		Model:    client.Config().Model,
+		Provider: cfg.DefaultProvider,
+		Workdir:  workdir,
+	})
+	if err != nil {
+		return fmt.Errorf("session log: %w", err)
+	}
+
+	defer writer.Close()
+
+	// A log that stops being writable ends the run: what it cannot record it
+	// should not go on doing.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	recorder := session.NewRecorder(writer, func(error) { stop() })
+
+	// The seed is recorded before the run starts so a session that dies in its
+	// first turn still says what it was asked to do.
+	recorder.Conversation(opts.Messages)
+
+	opts.OnConversation = recorder.Conversation
+	opts.OnEvent = recorder.Event
 
 	meta := viewerMeta(cfg, task, workdir, opts)
 	meta.Title = options.Title
@@ -549,7 +547,11 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 	if result.Reason != "" {
 		recorder.Result(result)
 
-		printDigest(os.Stderr, sessionPath, result)
+		printDigest(os.Stderr, writer.Path(), result)
+	}
+
+	if failed := recorder.Err(); failed != nil {
+		return fmt.Errorf("session log: %w", failed)
 	}
 
 	return err

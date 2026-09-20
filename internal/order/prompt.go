@@ -63,9 +63,8 @@ const promptRules = `Operating rules:
 // promptMemory tells the agent where its long-term memory is. The context window
 // is short-term memory and is forgotten oldest first as it fills; the session log
 // keeps every message, so a model that knows it exists can go back for what it
-// lost. Only offered when the run has a log.
+// lost. Every run has one: zot refuses to run without.
 const promptMemory = `
-{{- if .Session }}
 
 ## Memory
 
@@ -73,8 +72,7 @@ What you can see is short-term memory: your context window. When it fills, the o
 
     {{ .Session }}
 
-Search it with your shell when you need something that is no longer in view: a file you read, a command's output, a decision you made. A message record looks like {"kind":"message","message":{"type":"user|bot|reasoning|activity","text":"...","activity":{"kind":"request|response","name":"...","arguments":"...","result":...}}}; a "meta" record opens each run and a "result" record closes it. Records can be large, so filter before you print - grep -n, tail -n, sed -n 'START,ENDp', or jq -c if it is installed - and never cat the whole file.
-{{- end }}`
+Search it with your shell when you need something that is no longer in view: a file you read, a command's output, a decision you made. A message record looks like {"kind":"message","message":{"type":"user|bot|reasoning|activity","text":"...","activity":{"kind":"request|response","name":"...","arguments":"...","result":...}}}; a "meta" record opens each run and a "result" record closes it. Records can be large, so filter before you print - grep -n, tail -n, sed -n 'START,ENDp', or jq -c if it is installed - and never cat the whole file.`
 
 // promptProject adds the project's own instructions - its AGENTS.md - when it has
 // any.
@@ -179,9 +177,9 @@ type Env struct {
 	// carry for every run in them (their AGENTS.md files), or empty.
 	Project string
 
-	// Session is the path of the log this run is recorded in, or empty when it is
-	// not recorded. It is the run's long-term memory: every message, including
-	// the ones the context window has forgotten.
+	// Session is the path of the log this run is recorded in. It is the run's
+	// long-term memory: every message, including the ones the context window has
+	// forgotten.
 	Session string
 }
 

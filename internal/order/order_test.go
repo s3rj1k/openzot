@@ -470,8 +470,8 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 	}
 }
 
-// The default prompt tells the agent about its long-term memory when the run has
-// a log, and says nothing of one when it has not.
+// The default prompt tells the agent about its long-term memory: where the log is,
+// and that it outlives the context window.
 func TestTheDefaultPromptPointsAtTheSessionLog(t *testing.T) {
 	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\n", 1)
 
@@ -480,24 +480,15 @@ func TestTheDefaultPromptPointsAtTheSessionLog(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	with, err := order.Render(Env{Session: "/work/.zot/orders/1.jsonl"})
+	got, err := order.Render(Env{Session: "/work/.zot/orders/1.jsonl"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for _, want := range []string{"## Memory", "short-term memory", "/work/.zot/orders/1.jsonl", "earlier run"} {
-		if !strings.Contains(with, want) {
-			t.Errorf("the prompt does not say %q:\n%s", want, with)
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt does not say %q:\n%s", want, got)
 		}
-	}
-
-	without, err := order.Render(Env{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if strings.Contains(without, "Memory") || strings.Contains(without, "session log") {
-		t.Errorf("a run with no log was told about one:\n%s", without)
 	}
 }
 

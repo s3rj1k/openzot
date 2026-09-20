@@ -1450,7 +1450,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	}
 
 	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
+		return runTask(context.Background(), cfg, testOrder("do the thing"), logged(t))
 	}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -1586,7 +1586,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
+				return runTask(context.Background(), cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -1691,7 +1691,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
+				return runTask(context.Background(), cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -2008,7 +2008,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		done <- builder.String()
 	}()
 
-	err := runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
+	err := runTask(context.Background(), cfg, testOrder("do the thing"), logged(t))
 
 	write.Close()
 
@@ -2034,7 +2034,7 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg.DefaultProvider = "nowhere"
 	cfg.Providers = map[string]config.ProviderConfig{}
 
-	err := runTask(context.Background(), cfg, testOrder("task"), runOptions{})
+	err := runTask(context.Background(), cfg, testOrder("task"), logged(t))
 
 	if err == nil {
 		t.Fatal("an unconfigured provider must fail")
@@ -2326,11 +2326,19 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 	}
 }
 
-// The run is the point. A log that cannot be opened is reported and the work
-// goes ahead - refusing to work because a directory is read-only would be a
-// worse failure than losing the record of it.
-func TestRunWithSurvivesAnUnwritableSessionPath(t *testing.T) {
+// A run that cannot be recorded is refused before the provider is asked
+// anything: its log is its record and its agent's long-term memory.
+func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
+	var asked atomic.Int32
+
 	cfg := stubProvider(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { asked.Add(1) }))
+	t.Cleanup(server.Close)
+
+	provider := cfg.Providers["local"]
+	provider.BaseURL = server.URL
+	cfg.Providers["local"] = provider
 
 	blocked := filepath.Join(t.TempDir(), "a-file")
 
@@ -2343,32 +2351,30 @@ func TestRunWithSurvivesAnUnwritableSessionPath(t *testing.T) {
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
 	})
-	if err != nil {
-		t.Fatalf("RunWith: %v\n%s", err, output)
+	if err == nil || !strings.Contains(err.Error(), "session log") {
+		t.Fatalf("err = %v, want the unwritable log refused and named\n%s", err, output)
 	}
 
-	if !strings.Contains(output, "all done") {
-		t.Errorf("the run should have finished regardless:\n%s", output)
+	if asked.Load() != 0 {
+		t.Error("the provider was asked something before the log was known to work")
 	}
 }
 
-// No session path means no log, and that has to be silent rather than an
-// error a caller has to handle.
-func TestRunWithoutASessionPathWritesNothing(t *testing.T) {
-	cfg := stubProvider(t)
-
+// There is no run without a log: the caller must say where it goes.
+func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Chdir(dir)
 
-	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, testOrder("do the thing"), runOptions{})
-	}); err != nil {
-		t.Fatalf("RunWith: %v", err)
+	_, err := quietly(t, func() error {
+		return runTask(context.Background(), stubProvider(t), testOrder("do the thing"), runOptions{})
+	})
+	if err == nil || !strings.Contains(err.Error(), "session log") {
+		t.Fatalf("err = %v, want a run with no log refused", err)
 	}
 
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Errorf("a run with no session path wrote %d entries", len(entries))
+		t.Errorf("a refused run wrote %d entries", len(entries))
 	}
 }
 
@@ -2435,10 +2441,17 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	}
 
 	// and the library entry point, which does not validate, says the same
-	err = runTask(context.Background(), cfg, testOrder("task"), runOptions{})
+	err = runTask(context.Background(), cfg, testOrder("task"), logged(t))
 	if err == nil || !strings.Contains(err.Error(), "providers:") {
 		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
+}
+
+// logged is the options of a run that is recorded, as every run must be.
+func logged(t *testing.T) runOptions {
+	t.Helper()
+
+	return runOptions{SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
 }
 
 // promptOf renders an order the way a run does, with the tools a run really has.
@@ -2849,7 +2862,7 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 }
 
 // The session log is the agent's long-term memory, so the prompt a run really
-// sends says where it is - and only when there is one.
+// sends says where it is.
 func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	var (
 		mu     sync.Mutex
@@ -2887,24 +2900,15 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 		t.Fatalf("runTask: %v", err)
 	}
 
-	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, newOrderNamed(t, "do the thing"), runOptions{})
-	}); err != nil {
-		t.Fatalf("runTask: %v", err)
-	}
-
 	mu.Lock()
 	defer mu.Unlock()
 
-	if len(bodies) != 2 {
-		t.Fatalf("the provider saw %d requests, want 2", len(bodies))
+	if len(bodies) != 1 {
+		t.Fatalf("the provider saw %d requests, want 1", len(bodies))
 	}
 
 	if !strings.Contains(bodies[0], path) || !strings.Contains(bodies[0], "short-term memory") {
 		t.Errorf("the recorded run's prompt does not point at its log %s", path)
 	}
 
-	if strings.Contains(bodies[1], "short-term memory") {
-		t.Error("a run with no log was told about one")
-	}
 }
