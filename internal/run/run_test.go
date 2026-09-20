@@ -145,7 +145,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	defer server.Close()
 
 	cfg := stubProvider(t)
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	offered, err := LoadSkills(skillsDir)
 	if err != nil {
@@ -221,14 +221,14 @@ func TestCredentialResolution(t *testing.T) {
 			name:   "a provider api_key",
 			config: "  api_key: sk-provider\n  models:\n    gpt-4:\n      context: 100000\n",
 			want:   "Bearer sk-provider",
-			model:  "gpt-4",
+			model:  litGpt4,
 		},
 		{
 			name:   "a $VAR reference, so no secret is on disk",
 			env:    map[string]string{"MY_PROVIDER_KEY": "sk-from-env"},
 			config: "  api_key: $MY_PROVIDER_KEY\n  models:\n    gpt-4:\n      context: 100000\n",
 			want:   "Bearer sk-from-env",
-			model:  "gpt-4",
+			model:  litGpt4,
 		},
 	}
 
@@ -268,12 +268,12 @@ provider:
 				t.Fatalf("Load: %v", err)
 			}
 
-			client, _, err := Resolve(cfg, nil)
+			client, _, err := Resolve(t.Context(), cfg, nil)
 			if err != nil {
 				t.Fatalf("resolve: %v", err)
 			}
 
-			if got := client.Config().Model; got != "gpt-4" {
+			if got := client.Config().Model; got != litGpt4 {
 				t.Errorf("model = %q", got)
 			}
 
@@ -319,7 +319,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 					} `json:"messages"`
 				}
 
-				json.NewDecoder(r.Body).Decode(&body)
+				_ = json.NewDecoder(r.Body).Decode(&body)
 
 				contents := make([]json.RawMessage, 0, len(body.Messages))
 
@@ -387,9 +387,9 @@ provider:
 // sending a request to nowhere.
 func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{APIKey: "sk-test", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{APIKey: litSkTest, Models: declared(litGlm52)}
 
-	_, _, err := Resolve(cfg, nil)
+	_, _, err := Resolve(t.Context(), cfg, nil)
 	if err == nil {
 		t.Fatal("a provider naming no endpoint must be rejected")
 	}
@@ -404,9 +404,9 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 // refused, never mended into one that runs.
 func TestResolveNeverRepairsAShellCall(t *testing.T) {
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: declared(litGlm52)}
 
-	_, opts, err := Resolve(cfg, nil)
+	_, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -423,21 +423,21 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 	cases := map[string]map[string]config.ModelConfig{
 		"the model is not declared":     declared("some-other-model"),
 		"no models are declared at all": nil,
-		"the window is zero":            {"glm-5.2": {Model: "glm-5.2"}},
-		"the window is negative":        {"glm-5.2": {Context: -1}},
+		"the window is zero":            {litGlm52: {Model: litGlm52}},
+		"the window is negative":        {litGlm52: {Context: -1}},
 	}
 
 	for name, models := range cases {
 		t.Run(name, func(t *testing.T) {
 			cfg := testDefaults()
-			cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", Models: models}
+			cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: models}
 
-			_, _, err := Resolve(cfg, nil)
+			_, _, err := Resolve(t.Context(), cfg, nil)
 			if err == nil {
 				t.Fatal("a model with no context window resolved")
 			}
 
-			for _, want := range []string{"glm-5.2", "context window", "provider.models"} {
+			for _, want := range []string{litGlm52, "context window", "provider.models"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q should mention %q", err, want)
 				}
@@ -485,7 +485,7 @@ provider:
 	} {
 		cfg.Agent.Model = name
 
-		client, opts, err := Resolve(cfg, nil)
+		client, opts, err := Resolve(t.Context(), cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
@@ -505,7 +505,7 @@ provider:
 
 	cfg.Agent.Model = "huge"
 
-	if _, _, err := Resolve(cfg, nil); err == nil || !strings.Contains(err.Error(), "context window") {
+	if _, _, err := Resolve(t.Context(), cfg, nil); err == nil || !strings.Contains(err.Error(), "context window") {
 		t.Errorf("a model the provider does not list resolved: %v", err)
 	}
 }
@@ -516,7 +516,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 
-	if _, _, err := Resolve(testDefaults(), nil); err == nil {
+	if _, _, err := Resolve(t.Context(), testDefaults(), nil); err == nil {
 		t.Error("a run resolved with no provider declared")
 	}
 }
@@ -544,12 +544,12 @@ provider:
 		t.Fatalf("Load: %v", err)
 	}
 
-	client, opts, err := Resolve(cfg, nil)
+	client, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if got := client.Config().Model; got != "gpt-5" {
+	if got := client.Config().Model; got != litGpt5 {
 		t.Errorf("model = %q, want gpt-5", got)
 	}
 
@@ -572,14 +572,14 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg.Agent.Model = "capped"
 	cfg.Agent.MaxIterations = 100
 	cfg.Provider = config.ProviderConfig{
-		BaseURL: "https://gw.example.com/v1",
-		APIKey:  "sk-test",
+		BaseURL: litHTTPSGwExampleCom,
+		APIKey:  litSkTest,
 		Models: map[string]config.ModelConfig{
-			"capped": {Model: "gpt-5", MaxIterations: 40, Context: 100_000},
+			"capped": {Model: litGpt5, MaxIterations: 40, Context: 100_000},
 		},
 	}
 
-	_, opts, err := Resolve(cfg, nil)
+	_, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -598,9 +598,9 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	// the default is a 1,000,000 backstop rather than a budget, so there is
 	// nothing worth counting towards and the denominator stays hidden
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
-	cfg.Provider.Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
+	cfg.Provider.Models["capped"] = config.ModelConfig{Model: litGpt5, Context: 100_000}
 
-	_, opts, err = Resolve(cfg, nil)
+	_, opts, err = Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -644,7 +644,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 	defer server.Close()
 
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	original := os.Stdout
 
@@ -722,7 +722,7 @@ func stubProvider(t *testing.T) config.Config {
 	t.Cleanup(server.Close)
 
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	return cfg
 }
@@ -776,9 +776,10 @@ func readSession(t *testing.T, path string) []session.Record {
 		t.Fatalf("read log: %v", err)
 	}
 
-	var records []session.Record
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	records := make([]session.Record, 0, len(lines))
 
-	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+	for i, line := range lines {
 		var record session.Record
 
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
@@ -924,7 +925,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cfg := stubProvider(t)
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	if output, err := quietly(t, func() error {
 		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
@@ -1071,7 +1072,7 @@ func logged(t *testing.T) Options {
 func promptOf(t *testing.T, o order.Order) string {
 	t.Helper()
 
-	client, opts, err := Resolve(stubProviderConfig(t), nil)
+	client, opts, err := Resolve(t.Context(), stubProviderConfig(t), nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1089,7 +1090,7 @@ func stubProviderConfig(t *testing.T) config.Config {
 	t.Helper()
 
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, APIKey: "k", Models: declared(litGlm52)}
 
 	return cfg
 }
@@ -1141,34 +1142,34 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 	prompt := defaultPrompt(t)
 
-	real := map[string]bool{
+	known := map[string]bool{
 		// the terminal tools the loop injects
 		"success": true,
 		"failure": true,
 	}
 
 	for _, tool := range tools.New(1000, nil) {
-		real[tool.Info().Name] = true
+		known[tool.Info().Name] = true
 	}
 
 	// pull every "quoted" token out of the prompt and check the tool-looking ones
-	// are real
+	// are known
 	for _, quoted := range regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(prompt, -1) {
 		name := quoted[1]
 
-		// only check things that look like tool names (a real tool, or the
+		// only check things that look like tool names (a known tool, or the
 		// phantom ones we are guarding against)
 		phantom := map[string]bool{"edit": true, "exec": true, "exit": true, "abort": true, "read": true, "write": true, "list": true, "plan": true, "progress": true}
 
-		if !real[name] && phantom[name] {
-			t.Errorf("the prompt names %q, which is not a real tool", name)
+		if !known[name] && phantom[name] {
+			t.Errorf("the prompt names %q, which is not a known tool", name)
 		}
 	}
 
 	// and positively assert the tools the prompt promises are all present
 	for _, want := range []string{"tasks", "shell", "success", "failure"} {
-		if !real[want] {
-			t.Errorf("the prompt relies on %q but it is not a real tool", want)
+		if !known[want] {
+			t.Errorf("the prompt relies on %q but it is not a known tool", want)
 		}
 
 		if !strings.Contains(prompt, `"`+want+`"`) {
@@ -1188,7 +1189,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	cfg := stubProviderConfig(t)
 	offered := []skills.Skill{{Name: "deploy", Description: "ship it"}}
 
-	client, opts, err := Resolve(cfg, offered)
+	client, opts, err := Resolve(t.Context(), cfg, offered)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1241,7 +1242,7 @@ func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	cfg := stubProviderConfig(t)
 
-	client, opts, err := Resolve(cfg, nil)
+	client, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1348,11 +1349,11 @@ func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 // to record an outcome before giving up.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "sk-test", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest, Models: declared(litGlm52)}
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
-	_, opts, err := Resolve(cfg, nil)
+	_, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1368,7 +1369,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// max_time is a duration string on the config, a time.Duration on the run
 	cfg.Agent.MaxTime = "30m"
 
-	_, timed, err := Resolve(cfg, nil)
+	_, timed, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1381,7 +1382,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// and it never means "no settling"
 	cfg.Agent.MaxSettles = 0
 
-	_, opts, err = Resolve(cfg, nil)
+	_, opts, err = Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1398,11 +1399,11 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 		cfg := testDefaults()
 		cfg.Agent.MaxToolOutputPercent = percent
 		cfg.Provider = config.ProviderConfig{
-			BaseURL: "https://gw.example.com/v1", APIKey: "sk-test",
-			Models: map[string]config.ModelConfig{"glm-5.2": {Context: window}},
+			BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest,
+			Models: map[string]config.ModelConfig{litGlm52: {Context: window}},
 		}
 
-		_, opts, err := Resolve(cfg, nil)
+		_, opts, err := Resolve(t.Context(), cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve: %v", err)
 		}
@@ -1470,7 +1471,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 
@@ -1506,7 +1507,7 @@ func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 
 	cfg := stubProviderConfig(t)
 
-	_, opts, err := Resolve(cfg, nil)
+	_, opts, err := Resolve(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1574,7 +1575,7 @@ func declared(names ...string) map[string]config.ModelConfig {
 // lacks: a model to run.
 func testDefaults() config.Config {
 	cfg := config.Defaults()
-	cfg.Agent.Model = "glm-5.2"
+	cfg.Agent.Model = litGlm52
 
 	return cfg
 }

@@ -54,6 +54,9 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 						Output:     fantasy.ToolResultOutputContentText{Text: activity.ResultText()},
 					}},
 				})
+
+			default:
+				// a trigger carries no call, so there is nothing to send
 			}
 
 		case TypeBot:

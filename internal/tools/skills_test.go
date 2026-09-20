@@ -14,7 +14,7 @@ func skillsCall(t *testing.T, offered []skills.Skill, args map[string]any) (any,
 }
 
 var testSkills = []skills.Skill{
-	{Name: "deploy", Description: "Ship a service", Dir: "/skills/deploy", Content: "# Deploy\n\nRun the pipeline.\n"},
+	{Name: litDeploy, Description: "Ship a service", Dir: "/skills/deploy", Content: "# Deploy\n\nRun the pipeline.\n"},
 	{Name: "review", Description: "Review a change", Dir: "/skills/review", Content: "# Review\n"},
 }
 
@@ -24,7 +24,7 @@ func TestSkillsToolListsNamesWithDescriptions(t *testing.T) {
 		t.Fatalf("skills: %v", err)
 	}
 
-	listing := out.(string)
+	listing := asString(t, out)
 
 	for _, want := range []string{"- deploy: Ship a service", "- review: Review a change"} {
 		if !strings.Contains(listing, want) {
@@ -42,7 +42,7 @@ func TestSkillsToolShortensALongDescription(t *testing.T) {
 
 	out, _ := skillsCall(t, []skills.Skill{{Name: "verbose", Description: long}}, nil)
 
-	line := out.(string)
+	line := asString(t, out)
 
 	if strings.Count(line, "word") > maxListedDescription/5 || !strings.Contains(line, "…") {
 		t.Errorf("a long description must be cut with an ellipsis:\n%s", line)
@@ -50,12 +50,12 @@ func TestSkillsToolShortensALongDescription(t *testing.T) {
 }
 
 func TestSkillsToolReadsOneInFull(t *testing.T) {
-	out, err := skillsCall(t, testSkills, map[string]any{"name": "deploy"})
+	out, err := skillsCall(t, testSkills, map[string]any{litName: litDeploy})
 	if err != nil {
 		t.Fatalf("skills: %v", err)
 	}
 
-	got := out.(string)
+	got := asString(t, out)
 
 	if !strings.Contains(got, "Run the pipeline.") {
 		t.Errorf("the full instructions are missing:\n%s", got)
@@ -71,12 +71,12 @@ func TestSkillsToolReadsOneInFull(t *testing.T) {
 }
 
 func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
-	_, err := skillsCall(t, testSkills, map[string]any{"name": "nope"})
+	_, err := skillsCall(t, testSkills, map[string]any{litName: "nope"})
 	if err == nil {
 		t.Fatal("an unknown skill must be an error the model can act on")
 	}
 
-	for _, want := range []string{`"nope"`, "deploy", "review"} {
+	for _, want := range []string{`"nope"`, litDeploy, "review"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should mention %s", err, want)
 		}
@@ -86,12 +86,12 @@ func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
 func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 	big := []skills.Skill{{Name: "big", Content: strings.Repeat("x", 500)}}
 
-	out, err := call(t, New(100, big), "skills", map[string]any{"name": "big"})
+	out, err := call(t, New(100, big), "skills", map[string]any{litName: "big"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(out.(string), "[truncated:") {
+	if !strings.Contains(asString(t, out), "[truncated:") {
 		t.Errorf("a skill larger than the tool ceiling must be visibly truncated: %q", out)
 	}
 }

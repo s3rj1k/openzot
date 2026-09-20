@@ -55,7 +55,7 @@ func newOrder(args []string, out io.Writer) error {
 	// An order left exactly as it was made is not an order, and a blank one lying
 	// in .zot/orders would only fail when someone ran it. Nothing was written, so
 	// nothing is kept.
-	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() {
+	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() { //nolint:gosec // G304: the order path is the one the operator named
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("remove the unedited order: %w", err)
 		}
@@ -113,7 +113,7 @@ func openInEditor(path string) error {
 		return errors.New("no editor found; set $EDITOR (the file is at the path above)")
 	}
 
-	cmd := exec.Command(editor, path)
+	cmd := exec.Command(editor, path) //nolint:gosec // G204: the editor is the operator's own $VISUAL or $EDITOR
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	return cmd.Run()

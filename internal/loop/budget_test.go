@@ -35,7 +35,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		// a stub that calls a tool forever
-		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
+		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxDuration:   time.Millisecond,
 		MaxIterations: 100000, // high, so time is what stops it, not iterations
@@ -72,8 +72,8 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", "{}")},
-			[]string{tool("call_2", "echo", "{}")},
+			[]string{tool("call_1", litEcho, "{}")},
+			[]string{tool("call_2", litEcho, "{}")},
 			[]string{settle("done")},
 		),
 		Tools:            echoTool(&calls),
@@ -119,7 +119,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	// tool calls forever, with a continuation budget of one
 	result := run(t, Options{
 		ContextWindow:    testWindow,
-		Client:           stub(t, []string{tool("call_1", "echo", "{}")}),
+		Client:           stub(t, []string{tool("call_1", litEcho, "{}")}),
 		Tools:            echoTool(&calls),
 		MaxIterations:    4,
 		MaxContinuations: 1,
@@ -162,7 +162,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 	}{
 		{
 			name:  "tool rounds",
-			turns: [][]string{{tool("call_1", "echo", "{}")}},
+			turns: [][]string{{tool("call_1", litEcho, "{}")}},
 			tools: echoTool(new(int)),
 		},
 		{
@@ -205,7 +205,7 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
+		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 1,
 		MaxCycles:     1000,
@@ -271,7 +271,7 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("call_1", "echo", "{}")}),
+		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 500,
 		MaxCalls:      500,
@@ -293,7 +293,7 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 	invoked := 0
 
-	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+	tools := []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
 		invoked++
 
 		return "ok", nil
@@ -302,7 +302,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", `not json at all`)},
+			[]string{tool("call_1", litEcho, `not json at all`)},
 			[]string{settle("let me try that again")},
 		),
 		Tools:         tools,
@@ -328,7 +328,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 	invoked := 0
 
-	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+	tools := []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
 		invoked++
 
 		return "ok", nil
@@ -337,7 +337,7 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", `{"value": "abc`)},
+			[]string{tool("call_1", litEcho, `{"value": "abc`)},
 			[]string{settle("done")},
 		),
 		Tools:         tools,
@@ -360,14 +360,14 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 // A tool that fails is information, not an outage. The run continues with the
 // error in hand.
 func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
-	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+	tools := []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
 		return nil, errors.New("permission denied")
 	})}
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", "{}")},
+			[]string{tool("call_1", litEcho, "{}")},
 			[]string{settle("understood")},
 		),
 		Tools:         tools,
@@ -386,14 +386,16 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 // A handler that returns nothing still has to produce a result message, or the
 // call is left unanswered and the next request is invalid.
 func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
-	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
-		return nil, nil
+	tools := []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
+		var nothing any
+
+		return nothing, nil
 	})}
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{tool("call_1", "echo", "{}")},
+			[]string{tool("call_1", litEcho, "{}")},
 			[]string{settle("done")},
 		),
 		Tools:         tools,
@@ -488,6 +490,8 @@ func countActivities(messages []conversation.Message) (requests, responses int) 
 			requests++
 		case conversation.ActivityResponse:
 			responses++
+		default:
+			// a trigger is neither half
 		}
 	}
 
@@ -506,9 +510,9 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
@@ -560,9 +564,9 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
@@ -692,9 +696,9 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -775,9 +779,9 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -836,7 +840,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		case 3:
 			// a successful tool round - the outage is over
 			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", tool("c1", "echo", `{}`))
+			fmt.Fprintf(w, "data: %s\n\n", tool("c1", litEcho, `{}`))
 			fmt.Fprint(w, "data: [DONE]\n\n")
 
 		case 4:
@@ -852,9 +856,9 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -939,9 +943,9 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -1054,7 +1058,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		if request <= 11 {
-			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), "echo", `{}`))
+			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
 		} else {
 			fmt.Fprintf(w, "data: %s\n\n", tool("done", SuccessTool, `{"summary":"done"}`))
 		}
@@ -1064,9 +1068,9 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -1112,9 +1116,9 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -1168,15 +1172,15 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), "echo", `{}`))
+		fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -1246,7 +1250,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		if request <= 39 {
-			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), "echo", `{}`))
+			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
 		} else {
 			fmt.Fprintf(w, "data: %s\n\n", tool("done", SuccessTool, `{"summary":"done"}`))
 		}
@@ -1256,9 +1260,9 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})

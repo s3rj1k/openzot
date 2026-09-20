@@ -9,7 +9,7 @@ import (
 
 func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	out := RenderDigest(Digest{
-		Status:       "done",
+		Status:       litDone,
 		Session:      "20260824-143210",
 		Iterations:   42,
 		Calls:        137,
@@ -32,7 +32,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"status":        "done",
+		"status":        litDone,
 		"session":       "20260824-143210",
 		"iterations":    "42",
 		"calls":         "137",
@@ -49,7 +49,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 }
 
 func TestRenderDigestOmitsEmptyFields(t *testing.T) {
-	out := RenderDigest(Digest{Status: "done", Iterations: 1, Calls: 1})
+	out := RenderDigest(Digest{Status: litDone, Iterations: 1, Calls: 1})
 
 	for _, absent := range []string{"session", "message"} {
 		if strings.Contains(out, absent) {
@@ -59,7 +59,7 @@ func TestRenderDigestOmitsEmptyFields(t *testing.T) {
 }
 
 func TestRenderDigestFlattensMultilineMessage(t *testing.T) {
-	out := RenderDigest(Digest{Status: "done", Message: "line one\nline two"})
+	out := RenderDigest(Digest{Status: litDone, Message: "line one\nline two"})
 
 	// The one-row-per-line contract must hold even for a multi-line message.
 	if strings.Contains(out, "line one\nline two") {
@@ -77,10 +77,10 @@ func TestDigestStatus(t *testing.T) {
 		code   int
 		want   string
 	}{
-		{string(loop.StopSettled), 0, "done"},
-		{string(loop.StopFailed), 1, "failed"},
+		{string(loop.StopSettled), 0, litDone},
+		{string(loop.StopFailed), 1, litFailed},
 		{string(loop.StopAborted), 1, "canceled"},
-		{string(loop.StopIterations), 3, "failed"},
+		{string(loop.StopIterations), 3, litFailed},
 	}
 
 	for _, c := range cases {

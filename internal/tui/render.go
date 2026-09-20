@@ -202,14 +202,14 @@ func str(m map[string]any, key string) string {
 // or tool argument in CJK or emoji rendered a replacement character - and the
 // cap bit far earlier than the width it was given, since one glyph can be four
 // bytes.
-func truncate(s string, max int) string {
+func truncate(s string, limit int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 
-	if utf8.RuneCountInString(s) <= max {
+	if utf8.RuneCountInString(s) <= limit {
 		return s
 	}
 
-	return string([]rune(s)[:max-1]) + "…"
+	return string([]rune(s)[:limit-1]) + "…"
 }
 
 func pad(s string, n int) string {
@@ -232,14 +232,14 @@ func pad(s string, n int) string {
 // Segments are kept whole: half a directory name is not a directory name, and a
 // path is read by recognizing its parts. Only when the final segment alone will
 // not fit is it cut, and then from the left, so the end of the name survives.
-func shortPath(path string, max int) string {
-	if max <= 0 {
+func shortPath(path string, limit int) string {
+	if limit <= 0 {
 		return ""
 	}
 
 	path = strings.ReplaceAll(path, "\n", " ")
 
-	if utf8.RuneCountInString(path) <= max {
+	if utf8.RuneCountInString(path) <= limit {
 		return path
 	}
 
@@ -257,7 +257,7 @@ func shortPath(path string, max int) string {
 			candidate += "/" + kept
 		}
 
-		if utf8.RuneCountInString(candidate)+2 > max {
+		if utf8.RuneCountInString(candidate)+2 > limit {
 			break
 		}
 
@@ -270,8 +270,8 @@ func shortPath(path string, max int) string {
 		last := segments[len(segments)-1]
 		runes := []rune(last)
 
-		if len(runes) > max-1 {
-			runes = runes[len(runes)-(max-1):]
+		if len(runes) > limit-1 {
+			runes = runes[len(runes)-(limit-1):]
 		}
 
 		return "…" + string(runes)

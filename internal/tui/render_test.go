@@ -18,9 +18,9 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 	}{
 		{
 			name: "a path that fits is left alone",
-			path: "/srv/api",
+			path: litSrvAPI,
 			max:  28,
-			want: "/srv/api",
+			want: litSrvAPI,
 		},
 		{
 			name: "leading segments are dropped, not trailing characters",
@@ -48,7 +48,7 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 		},
 		{
 			name: "no room at all yields nothing rather than a stray ellipsis",
-			path: "/srv/api",
+			path: litSrvAPI,
 			max:  0,
 			want: "",
 		},

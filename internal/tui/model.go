@@ -217,6 +217,10 @@ func (m *model) handleEvent(ev loop.Event) {
 		// provider-reported cumulative token usage, shown in the meta bar
 		m.inputTokens = ev.InputTokens
 		m.outputTokens = ev.OutputTokens
+
+	default:
+		// reasoning, whole messages and a runaway cut are for the log; the
+		// tokens and the notices already show what they say
 	}
 }
 

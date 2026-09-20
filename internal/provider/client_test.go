@@ -33,7 +33,7 @@ func (r *wireRequest) capture(w http.ResponseWriter, req *http.Request) {
 	r.headers = req.Header.Clone()
 	r.body = map[string]any{}
 
-	json.Unmarshal(raw, &r.body)
+	_ = json.Unmarshal(raw, &r.body)
 
 	r.mu.Unlock()
 
@@ -46,9 +46,9 @@ func (r *wireRequest) messages() []map[string]any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var messages []map[string]any
-
 	list, _ := r.body["messages"].([]any)
+
+	messages := make([]map[string]any, 0, len(list))
 
 	for _, entry := range list {
 		messages = append(messages, entry.(map[string]any))
@@ -89,7 +89,7 @@ func TestStreamAssemblesFragmentedParallelToolCalls(t *testing.T) {
 
 	first, second := result.calls[0], result.calls[1]
 
-	if first.ToolCallID != "a" || first.ToolName != "shell" || first.Input != `{"cmd":"pwd"}` {
+	if first.ToolCallID != "a" || first.ToolName != litShell || first.Input != `{"cmd":"pwd"}` {
 		t.Errorf("first call = %+v, want its argument fragments joined", first)
 	}
 
@@ -210,7 +210,7 @@ func TestACutConnectionIsRetriable(t *testing.T) {
 		},
 		"reset before any response": func(w http.ResponseWriter, _ *http.Request) {
 			conn, _, _ := w.(http.Hijacker).Hijack()
-			conn.(*net.TCPConn).SetLinger(0)
+			_ = conn.(*net.TCPConn).SetLinger(0)
 			conn.Close()
 		},
 	}
@@ -252,7 +252,7 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 				}
 
 				w.WriteHeader(test.status)
-				io.WriteString(w, test.body)
+				_, _ = io.WriteString(w, test.body)
 			})
 
 			err := collect(client, hello()).err
@@ -280,7 +280,7 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.","code":"context_length_exceeded"}}`)
+		_, _ = io.WriteString(w, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.","code":"context_length_exceeded"}}`)
 	})
 
 	limit, ok := DetectContextLimit(collect(client, hello()).err)
@@ -300,7 +300,7 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 		Prompt:          fantasy.Prompt{fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi")},
 		MaxOutputTokens: new(int64(321)),
 		Tools: []fantasy.Tool{fantasy.FunctionTool{
-			Name: "shell", Description: "run", InputSchema: map[string]any{"type": "object"},
+			Name: litShell, Description: "run", InputSchema: map[string]any{"type": "object"},
 		}},
 	}
 
@@ -316,7 +316,7 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 		t.Errorf("Authorization = %q", got)
 	}
 
-	if seen.body["model"] != "test-model" || seen.body["stream"] != true {
+	if stream, _ := seen.body["stream"].(bool); seen.body["model"] != litTestModel || !stream {
 		t.Errorf("model = %v, stream = %v", seen.body["model"], seen.body["stream"])
 	}
 
@@ -384,7 +384,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	prompt := fantasy.Prompt{
 		fantasy.NewUserMessage("go"),
 		{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-			fantasy.ToolCallPart{ToolCallID: "c1", ToolName: "shell", Input: `{}`},
+			fantasy.ToolCallPart{ToolCallID: "c1", ToolName: litShell, Input: `{}`},
 		}},
 		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{
 			fantasy.ToolResultPart{ToolCallID: "c1", Output: fantasy.ToolResultOutputContentText{Text: ""}},
@@ -452,7 +452,10 @@ func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 			t.Fatalf("message %d content = %v, want one part", index, messages[index]["content"])
 		}
 
-		part := parts[0].(map[string]any)
+		part, ok := parts[0].(map[string]any)
+		if !ok {
+			t.Fatalf("message %d part is %T, want an object", index, parts[0])
+		}
 
 		if part["type"] != "text" || part["text"] != want {
 			t.Errorf("message %d part = %v", index, part)
@@ -498,13 +501,13 @@ func TestClientExposesItsResolvedConfig(t *testing.T) {
 
 	config := client.Config()
 
-	if config.Model != "test-model" || strings.HasSuffix(config.BaseURL, "/") {
+	if config.Model != litTestModel || strings.HasSuffix(config.BaseURL, "/") {
 		t.Errorf("config = %+v", config)
 	}
 }
 
 func TestNewRefusesAnInvalidConfig(t *testing.T) {
-	if _, err := NewClient(ClientConfig{}); err == nil {
+	if _, err := NewClient(t.Context(), ClientConfig{}); err == nil {
 		t.Error("an empty config must not connect")
 	}
 }
@@ -534,7 +537,8 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		for range client.Stream(ctx, hello()) {
+		for part := range client.Stream(ctx, hello()) {
+			_ = part
 		}
 	}()
 

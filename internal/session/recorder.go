@@ -72,8 +72,7 @@ func (r *Recorder) Conversation(messages []conversation.Message) {
 // finished message already carries, and keeping it would make the log an order
 // of magnitude larger for nothing.
 func (r *Recorder) Event(event loop.Event) {
-	switch event.Kind {
-	case loop.EventToken, loop.EventReasoningToken:
+	if event.Kind == loop.EventToken || event.Kind == loop.EventReasoningToken {
 		return
 	}
 

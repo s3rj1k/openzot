@@ -21,7 +21,7 @@ import (
 func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "add a health endpoint"})
+	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -29,14 +29,14 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	recorder := NewRecorder(writer, nil)
 
 	recorder.Conversation([]conversation.Message{
-		{Type: conversation.TypeUser, Text: "add a health endpoint"},
+		{Type: conversation.TypeUser, Text: litAddAHealthEndpoint},
 		{Type: conversation.TypeReasoning, Text: "I should look at the router first,\nthen add the handler."},
 		{Type: conversation.TypeBot, Text: "on it"},
 	})
 
 	records := readLog(t, path)
 
-	var got []string
+	got := make([]string, 0, len(records)-1)
 
 	for _, record := range records[1:] {
 		got = append(got, string(record.Message.Type)+": "+record.Message.Text)
@@ -56,27 +56,28 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "add a health endpoint"})
+	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 
 	recorder := NewRecorder(writer, nil)
 
-	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "add a health endpoint"}}
+	messages := make([]conversation.Message, 0, 2)
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: litAddAHealthEndpoint})
 
 	recorder.Conversation(messages)
 
-	recorder.Event(loop.Event{Kind: loop.EventToolCallStart, Tool: "shell", Text: "go test ./...", Iteration: 1})
+	recorder.Event(loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Text: "go test ./...", Iteration: 1})
 
 	messages = append(messages, conversation.Message{
 		Type: conversation.TypeActivity,
 		Text: "ok",
 		Activity: &conversation.Activity{
 			Kind:      conversation.ActivityResponse,
-			ID:        "call_1",
-			Name:      "shell",
-			Arguments: `{"command":"go test ./..."}`,
+			ID:        litCall1,
+			Name:      litShell,
+			Arguments: litCommandGoTest,
 			Result:    "ok",
 		},
 	})
@@ -104,18 +105,18 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 
 	activity := records[3].Message.Activity
 
-	if activity == nil || activity.Kind != conversation.ActivityResponse || activity.ID != "call_1" ||
-		activity.Name != "shell" || activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
+	if activity == nil || activity.Kind != conversation.ActivityResponse || activity.ID != litCall1 ||
+		activity.Name != litShell || activity.Arguments != litCommandGoTest || activity.Result != "ok" {
 		t.Errorf("the call was not recorded whole: %+v", activity)
 	}
 
-	if event := records[2].Event; event.Kind != string(loop.EventToolCallStart) || event.Tool != "shell" || event.Iteration != 1 {
+	if event := records[2].Event; event.Kind != string(loop.EventToolCallStart) || event.Tool != litShell || event.Iteration != 1 {
 		t.Errorf("event = %+v", event)
 	}
 
 	result := records[4].Result
 
-	if result.Reason != "settled" || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
+	if result.Reason != litSettled || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
 		t.Errorf("result = %+v", result)
 	}
 }
@@ -245,7 +246,11 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	recorder := NewRecorder(writer, nil)
 
-	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "the original task"}, {Type: conversation.TypeUser, Text: "carry on"}}
+	messages := make([]conversation.Message, 0, 3)
+	messages = append(messages,
+		conversation.Message{Type: conversation.TypeUser, Text: "the original task"},
+		conversation.Message{Type: conversation.TypeUser, Text: "carry on"},
+	)
 
 	recorder.Conversation(messages)
 	recorder.Conversation(messages)
@@ -319,7 +324,7 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 		Type: conversation.TypeActivity,
 		Text: "ok",
 		Activity: &conversation.Activity{
-			Kind: conversation.ActivityResponse, ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`, Result: "out",
+			Kind: conversation.ActivityResponse, ID: "c1", Name: litShell, Arguments: litCommandLs, Result: "out",
 		},
 	}})
 
@@ -340,11 +345,11 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	activity, _ := record.Message["activity"].(map[string]any)
+	activity, _ := record.Message[litActivity].(map[string]any)
 
-	if record.Message["type"] != "activity" || record.Message["text"] != "ok" ||
-		activity["kind"] != "response" || activity["id"] != "c1" || activity["name"] != "shell" ||
-		activity["arguments"] != `{"command":"ls"}` || activity["result"] != "out" {
+	if record.Message["type"] != litActivity || record.Message["text"] != "ok" ||
+		activity["kind"] != "response" || activity["id"] != "c1" || activity["name"] != litShell ||
+		activity["arguments"] != litCommandLs || activity["result"] != "out" {
 		t.Errorf("message record = %v, want type/text/activity{kind,id,name,arguments,result}", record.Message)
 	}
 }

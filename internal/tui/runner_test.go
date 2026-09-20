@@ -53,9 +53,9 @@ func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -74,7 +74,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() model) {
 	seen := &collector{}
 
 	program := tea.NewProgram(
-		&recordingModel{collector: seen, inner: newModel("do the thing", "test-model", "custom", "/tmp/work")},
+		&recordingModel{collector: seen, inner: newModel("do the thing", litTestModel, litCustom, "/tmp/work")},
 		tea.WithInput(nil),
 		tea.WithOutput(io.Discard),
 		tea.WithoutSignalHandler(),
@@ -122,7 +122,7 @@ type recordingModel struct {
 	inner     model
 }
 
-func (r *recordingModel) Init() tea.Cmd { return nil }
+func (*recordingModel) Init() tea.Cmd { return nil }
 
 func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
@@ -141,7 +141,7 @@ func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, cmd
 }
 
-func (r *recordingModel) View() string { return "" }
+func (*recordingModel) View() string { return "" }
 
 // engineFor is an engine over the client for a run of "do the thing".
 func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Options)) *loop.Engine {
@@ -227,9 +227,9 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -312,9 +312,9 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -322,7 +322,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	m := newModel("do the thing", "test-model", "custom", t.TempDir())
+	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
 	// start stands in for the user pressing q: the program runs headlessly, so the
 	// event pump is genuinely consuming, and quits once the agent is under way
@@ -374,9 +374,9 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -384,7 +384,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	m := newModel("do the thing", "test-model", "custom", t.TempDir())
+	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
 	// the program runs headlessly so the event pump is genuinely consuming;
 	// quitting once the stream is under way is the user pressing q mid-run

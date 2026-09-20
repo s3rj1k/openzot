@@ -54,7 +54,7 @@ func LoadProjectContext(dirs ...string) string {
 
 		seen[dir] = true
 
-		if data, err := os.ReadFile(filepath.Join(dir, agentFile)); err == nil {
+		if data, err := os.ReadFile(filepath.Join(dir, agentFile)); err == nil { //nolint:gosec // G304: AGENTS.md in the config and project directories
 			if text := strings.TrimSpace(string(data)); text != "" {
 				found = append(found, text)
 			}
@@ -143,7 +143,7 @@ func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, wor
 func Run(ctx context.Context, cfg config.Config, o order.Order, options Options) error {
 	config.ScrubProviderSecrets(cfg)
 
-	client, opts, err := Resolve(cfg, options.Skills)
+	client, opts, err := Resolve(ctx, cfg, options.Skills)
 	if err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 
 // Resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
+func Resolve(ctx context.Context, cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
 	providerConfig := cfg.Provider
@@ -306,7 +306,7 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 	contextWindow := mc.Context
 	contentArray := mc.ContentArray
 
-	client, err := provider.NewClient(provider.ClientConfig{
+	client, err := provider.NewClient(ctx, provider.ClientConfig{
 		Provider: cfg.Provider.Label(),
 		Model:    model,
 		APIKey:   providerConfig.APIKey,

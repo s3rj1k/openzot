@@ -69,14 +69,14 @@ func skillNames(offered []skills.Skill) string {
 	return strings.Join(names, ", ")
 }
 
-// shorten flattens text to one line and caps it at max characters, by rune so a
+// shorten flattens text to one line and caps it at limit characters, by rune so a
 // multi-byte character is never cut in half.
-func shorten(text string, max int) string {
+func shorten(text string, limit int) string {
 	text = strings.Join(strings.Fields(text), " ")
 
-	if utf8.RuneCountInString(text) <= max {
+	if utf8.RuneCountInString(text) <= limit {
 		return text
 	}
 
-	return string([]rune(text)[:max-1]) + "…"
+	return string([]rune(text)[:limit-1]) + "…"
 }

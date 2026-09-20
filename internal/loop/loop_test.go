@@ -47,9 +47,9 @@ func stub(t *testing.T, turns ...[]string) *provider.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -133,7 +133,7 @@ func namedTool(name string, handler func(context.Context) (any, error)) fantasy.
 }
 
 func echoTool(calls *int) []fantasy.AgentTool {
-	return []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+	return []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
 		*calls++
 
 		return "ok", nil
@@ -186,7 +186,7 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
+		Client:        stub(t, []string{tool("c1", litEcho, `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 3,
@@ -209,7 +209,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
+		Client:        stub(t, []string{tool("c1", litEcho, `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxCalls:      2,
@@ -294,7 +294,7 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 
 	result := run(t, Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", "echo", `{"q":"same"}`)}),
+		Client:        stub(t, []string{tool("c1", litEcho, `{"q":"same"}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 50,
@@ -533,7 +533,7 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 	engine, err := New(Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{stop()}),
-		Tools:         []fantasy.AgentTool{namedTool("echo", nil)},
+		Tools:         []fantasy.AgentTool{namedTool(litEcho, nil)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -545,7 +545,7 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 		names[tool.GetName()] = true
 	}
 
-	for _, want := range []string{"echo", SuccessTool, FailureTool} {
+	for _, want := range []string{litEcho, SuccessTool, FailureTool} {
 		if !names[want] {
 			t.Errorf("tool %q missing from the definitions", want)
 		}
@@ -556,9 +556,9 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 // reshuffles between requests defeats a server-side prompt cache keyed on the
 // prefix, so the order must be fixed.
 func TestToolDefinitionsAreOrderedByName(t *testing.T) {
-	var tools []fantasy.AgentTool
+	tools := make([]fantasy.AgentTool, 0, 5)
 
-	for _, name := range []string{"write", "read", "shell", "list", "edit"} {
+	for _, name := range []string{"write", litRead, "shell", "list", "edit"} {
 		tools = append(tools, namedTool(name, nil))
 	}
 
@@ -568,7 +568,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 	}
 
 	for range 20 {
-		var names []string
+		names := make([]string, 0, len(engine.toolDefinitions()))
 
 		for _, tool := range engine.toolDefinitions() {
 			names = append(names, tool.GetName())
@@ -621,9 +621,9 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -728,13 +728,14 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	}
 
 	// an old user kickoff followed by enough tool-round bulk to evict it
-	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
+	messages := make([]conversation.Message, 0, 1+2*40)
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: "the kickoff"})
 
 	for i := range 40 {
 		id := fmt.Sprintf("c%d", i)
 		messages = append(messages,
-			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
-			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 200)}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: litRead, Arguments: `{"path":"x"}`}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: litRead, Result: strings.Repeat("line of file content ", 200)}},
 		)
 	}
 
@@ -775,7 +776,7 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 
 	var seenByHandler []conversation.Message
 
-	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
+	tools := []fantasy.AgentTool{namedTool(litEcho, func(context.Context) (any, error) {
 		seenByHandler = handed[len(handed)-1]
 
 		return "ok", nil
@@ -786,7 +787,7 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 			[]string{
 				`{"choices":[{"delta":{"reasoning_content":"the file is probably in src"}}]}`,
 				text("looking"),
-				tool("c1", "echo", "{}"),
+				tool("c1", litEcho, "{}"),
 			},
 			[]string{settle("done")},
 		),
@@ -797,7 +798,7 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 		},
 	})
 
-	var got []string
+	got := make([]string, 0, len(seenByHandler))
 
 	for _, message := range seenByHandler {
 		got = append(got, string(message.Type)+"/"+message.Text)

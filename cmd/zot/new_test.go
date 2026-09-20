@@ -85,7 +85,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 
 	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
-	if err := newOrder([]string{"--dir", target}, io.Discard); err != nil {
+	if err := newOrder([]string{litDir, target}, io.Discard); err != nil {
 		t.Fatalf("newOrder: %v", err)
 	}
 

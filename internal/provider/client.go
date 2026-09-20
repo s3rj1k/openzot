@@ -21,7 +21,7 @@ type Client struct {
 }
 
 // NewClient validates the configuration and connects to the endpoint it names.
-func NewClient(config ClientConfig) (*Client, error) {
+func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 	resolved, err := config.Resolve()
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	model, err := provider.LanguageModel(context.Background(), resolved.Model)
+	model, err := provider.LanguageModel(ctx, resolved.Model)
 	if err != nil {
 		return nil, err
 	}

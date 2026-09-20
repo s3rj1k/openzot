@@ -58,11 +58,13 @@ func textOf(message fantasy.Message) string {
 	var text string
 
 	var textSb58 strings.Builder
+
 	for _, part := range message.Content {
 		if piece, ok := part.(fantasy.TextPart); ok {
 			textSb58.WriteString(piece.Text)
 		}
 	}
+
 	text += textSb58.String()
 
 	return text

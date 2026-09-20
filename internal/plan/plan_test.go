@@ -14,19 +14,19 @@ func taskCall(tasks ...map[string]any) map[string]any {
 		list = append(list, task)
 	}
 
-	return map[string]any{"tasks": list}
+	return map[string]any{litTasks: list}
 }
 
 func task(title, status string) map[string]any {
-	return map[string]any{"title": title, "status": status}
+	return map[string]any{litTitle: title, litStatus: status}
 }
 
 func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 	tasks, err := ParseTasks(taskCall(
 		task("read the parser", "done"),
-		map[string]any{"title": "  fix the lexer  ", "status": "in_progress", "note": " hit in TestLex "},
+		map[string]any{litTitle: "  fix the lexer  ", litStatus: "in_progress", "note": " hit in TestLex "},
 		task("add a test", "pending"),
-		map[string]any{"title": "deploy", "status": "blocked", "note": "needs credentials"},
+		map[string]any{litTitle: "deploy", litStatus: "blocked", "note": litNeedsCredentials},
 	))
 	if err != nil {
 		t.Fatalf("ParseTasks: %v", err)
@@ -36,7 +36,7 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 		{Title: "read the parser", Status: TaskDone},
 		{Title: "fix the lexer", Status: TaskInProgress, Note: "hit in TestLex"},
 		{Title: "add a test", Status: TaskPending},
-		{Title: "deploy", Status: TaskBlocked, Note: "needs credentials"},
+		{Title: "deploy", Status: TaskBlocked, Note: litNeedsCredentials},
 	}
 
 	if len(tasks) != len(want) {
@@ -53,7 +53,7 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 // A model listing the work for the first time often leaves the status off. That
 // is a pending task, not a reason to refuse the list.
 func TestATaskWithNoStatusIsPending(t *testing.T) {
-	tasks, err := ParseTasks(taskCall(map[string]any{"title": "write it"}))
+	tasks, err := ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
 	if err != nil {
 		t.Fatalf("ParseTasks: %v", err)
 	}
@@ -71,12 +71,12 @@ func TestParseTasksRefusesAMalformedList(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"no tasks argument", map[string]any{}, "at least one task"},
-		{"an empty list", map[string]any{"tasks": []any{}}, "at least one task"},
-		{"tasks that is not a list", map[string]any{"tasks": "do it"}, "at least one task"},
-		{"a task that is not an object", map[string]any{"tasks": []any{"do it"}}, "task 1: expected an object"},
+		{"no tasks argument", map[string]any{}, litAtLeastOneTask},
+		{"an empty list", map[string]any{litTasks: []any{}}, litAtLeastOneTask},
+		{"tasks that is not a list", map[string]any{litTasks: "do it"}, litAtLeastOneTask},
+		{"a task that is not an object", map[string]any{litTasks: []any{"do it"}}, "task 1: expected an object"},
 		{"a blank title", taskCall(task("   ", "pending")), "task 1: a task needs a title"},
-		{"a missing title", taskCall(map[string]any{"status": "done"}), "task 1: a task needs a title"},
+		{"a missing title", taskCall(map[string]any{litStatus: "done"}), "task 1: a task needs a title"},
 		{"an unknown status", taskCall(task("a", "done"), task("b", "started")), `task 2: unknown status "started"`},
 	}
 
@@ -129,7 +129,7 @@ func TestFormatTasksReadsTheListBack(t *testing.T) {
 	got := FormatTasks([]Task{
 		{Title: "read the code", Status: TaskDone},
 		{Title: "fix it", Status: TaskInProgress, Note: "the handler"},
-		{Title: "ship", Status: TaskBlocked, Note: "needs credentials"},
+		{Title: "ship", Status: TaskBlocked, Note: litNeedsCredentials},
 		{Title: "celebrate", Status: TaskPending},
 	})
 

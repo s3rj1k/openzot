@@ -163,8 +163,8 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 	m := sized(t, 100, 30)
 
 	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 1})
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallStart, Tool: "shell", Args: map[string]any{"command": "ls"}})
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: "README.md"})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
 	// tokens are what the log shows; a MessageAgentEvent carries the same
 	// content and is deliberately not drawn twice
 	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "here is "})
@@ -179,7 +179,7 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 
 	log := strings.Join(m.entries, "\n")
 
-	for _, want := range []string{"shell", "here is the answer"} {
+	for _, want := range []string{litShell, "here is the answer"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("log is missing %q:\n%s", want, log)
 		}
@@ -189,7 +189,7 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 func TestToolErrorsAreShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallError, Tool: "shell", Text: "command not found"})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallError, Tool: litShell, Text: "command not found"})
 
 	log := strings.Join(m.entries, "\n")
 
@@ -204,7 +204,7 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 		exit loop.Result
 		want status
 	}{
-		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: "done"}, statusDone},
+		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: litDone}, statusDone},
 		{"a budget-exhausted run", loop.Result{Reason: loop.StopIterations, Message: "gave up"}, statusFailed},
 		{"a run the model declared failed", loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"}, statusFailed},
 	}
@@ -393,8 +393,8 @@ func TestBadgeReflectsStatus(t *testing.T) {
 	// and each says which state it is, in words rather than color alone
 	for st, want := range map[status]string{
 		statusRunning: "working",
-		statusDone:    "done",
-		statusFailed:  "failed",
+		statusDone:    litDone,
+		statusFailed:  litFailed,
 	} {
 		if !strings.Contains(badges[st], want) {
 			t.Errorf("the %v badge %q does not say %q", st, badges[st], want)
@@ -439,7 +439,7 @@ func TestExitBecomesAnError(t *testing.T) {
 
 	clean := sized(t, 100, 30)
 
-	clean.finish(loop.Result{Reason: loop.StopSettled, Message: "done"})
+	clean.finish(loop.Result{Reason: loop.StopSettled, Message: litDone})
 
 	if err := clean.runError(); err != nil {
 		t.Errorf("a settled run must not error: %v", err)
@@ -469,10 +469,10 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"shell", map[string]any{"command": "go test ./..."}, "go test"},
+		{litShell, map[string]any{"command": "go test ./..."}, "go test"},
 
 		// a caller's own tool still renders, just generically
-		{"custom", map[string]any{"thing": "value"}, "thing=value"},
+		{litCustom, map[string]any{"thing": "value"}, "thing=value"},
 	}
 
 	for _, test := range tests {
@@ -494,11 +494,11 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 		wantAny bool
 		want    string
 	}{
-		{"shell echoes its output", "shell", "hello\nworld", true, "hello"},
-		{"a silent command still confirms", "shell", "", true, "done"},
-		{"an unknown tool echoes", "custom", "some output", true, "some output"},
-		{"an unknown tool with nothing to say", "custom", "", false, ""},
-		{"a non-string, non-map result", "shell", 42, false, ""},
+		{"shell echoes its output", litShell, "hello\nworld", true, "hello"},
+		{"a silent command still confirms", litShell, "", true, litDone},
+		{"an unknown tool echoes", litCustom, "some output", true, "some output"},
+		{"an unknown tool with nothing to say", litCustom, "", false, ""},
+		{"a non-string, non-map result", litShell, 42, false, ""},
 	}
 
 	for _, test := range tests {
@@ -523,7 +523,7 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 // One record must not scroll the rest of the run off the screen: it is cut at a
 // third of the terminal's height, the last row an ellipsis.
 func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
-	var lines []string
+	lines := make([]string, 0, 50)
 
 	for i := range 50 {
 		lines = append(lines, fmt.Sprintf("line %d", i))
@@ -531,7 +531,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: strings.Join(lines, "\n")})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
 	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
 
@@ -543,7 +543,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 		t.Errorf("the cut must end on an ellipsis, got %q", rows[len(rows)-1])
 	}
 
-	if !strings.Contains(rows[0], "done") || !strings.Contains(rows[1], "line 0") {
+	if !strings.Contains(rows[0], litDone) || !strings.Contains(rows[1], "line 0") {
 		t.Errorf("the head of the record must survive:\n%s", strings.Join(rows, "\n"))
 	}
 }
@@ -554,7 +554,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 
 	long := strings.Repeat("word ", 40)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: long + "\n" + long + "\n" + long})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
 
 	if got := len(strings.Split(m.committedWrapped, "\n")); got != 10 {
 		t.Errorf("a wrapped record took %d rows, want the 10 a third of 30 allows", got)
@@ -565,7 +565,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 func TestARecordThatFitsIsNotClipped(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: "one\ntwo\nthree"})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
 
 	got := stripANSI(m.committedWrapped)
 
@@ -577,7 +577,7 @@ func TestARecordThatFitsIsNotClipped(t *testing.T) {
 // The limit follows the terminal: growing the window shows more of a record that
 // was cut, because the log is re-wrapped from the full record.
 func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
-	var lines []string
+	lines := make([]string, 0, 50)
 
 	for range 50 {
 		lines = append(lines, "line")
@@ -585,7 +585,7 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: "shell", Result: strings.Join(lines, "\n")})
+	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
 	before := len(strings.Split(m.committedWrapped, "\n"))
 
@@ -598,7 +598,7 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 }
 
 func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
-	failure := stripANSI(renderToolEnd("shell", map[string]any{
+	failure := stripANSI(renderToolEnd(litShell, map[string]any{
 		"success": false,
 		"error":   "exit status 1",
 		"stderr":  "compile failed",
@@ -608,7 +608,7 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 		t.Errorf("a structured failure must surface: %q", failure)
 	}
 
-	success := stripANSI(renderToolEnd("shell", map[string]any{"stdout": "all good"}))
+	success := stripANSI(renderToolEnd(litShell, map[string]any{litStdout: "all good"}))
 
 	if !strings.Contains(success, "all good") {
 		t.Errorf("structured output must surface: %q", success)
@@ -746,11 +746,11 @@ func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
 // A shell tool reports failure on stderr, and that is exactly the output an
 // operator reading a failed run needs to see.
 func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
-	if got := commandOutput(map[string]any{"stdout": "all good\n"}); !strings.Contains(got, "all good") {
+	if got := commandOutput(map[string]any{litStdout: "all good\n"}); !strings.Contains(got, "all good") {
 		t.Errorf("stdout was not rendered: %q", got)
 	}
 
-	got := commandOutput(map[string]any{"stdout": "", "stderr": "permission denied\n"})
+	got := commandOutput(map[string]any{litStdout: "", "stderr": "permission denied\n"})
 
 	if !strings.Contains(got, "permission denied") {
 		t.Errorf("stderr was not rendered when stdout was empty: %q", got)
@@ -839,7 +839,7 @@ func TestMetaBarOrder(t *testing.T) {
 
 	last := -1
 
-	for _, label := range []string{"provider", "model", "iter", "elapsed", "tokens", "dir"} {
+	for _, label := range []string{"provider", "model", "iter", litElapsed, "tokens", "dir"} {
 		at := strings.Index(bar, label)
 		if at < 0 || at < last {
 			t.Fatalf("%q is missing or out of order in %q", label, bar)
@@ -1077,13 +1077,13 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 	}{
 		{
 			name:   "iterations gaining a digit",
-			next:   "elapsed",
+			next:   litElapsed,
 			before: func(m *model) { m.iteration = 9 },
 			after:  func(m *model) { m.iteration = 10 },
 		},
 		{
 			name:   "iterations against a limit",
-			next:   "elapsed",
+			next:   litElapsed,
 			before: func(m *model) { m.iteration, m.maxIterations = 9, 300 },
 			after:  func(m *model) { m.iteration, m.maxIterations = 100, 300 },
 		},
@@ -1127,21 +1127,21 @@ func tasksArgs(tasks ...[3]string) map[string]any {
 		list = append(list, entry)
 	}
 
-	return map[string]any{"tasks": list}
+	return map[string]any{litTasks: list}
 }
 
 // The task list is the one piece of the run worth reading in full, so it renders
 // as a checklist: what is done, what is under way, what is left, what is stuck.
 func TestRenderTasksShowsTheChecklist(t *testing.T) {
-	out := stripANSI(renderToolStart("tasks", tasksArgs(
-		[3]string{"read the handler", "done", ""},
+	out := stripANSI(renderToolStart(litTasks, tasksArgs(
+		[3]string{"read the handler", litDone, ""},
 		[3]string{"add validation", "in_progress", "the error path is missing"},
 		[3]string{"write a test", "pending", ""},
 		[3]string{"deploy", "blocked", "needs credentials"},
 	)))
 
 	for _, want := range []string{
-		"tasks", "1/4 done",
+		litTasks, "1/4 done",
 		"✓ read the handler", "▶ add validation", "· write a test", "✗ deploy",
 		"the error path is missing", "needs credentials",
 	} {
@@ -1156,18 +1156,18 @@ func TestRenderTasksShowsTheChecklist(t *testing.T) {
 func TestRenderTasksIsRobust(t *testing.T) {
 	for name, args := range map[string]map[string]any{
 		"no arguments":  {},
-		"an empty list": {"tasks": []any{}},
+		"an empty list": {litTasks: []any{}},
 		"a bad status":  tasksArgs([3]string{"a", "started", ""}),
-		"not a list":    {"tasks": "do it"},
-		"a non-object":  {"tasks": []any{"do it"}},
+		"not a list":    {litTasks: "do it"},
+		"a non-object":  {litTasks: []any{"do it"}},
 	} {
-		out := stripANSI(renderToolStart("tasks", args))
+		out := stripANSI(renderToolStart(litTasks, args))
 
-		if !strings.Contains(out, "tasks") {
+		if !strings.Contains(out, litTasks) {
 			t.Errorf("%s: should still render a header: %q", name, out)
 		}
 
-		if strings.Contains(out, "done") {
+		if strings.Contains(out, litDone) {
 			t.Errorf("%s: a refused list must not report progress: %q", name, out)
 		}
 	}

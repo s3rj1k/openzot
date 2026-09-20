@@ -59,7 +59,7 @@ func kinds(records []Record) []Kind {
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
 
-	writer, err := Open(path, Meta{Task: "add a health endpoint", Model: "m", Provider: "p", Workdir: "/w"})
+	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint, Model: "m", Provider: "p", Workdir: "/w"})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 
 	meta := records[0].Meta
 
-	if meta.Task != "add a health endpoint" || meta.Model != "m" || meta.Provider != "p" || meta.Workdir != "/w" {
+	if meta.Task != litAddAHealthEndpoint || meta.Model != "m" || meta.Provider != "p" || meta.Workdir != "/w" {
 		t.Errorf("meta = %+v", meta)
 	}
 
@@ -109,15 +109,17 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 	}
 
 	steps := []func() error{
-		func() error { return writer.Message(conversation.Message{Type: "user", Text: "go"}) },
-		func() error { return writer.Message(conversation.Message{Type: "reasoning", Text: "think\nabout\nit"}) },
+		func() error { return writer.Message(conversation.Message{Type: litUser, Text: "go"}) },
 		func() error {
-			return writer.Message(conversation.Message{Type: "activity", Activity: &conversation.Activity{
-				Kind: "request", ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`,
+			return writer.Message(conversation.Message{Type: litReasoning, Text: "think\nabout\nit"})
+		},
+		func() error {
+			return writer.Message(conversation.Message{Type: litActivity, Activity: &conversation.Activity{
+				Kind: "request", ID: "c1", Name: litShell, Arguments: litCommandLs,
 			}})
 		},
-		func() error { return writer.Event(Event{Kind: "toolCallStart", Tool: "shell", Iteration: 1}) },
-		func() error { return writer.Result(Result{Reason: "settled", Iterations: 1}) },
+		func() error { return writer.Event(Event{Kind: "toolCallStart", Tool: litShell, Iteration: 1}) },
+		func() error { return writer.Result(Result{Reason: litSettled, Iterations: 1}) },
 	}
 
 	for i, step := range steps {
@@ -190,7 +192,7 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 
 	defer writer.Close()
 
-	if err := writer.Message(conversation.Message{Type: "reasoning", Text: "the model's own words"}); err != nil {
+	if err := writer.Message(conversation.Message{Type: litReasoning, Text: "the model's own words"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -199,7 +201,7 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 
 	last := records[len(records)-1]
 
-	if last.Kind != KindMessage || last.Message.Type != "reasoning" || last.Message.Text != "the model's own words" {
+	if last.Kind != KindMessage || last.Message.Type != litReasoning || last.Message.Text != "the model's own words" {
 		t.Errorf("the last record on disk = %+v", last)
 	}
 }
@@ -215,8 +217,8 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = first.Message(conversation.Message{Type: "user", Text: "first run"})
-	_ = first.Result(Result{Reason: "settled"})
+	_ = first.Message(conversation.Message{Type: litUser, Text: "first run"})
+	_ = first.Result(Result{Reason: litSettled})
 
 	before, _ := os.ReadFile(path)
 
@@ -225,7 +227,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 		t.Fatalf("second Open: %v", err)
 	}
 
-	_ = second.Message(conversation.Message{Type: "user", Text: "second run"})
+	_ = second.Message(conversation.Message{Type: litUser, Text: "second run"})
 	_ = second.Result(Result{Reason: "failed"})
 
 	after, _ := os.ReadFile(path)
@@ -253,7 +255,7 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = first.Message(conversation.Message{Type: "user", Text: "before the kill"})
+	_ = first.Message(conversation.Message{Type: litUser, Text: "before the kill"})
 	_ = first.Close()
 
 	// what a kill mid-write leaves: half a record, no newline
@@ -273,7 +275,7 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 		t.Fatalf("Open over a torn line: %v", err)
 	}
 
-	_ = second.Result(Result{Reason: "settled"})
+	_ = second.Result(Result{Reason: litSettled})
 
 	data, _ := os.ReadFile(path)
 
@@ -302,7 +304,7 @@ func TestACleanLogIsNotPaddedBeforeTheNextRun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	first, _ := Open(path, Meta{Task: "t"})
-	_ = first.Result(Result{Reason: "settled"})
+	_ = first.Result(Result{Reason: litSettled})
 
 	second, err := Open(path, Meta{Task: "t"})
 	if err != nil {
@@ -358,11 +360,11 @@ func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	if err := writer.Result(Result{Reason: "settled"}); err != nil {
+	if err := writer.Result(Result{Reason: litSettled}); err != nil {
 		t.Fatalf("Result: %v", err)
 	}
 
-	if err := writer.Message(conversation.Message{Type: "user", Text: "too late"}); err == nil {
+	if err := writer.Message(conversation.Message{Type: litUser, Text: "too late"}); err == nil {
 		t.Error("writing after the result must be an error, not a silent drop")
 	}
 
@@ -399,8 +401,8 @@ func TestAToolCallIsRecordedInFull(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	_ = writer.Message(conversation.Message{Type: "activity", Activity: &conversation.Activity{
-		Kind: "response", ID: "call_1", Name: "shell", Arguments: `{"command":"go test ./..."}`, Result: "ok",
+	_ = writer.Message(conversation.Message{Type: litActivity, Activity: &conversation.Activity{
+		Kind: "response", ID: litCall1, Name: litShell, Arguments: litCommandGoTest, Result: "ok",
 	}})
 
 	_ = writer.Close()
@@ -409,8 +411,8 @@ func TestAToolCallIsRecordedInFull(t *testing.T) {
 
 	activity := records[1].Message.Activity
 
-	if activity == nil || activity.ID != "call_1" || activity.Name != "shell" ||
-		activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
+	if activity == nil || activity.ID != litCall1 || activity.Name != litShell ||
+		activity.Arguments != litCommandGoTest || activity.Result != "ok" {
 		t.Errorf("activity = %+v", activity)
 	}
 }

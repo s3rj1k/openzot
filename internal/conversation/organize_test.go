@@ -62,7 +62,7 @@ func kinds(messages []Message) []string {
 
 func TestOrganizeKeepsAWellFormedConversation(t *testing.T) {
 	messages := []Message{
-		{Type: TypeInstructions, Text: "you are a coding agent"},
+		{Type: TypeInstructions, Text: litYouAreACoding},
 		{Type: TypeUser, Text: "run the tests"},
 		request("call_1", "shell", `{"command":"go test"}`),
 		response("call_1", "shell", `{"command":"go test"}`, "ok"),
@@ -84,7 +84,7 @@ func TestOrganizeClustersASeparatedPair(t *testing.T) {
 		response("call_1", "shell", "{}", "ok"),
 	})
 
-	want := []string{"activity/request/call_1", "activity/response/call_1", "bot/thinking about it"}
+	want := []string{litActivityRequestCall1, litActivityResponseCall1, "bot/thinking about it"}
 
 	if !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("got %v, want %v", kinds(got), want)
@@ -100,8 +100,8 @@ func TestOrganizeClustersInterleavedPairs(t *testing.T) {
 	})
 
 	want := []string{
-		"activity/request/call_1",
-		"activity/response/call_1",
+		litActivityRequestCall1,
+		litActivityResponseCall1,
 		"activity/request/call_2",
 		"activity/response/call_2",
 	}
@@ -125,7 +125,7 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 				{Type: TypeUser, Text: "go"},
 				request("call_1", "shell", "{}"),
 			},
-			want: []string{"user/go"},
+			want: []string{litUserGo},
 		},
 		{
 			name: "a result whose call was trimmed away",
@@ -142,7 +142,7 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 				response("call_1", "shell", "{}", "ok"),
 				request("call_2", "shell", "{}"),
 			},
-			want: []string{"activity/request/call_1", "activity/response/call_1"},
+			want: []string{litActivityRequestCall1, litActivityResponseCall1},
 		},
 	}
 
@@ -230,7 +230,7 @@ func TestOrganizeKeepsATriggerOnlyWhenItIsLast(t *testing.T) {
 		trigger("wake"),
 	})
 
-	if want := []string{"user/go", "activity/trigger/"}; !reflect.DeepEqual(kinds(got), want) {
+	if want := []string{litUserGo, "activity/trigger/"}; !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("got %v, want %v", kinds(got), want)
 	}
 
@@ -239,7 +239,7 @@ func TestOrganizeKeepsATriggerOnlyWhenItIsLast(t *testing.T) {
 		{Type: TypeUser, Text: "go"},
 	})
 
-	if want := []string{"user/go"}; !reflect.DeepEqual(kinds(got), want) {
+	if want := []string{litUserGo}; !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("a stranded trigger must be dropped: %v", kinds(got))
 	}
 }
@@ -250,10 +250,10 @@ func TestOrganizeTriggerIgnoresTrailingInstructions(t *testing.T) {
 	got := Organize([]Message{
 		{Type: TypeUser, Text: "go"},
 		trigger("wake"),
-		{Type: TypeInstructions, Text: "you are a coding agent"},
+		{Type: TypeInstructions, Text: litYouAreACoding},
 	})
 
-	want := []string{"user/go", "activity/trigger/", "instructions/you are a coding agent"}
+	want := []string{litUserGo, "activity/trigger/", "instructions/you are a coding agent"}
 
 	if !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("got %v, want %v", kinds(got), want)
@@ -283,7 +283,7 @@ func TestOrganizeDropsMalformedActivities(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := Organize([]Message{{Type: TypeUser, Text: "go"}, test.message})
 
-			if want := []string{"user/go"}; !reflect.DeepEqual(kinds(got), want) {
+			if want := []string{litUserGo}; !reflect.DeepEqual(kinds(got), want) {
 				t.Errorf("got %v, want %v", kinds(got), want)
 			}
 		})
@@ -298,7 +298,7 @@ func TestOrganizeDropsEmptyMessages(t *testing.T) {
 		{Type: TypeBot, Text: "done"},
 	})
 
-	want := []string{"user/go", "bot/done"}
+	want := []string{litUserGo, "bot/done"}
 
 	if !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("got %v, want %v", kinds(got), want)
@@ -325,7 +325,7 @@ func TestOrganizeCollapsesConsecutiveDuplicates(t *testing.T) {
 		{Type: TypeUser, Text: "go"},
 	})
 
-	want := []string{"user/go", "bot/ok", "user/go"}
+	want := []string{litUserGo, "bot/ok", litUserGo}
 
 	if !reflect.DeepEqual(kinds(got), want) {
 		t.Errorf("only consecutive repeats collapse:\n got %v\nwant %v", kinds(got), want)
@@ -379,7 +379,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 // mangled still renders into something a provider accepts.
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 	chat := ToPrompt([]Message{
-		{Type: TypeInstructions, Text: "you are a coding agent"},
+		{Type: TypeInstructions, Text: litYouAreACoding},
 		// this result's call fell outside the trimmed window
 		response("gone", "read", "{}", "old contents"),
 		{Type: TypeUser, Text: "run the tests"},
@@ -390,7 +390,7 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 		request("call_2", "shell", `{"command":"go vet"}`),
 	})
 
-	var roles []string
+	roles := make([]string, 0, len(chat))
 
 	for _, message := range chat {
 		roles = append(roles, string(message.Role))

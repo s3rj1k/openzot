@@ -148,7 +148,7 @@ func Open(path string, meta Meta) (*Writer, error) {
 	}
 
 	// read access is only for looking at the last byte; every write appends
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600) //nolint:gosec // G304: the session log path is the one the run was given
 	if err != nil {
 		return nil, fmt.Errorf("open session log: %w", err)
 	}

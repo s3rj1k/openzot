@@ -13,27 +13,6 @@ import (
 	"charm.land/fantasy"
 )
 
-// toolWith is a tool for agent tests: it takes any JSON object and answers with
-// what the handler returns - a string as it is, anything else as JSON. A handler
-// error is an error response, as the real tools report a failure.
-func toolWith(name string, handler func(context.Context, map[string]any) (any, error)) fantasy.AgentTool {
-	return fantasy.NewAgentTool(name, name,
-		func(ctx context.Context, args map[string]any, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
-			output, err := handler(ctx, args)
-			if err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
-			}
-
-			if text, ok := output.(string); ok {
-				return fantasy.NewTextResponse(text), nil
-			}
-
-			encoded, _ := json.Marshal(output)
-
-			return fantasy.NewTextResponse(string(encoded)), nil
-		})
-}
-
 // findTool picks a tool out of a set by name.
 func findTool(tools []fantasy.AgentTool, name string) (fantasy.AgentTool, bool) {
 	for _, tool := range tools {
@@ -47,6 +26,18 @@ func findTool(tools []fantasy.AgentTool, name string) (fantasy.AgentTool, bool) 
 
 // call runs a tool with the given arguments the way the engine does: as a JSON
 // input. A response the tool flags as an error comes back as an error.
+// AsString is a tool's answer as the text it is.
+func asString(t *testing.T, answer any) string {
+	t.Helper()
+
+	text, ok := answer.(string)
+	if !ok {
+		t.Fatalf("the tool answered %T, want a string", answer)
+	}
+
+	return text
+}
+
 func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]any) (any, error) {
 	t.Helper()
 
@@ -79,7 +70,7 @@ const maxToolOutput = 100_000
 var defaultSet = toolSet{maxOutput: maxToolOutput}
 
 func shellHandler(ctx context.Context, a map[string]any) (any, error) {
-	command, _ := a["command"].(string)
+	command, _ := a[litCommand].(string)
 	if command == "" {
 		return nil, errors.New(`missing required argument "command"`)
 	}
@@ -92,7 +83,7 @@ func shellHandler(ctx context.Context, a map[string]any) (any, error) {
 func TestDefaultToolsAreWellFormed(t *testing.T) {
 	tools := New(maxToolOutput, nil)
 
-	for _, name := range []string{"shell", "tasks"} {
+	for _, name := range []string{"shell", litTasks} {
 		tool, ok := findTool(tools, name)
 
 		if !ok {
@@ -116,12 +107,12 @@ func TestDefaultToolsAreWellFormed(t *testing.T) {
 }
 
 func TestShellReturnsOutput(t *testing.T) {
-	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": "echo hello"})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: "echo hello"})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
 
-	if !strings.Contains(got.(string), "hello") {
+	if !strings.Contains(asString(t, got), "hello") {
 		t.Errorf("shell output = %q", got)
 	}
 }
@@ -130,25 +121,25 @@ func TestShellReturnsOutput(t *testing.T) {
 // failing test - so it comes back as output rather than as an error that would
 // end the run.
 func TestShellFailureIsOutputNotAnError(t *testing.T) {
-	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": "exit 3"})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: "exit 3"})
 	if err != nil {
 		t.Fatalf("a non-zero exit must not surface as an error: %v", err)
 	}
 
-	if !strings.Contains(got.(string), "exit") {
+	if !strings.Contains(asString(t, got), "exit") {
 		t.Errorf("the exit status must be visible to the model: %q", got)
 	}
 }
 
 func TestShellTimeoutIsReported(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
-		"command": "sleep 5", "timeout": float64(1),
+		litCommand: "sleep 5", "timeout": float64(1),
 	})
 	if err != nil {
 		t.Fatalf("a timeout must not surface as an error: %v", err)
 	}
 
-	if !strings.Contains(got.(string), "timed out") {
+	if !strings.Contains(asString(t, got), "timed out") {
 		t.Errorf("a timeout must be visible to the model: %q", got)
 	}
 }
@@ -165,7 +156,7 @@ func TestShellRespectsCancellation(t *testing.T) {
 
 	cancel()
 
-	if _, err := shellHandler(ctx, map[string]any{"command": "sleep 5"}); err == nil {
+	if _, err := shellHandler(ctx, map[string]any{litCommand: "sleep 5"}); err == nil {
 		t.Log("a canceled run returned output rather than an error, which is acceptable")
 	}
 }
@@ -176,8 +167,8 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 	go func() {
 		out, _ := shellHandler(t.Context(), map[string]any{
 			// the child outlives the shell and keeps the inherited pipe open
-			"command": "sh -c 'sleep 60' & echo started",
-			"timeout": 1,
+			litCommand: "sh -c 'sleep 60' & echo started",
+			"timeout":  1,
 		})
 
 		done <- out
@@ -199,7 +190,7 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 func TestTheToolboxIsShellAndTasks(t *testing.T) {
 	tools := New(maxToolOutput, nil)
 
-	var names []string
+	names := make([]string, 0, len(tools))
 
 	for _, tool := range tools {
 		names = append(names, tool.Info().Name)
@@ -220,12 +211,12 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 	command := "cd " + dir + " && cat > notes.txt <<'EOF'\none\ntwo\nthree\nfour\nEOF\n" +
 		"sed -n '2,3p' notes.txt && ls"
 
-	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{"command": command})
+	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: command})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
 
-	text := got.(string)
+	text := asString(t, got)
 
 	for _, want := range []string{"two\nthree", "notes.txt"} {
 		if !strings.Contains(text, want) {
@@ -243,13 +234,13 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 // must not flood the context.
 func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
-		"command": "head -c " + strconv.Itoa(maxToolOutput+5_000) + " /dev/zero | tr '\\0' x",
+		litCommand: "head -c " + strconv.Itoa(maxToolOutput+5_000) + " /dev/zero | tr '\\0' x",
 	})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
 
-	text := got.(string)
+	text := asString(t, got)
 
 	if len(text) > maxToolOutput+200 {
 		t.Errorf("output length %d exceeds the cap", len(text))
@@ -264,13 +255,13 @@ func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 // a tighter bound.
 func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
 	got, err := call(t, New(4_000, nil), "shell", map[string]any{
-		"command": "head -c 40000 /dev/zero | tr '\\0' x",
+		litCommand: "head -c 40000 /dev/zero | tr '\\0' x",
 	})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
 
-	text := got.(string)
+	text := asString(t, got)
 
 	if len(text) > 4_500 {
 		t.Errorf("a 4000-byte ceiling returned %d bytes", len(text))
@@ -285,13 +276,13 @@ func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
 // output, and no marker.
 func TestNoCeilingReturnsEverything(t *testing.T) {
 	got, err := call(t, New(0, nil), "shell", map[string]any{
-		"command": "head -c 30000 /dev/zero | tr '\\0' x",
+		litCommand: "head -c 30000 /dev/zero | tr '\\0' x",
 	})
 	if err != nil {
 		t.Fatalf("shell: %v", err)
 	}
 
-	if text := got.(string); len(text) != 30_000 || strings.Contains(text, "truncated") {
+	if text := asString(t, got); len(text) != 30_000 || strings.Contains(text, "truncated") {
 		t.Errorf("got %d bytes with truncation %v, want all 30000 untouched", len(text), strings.Contains(text, "truncated"))
 	}
 }

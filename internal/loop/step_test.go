@@ -30,8 +30,8 @@ func toolCalls(finish string, calls ...[3]string) string {
 		`]},"finish_reason":` + fmt.Sprintf("%q", finish) + `}]}`
 }
 
-func countTool(calls *int, name string) fantasy.AgentTool {
-	return namedTool(name, func(context.Context) (any, error) {
+func countTool(calls *int) fantasy.AgentTool {
+	return namedTool(litEcho, func(context.Context) (any, error) {
 		*calls++
 
 		return "ok", nil
@@ -47,10 +47,10 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
-			[3]string{"c1", "echo", `{}`},
+			[3]string{"c1", litEcho, `{}`},
 			[3]string{"c2", SuccessTool, `{"summary":"all done"}`},
 		)}),
-		Tools:      []fantasy.AgentTool{countTool(&ran, "echo")},
+		Tools:      []fantasy.AgentTool{countTool(&ran)},
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
@@ -76,10 +76,10 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
-			[3]string{"c1", "echo", `{}`},
-			[3]string{"c2", "echo", `{}`},
+			[3]string{"c1", litEcho, `{}`},
+			[3]string{"c2", litEcho, `{}`},
 		)}),
-		Tools:    []fantasy.AgentTool{countTool(&ran, "echo")},
+		Tools:    []fantasy.AgentTool{countTool(&ran)},
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxCalls: 1,
 	})
@@ -106,10 +106,10 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 		result := run(t, Options{
 			ContextWindow: testWindow,
 			Client: stub(t,
-				[]string{toolCalls(finish, [3]string{"c1", "echo", `{}`})},
+				[]string{toolCalls(finish, [3]string{"c1", litEcho, `{}`})},
 				[]string{settle("done")},
 			),
-			Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
+			Tools:         []fantasy.AgentTool{countTool(&ran)},
 			Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 			MaxIterations: 5,
 		})
@@ -132,10 +132,10 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{toolCalls("length", [3]string{"c1", "echo", `{}`})},
+			[]string{toolCalls("length", [3]string{"c1", litEcho, `{}`})},
 			[]string{settle("done")},
 		),
-		Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
+		Tools:         []fantasy.AgentTool{countTool(&ran)},
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 5,
 	})
@@ -205,7 +205,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 		unrepaired []string
 		wantRan    int
 	}{
-		{"a listed tool is refused", []string{"echo"}, 0},
+		{"a listed tool is refused", []string{litEcho}, 0},
 		{"an unlisted tool is repaired and run", nil, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -214,10 +214,10 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 			result := run(t, Options{
 				ContextWindow: testWindow,
 				Client: stub(t,
-					[]string{toolCalls("tool_calls", [3]string{"c1", "echo", unfinished})},
+					[]string{toolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
 					[]string{settle("done")},
 				),
-				Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
+				Tools:         []fantasy.AgentTool{countTool(&ran)},
 				Unrepaired:    test.unrepaired,
 				Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 				MaxIterations: 5,
@@ -253,10 +253,10 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 
 	t.Cleanup(server.Close)
 
-	config := provider.ClientConfig{Provider: "custom", Model: "test-model", APIKey: "k", BaseURL: server.URL}
+	config := provider.ClientConfig{Provider: litCustom, Model: litTestModel, APIKey: "k", BaseURL: server.URL}
 	tweak(&config)
 
-	client, err := provider.NewClient(config)
+	client, err := provider.NewClient(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 	}
 
 	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
-	if kwargs["enable_thinking"] != false {
+	if thinking, ok := kwargs["enable_thinking"].(bool); !ok || thinking {
 		t.Errorf("chat_template_kwargs = %v, want the extra body merged in", body["chat_template_kwargs"])
 	}
 

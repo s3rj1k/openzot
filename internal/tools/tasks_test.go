@@ -16,21 +16,21 @@ func taskCall(tasks ...map[string]any) map[string]any {
 		list = append(list, task)
 	}
 
-	return map[string]any{"tasks": list}
+	return map[string]any{litTasks: list}
 }
 
 func task(title, status string) map[string]any {
-	return map[string]any{"title": title, "status": status}
+	return map[string]any{litTitle: title, litStatus: status}
 }
 
 // The tool answers with the list, so the model reads its own state back on every
 // call - the latest result is the one place the whole list is always in view.
 func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
-	got, err := call(t, New(maxToolOutput, nil), "tasks", taskCall(
+	got, err := call(t, New(maxToolOutput, nil), litTasks, taskCall(
 		task("read the parser", "done"),
-		map[string]any{"title": "fix the lexer", "status": "in_progress", "note": "hit in TestLex"},
+		map[string]any{litTitle: "fix the lexer", litStatus: "in_progress", "note": "hit in TestLex"},
 		task("add a test", "pending"),
-		map[string]any{"title": "deploy", "status": "blocked", "note": "needs credentials"},
+		map[string]any{litTitle: litDeploy, litStatus: "blocked", "note": "needs credentials"},
 	))
 	if err != nil {
 		t.Fatalf("tasks: %v", err)
@@ -53,16 +53,16 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
 	tools := New(maxToolOutput, nil)
 
-	if _, err := call(t, tools, "tasks", taskCall(task("first", "pending"), task("second", "pending"))); err != nil {
+	if _, err := call(t, tools, litTasks, taskCall(task("first", "pending"), task("second", "pending"))); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 
-	got, err := call(t, tools, "tasks", taskCall(task("third", "in_progress")))
+	got, err := call(t, tools, litTasks, taskCall(task("third", "in_progress")))
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 
-	text := got.(string)
+	text := asString(t, got)
 
 	if !strings.Contains(text, "0/1 done") || !strings.Contains(text, "third") {
 		t.Errorf("the second list should stand alone:\n%s", text)
@@ -74,30 +74,50 @@ func TestTasksReplaceRatherThanMerge(t *testing.T) {
 }
 
 func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
-	if _, err := call(t, New(maxToolOutput, nil), "tasks", map[string]any{"tasks": []any{}}); err == nil {
+	if _, err := call(t, New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}}); err == nil {
 		t.Error("an empty list must be refused")
 	}
 
-	if _, err := call(t, New(maxToolOutput, nil), "tasks", taskCall(task("a", "finished"))); err == nil {
+	if _, err := call(t, New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished"))); err == nil {
 		t.Error("an unknown status must be refused")
 	}
+}
+
+// schemaAt follows a path through a tool's parameter schema.
+func schemaAt(t *testing.T, schema map[string]any, path ...string) any {
+	t.Helper()
+
+	var node any = schema
+
+	for _, key := range path {
+		fields, ok := node.(map[string]any)
+		if !ok {
+			t.Fatalf("the schema has no object at %q on the way to %v", key, path)
+		}
+
+		node = fields[key]
+	}
+
+	return node
 }
 
 // What the model is told the tool accepts has to be what the tool accepts. The
 // schema names the statuses, so a status the schema offers but the parser
 // refuses would be a trap.
 func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
-	tasks, _ := findTool(New(maxToolOutput, nil), "tasks")
+	tasks, _ := findTool(New(maxToolOutput, nil), litTasks)
 
-	items := tasks.Info().Parameters["tasks"].(map[string]any)["items"].(map[string]any)
-	statuses := items["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
+	statuses, ok := schemaAt(t, tasks.Info().Parameters, litTasks, "items", "properties", litStatus, "enum").([]any)
+	if !ok {
+		t.Fatal("the schema offers no list of statuses")
+	}
 
 	if len(statuses) != 4 {
 		t.Fatalf("schema offers %v, want the four statuses", statuses)
 	}
 
 	for _, offered := range statuses {
-		status := offered.(string)
+		status := asString(t, offered)
 
 		if _, err := plan.ParseTasks(taskCall(task("a task", status))); err != nil {
 			t.Errorf("the schema offers %q but the parser refuses it: %v", status, err)

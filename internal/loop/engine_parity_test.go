@@ -161,11 +161,11 @@ func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 	result := run(t, Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
-			[]string{stop()},                       // empty: 1/3
-			[]string{tool("call_1", "echo", "{}")}, // productive - resets
-			[]string{stop()},                       // empty: 1/3 again
-			[]string{tool("call_2", "echo", "{}")}, // productive - resets
-			[]string{settle("done")},               // settling ends the run
+			[]string{stop()},                        // empty: 1/3
+			[]string{tool("call_1", litEcho, "{}")}, // productive - resets
+			[]string{stop()},                        // empty: 1/3 again
+			[]string{tool("call_2", litEcho, "{}")}, // productive - resets
+			[]string{settle("done")},                // settling ends the run
 		),
 		Tools:      echoTool(new(int)),
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},

@@ -109,7 +109,7 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command) //nolint:gosec // G204: running the model's command is what the shell tool is for
 
 	// Killing the shell is not enough. A command that leaves a process behind -
 	// `npm start &`, anything that daemonises - hands the inherited output pipe

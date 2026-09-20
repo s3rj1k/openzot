@@ -321,7 +321,7 @@ func rateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.
 // wait pauses for d, or until the run is canceled - whichever comes first. It
 // does not report which: the caller loops back to the cancellation check at the
 // top of Run, so a canceled wait ends the run there rather than in two places.
-func (e *Engine) wait(ctx context.Context, d time.Duration) {
+func wait(ctx context.Context, d time.Duration) {
 	if d <= 0 {
 		return
 	}
@@ -398,7 +398,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return e.finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
+			return finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
 		}
 
 		// hand the conversation over before spending anything on the next turn,
@@ -410,12 +410,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// shell tool's own timeout bounds that - but the run will not start
 		// another iteration past the deadline.
 		if e.maxDuration > 0 && time.Since(started) >= e.maxDuration {
-			return e.finish(messages, budget, StopTime,
+			return finish(messages, budget, StopTime,
 				fmt.Sprintf("stopped after %s", e.maxDuration), nil)
 		}
 
 		if budget.Iterations >= e.maxIterations {
-			return e.finish(messages, budget, StopIterations,
+			return finish(messages, budget, StopIterations,
 				fmt.Sprintf("stopped after %d iterations", budget.Iterations), nil)
 		}
 
@@ -478,7 +478,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// failure still preserves the failing exchange (and its dump)
 			// rather than discarding the very thing being diagnosed.
 			if ctx.Err() != nil {
-				return e.finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
+				return finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
 			}
 
 			// a context-limit rejection is recoverable: narrow the window the
@@ -519,12 +519,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 					delay = rateLimitWait(advised, ok, delay)
 				}
 
-				e.wait(ctx, delay)
+				wait(ctx, delay)
 
 				continue
 			}
 
-			return e.finish(messages, budget, StopError, "the provider failed", err)
+			return finish(messages, budget, StopError, "the provider failed", err)
 		}
 
 		// the provider answered: whatever outage the backoff was pacing is over,
@@ -547,7 +547,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		if turn.FinishReason == fantasy.FinishReasonLength {
 			if !e.canContinue(budget) {
-				return e.finish(messages, budget, StopContinuations,
+				return finish(messages, budget, StopContinuations,
 					"the model kept running out of output space", nil)
 			}
 
@@ -575,14 +575,14 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		// terminal tool calls end the run before anything else is dispatched
 
-		if reason, detail, terminal := e.terminalCall(turn.ToolCalls); terminal {
-			return e.finish(messages, budget, reason, detail, nil)
+		if reason, detail, terminal := terminalCall(turn.ToolCalls); terminal {
+			return finish(messages, budget, reason, detail, nil)
 		}
 
 		if len(turn.ToolCalls) > 0 {
 			// the tools ran inside the step; what is left is the call budget
 			if state.callsExhausted {
-				return e.finish(messages, budget, StopCalls,
+				return finish(messages, budget, StopCalls,
 					fmt.Sprintf("stopped after %d tool calls", budget.Calls), nil)
 			}
 
@@ -605,7 +605,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		if turn.Text == "" && turn.Reasoning == "" {
 			if budget.Empties >= e.maxEmpties {
-				return e.finish(messages, budget, StopEmpty,
+				return finish(messages, budget, StopEmpty,
 					"the model repeatedly produced nothing", nil)
 			}
 
@@ -627,7 +627,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// it toward success / failure, up to maxSettles.
 
 		if budget.Settles >= e.maxSettles {
-			return e.finish(messages, budget, StopUnsettled,
+			return finish(messages, budget, StopUnsettled,
 				"the model stopped without recording an outcome", nil)
 		}
 
@@ -642,7 +642,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 }
 
 // terminalCall reports whether the model ended the run with a terminal tool.
-func (e *Engine) terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
+func terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
 	for _, call := range calls {
 		switch call.ToolName {
 		case SuccessTool:
@@ -710,7 +710,7 @@ func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]
 	}
 
 	if budget.Cycles >= e.maxCycles {
-		result := e.finish(messages, *budget, StopCycle,
+		result := finish(messages, *budget, StopCycle,
 			fmt.Sprintf("the model kept repeating itself (%s)", detected), nil)
 
 		return nil, &result
@@ -944,10 +944,7 @@ func (e *Engine) instructions() string {
 
 // toolDefinitions renders the tool schemas, with the terminal tools.
 func (e *Engine) toolDefinitions() []fantasy.Tool {
-	var offered []fantasy.AgentTool
-
-	offered = append(offered, e.options.Tools...)
-	offered = append(offered, terminalTools()...)
+	offered := slices.Concat(e.options.Tools, terminalTools())
 
 	// map order was random once and a tool list that reshuffles between requests
 	// defeats any server-side prompt cache keyed on the prefix, so the order is
@@ -979,7 +976,7 @@ func (e *Engine) toolDefinitions() []fantasy.Tool {
 	return tools
 }
 
-func (e *Engine) finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
+func finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
 	return Result{
 		Reason:   reason,
 		Message:  detail,

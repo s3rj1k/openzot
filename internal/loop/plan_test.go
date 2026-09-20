@@ -14,8 +14,8 @@ const planArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"
 // planCall is the model calling its plan tool and being answered.
 func planCall(id, args, answer string) []conversation.Message {
 	return []conversation.Message{
-		activity(conversation.ActivityRequest, id, "tasks", args, nil),
-		activity(conversation.ActivityResponse, id, "tasks", args, answer),
+		activity(conversation.ActivityRequest, id, litTasks, args, nil),
+		activity(conversation.ActivityResponse, id, litTasks, args, answer),
 	}
 }
 
@@ -28,7 +28,7 @@ func planEngine(t *testing.T, options Options) *Engine {
 		options.ContextWindow = testWindow
 	}
 
-	options.PlanTool = "tasks"
+	options.PlanTool = litTasks
 
 	engine, err := New(options)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestRepostedPlan(t *testing.T) {
 	engine := planEngine(t, Options{})
 
 	messages := append(planCall("a", `{"tasks":[]}`, "old plan"), planCall("b", planArgs, "the plan")...)
-	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: "later"})
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: litLater})
 
 	t.Run("a plan that fell out of the window is posted again", func(t *testing.T) {
 		posted, ok := engine.repostedPlan(messages, 5)
@@ -62,7 +62,7 @@ func TestRepostedPlan(t *testing.T) {
 			t.Errorf("the id %q is one the model already used", call.ID)
 		}
 
-		if call.Name != "tasks" || call.Arguments != planArgs || result.Result != "the plan" || posted[1].Text != "the plan" {
+		if call.Name != litTasks || call.Arguments != planArgs || result.Result != "the plan" || posted[1].Text != "the plan" {
 			t.Errorf("not the latest plan: %+v %+v", call, result)
 		}
 	})
@@ -89,9 +89,9 @@ func TestRepostedPlan(t *testing.T) {
 	t.Run("a refused call is not the plan", func(t *testing.T) {
 		refused := append([]conversation.Message(nil), messages[:4]...)
 		refused = append(refused,
-			activity(conversation.ActivityRequest, "c", "tasks", `{"tasks":[]}`, nil),
-			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "c", Name: "tasks", Arguments: `{"tasks":[]}`, Failure: "tasks needs at least one task"}},
-			conversation.Message{Type: conversation.TypeUser, Text: "later"},
+			activity(conversation.ActivityRequest, "c", litTasks, `{"tasks":[]}`, nil),
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "c", Name: litTasks, Arguments: `{"tasks":[]}`, Failure: "tasks needs at least one task"}},
+			conversation.Message{Type: conversation.TypeUser, Text: litLater},
 		)
 
 		posted, ok := engine.repostedPlan(refused, 6)
@@ -101,7 +101,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("another tool is not the plan", func(t *testing.T) {
-		other := []conversation.Message{activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: "later"}}
+		other := []conversation.Message{activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: litLater}}
 
 		if _, ok := engine.repostedPlan(other, 1); ok {
 			t.Error("a shell result was taken for the plan")
@@ -122,15 +122,16 @@ func TestRepostedPlan(t *testing.T) {
 
 // history is a plan, then n turns of tool work each costing about cost tokens.
 func history(n int, filler string) []conversation.Message {
-	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "kickoff"}}
+	messages := make([]conversation.Message, 0, 3+2*n)
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: "kickoff"})
 	messages = append(messages, planCall("plan", planArgs, "the plan")...)
 
 	for i := range n {
 		id := fmt.Sprintf("c%d", i)
 
 		messages = append(messages,
-			activity(conversation.ActivityRequest, id, "read", `{"path":"x"}`, nil),
-			activity(conversation.ActivityResponse, id, "read", `{"path":"x"}`, filler),
+			activity(conversation.ActivityRequest, id, litRead, `{"path":"x"}`, nil),
+			activity(conversation.ActivityResponse, id, litRead, `{"path":"x"}`, filler),
 		)
 	}
 
@@ -167,7 +168,7 @@ func TestForgettingLeavesTooFewTurnsSoThePlanIsPosted(t *testing.T) {
 	var posted bool
 
 	for _, message := range request.messages {
-		if call, ok := toolCallOf(message); ok && call.ToolName == "tasks" && call.Input == planArgs {
+		if call, ok := toolCallOf(message); ok && call.ToolName == litTasks && call.Input == planArgs {
 			posted = true
 		}
 	}
@@ -257,8 +258,8 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 
 	// the next request forgets again, but the posted plan is well inside the window
 	messages = append(messages,
-		activity(conversation.ActivityRequest, "n", "read", `{"path":"y"}`, nil),
-		activity(conversation.ActivityResponse, "n", "read", `{"path":"y"}`, strings.Repeat("file content ", 60)),
+		activity(conversation.ActivityRequest, "n", litRead, `{"path":"y"}`, nil),
+		activity(conversation.ActivityResponse, "n", litRead, `{"path":"y"}`, strings.Repeat("file content ", 60)),
 	)
 
 	messages = engine.fitToWindow(messages, &forgotten, append(starts(messages[:size]), size, len(messages)), nil, func(Event) {})
@@ -274,11 +275,11 @@ func planRun(t *testing.T, options Options, iterations int) Result {
 	t.Helper()
 
 	options.Client = stub(t,
-		[]string{tool("p", "tasks", planArgs)},
-		[]string{tool("c", "echo", "{}")},
+		[]string{tool("p", litTasks, planArgs)},
+		[]string{tool("c", litEcho, "{}")},
 	)
 
-	options.Tools = append(echoTool(new(int)), namedTool("tasks", func(context.Context) (any, error) { return "tasks: 0/2 done", nil }))
+	options.Tools = append(echoTool(new(int)), namedTool(litTasks, func(context.Context) (any, error) { return "tasks: 0/2 done", nil }))
 	options.MaxIterations = iterations
 	options.MaxCycles = 100000
 	options.RetryBackoff = -1
@@ -299,7 +300,7 @@ func countNudges(result Result) int {
 	nudges := 0
 
 	for _, message := range result.Messages {
-		if message.Type == conversation.TypeUser && strings.Contains(message.Text, planNudge("tasks")) {
+		if message.Type == conversation.TypeUser && strings.Contains(message.Text, planNudge(litTasks)) {
 			nudges++
 		}
 	}
@@ -309,18 +310,18 @@ func countNudges(result Result) int {
 
 func TestThePlanToolIsRememberedEveryNthIteration(t *testing.T) {
 	// iterations 3, 6 and 9 of ten
-	if got := countNudges(planRun(t, Options{PlanTool: "tasks", PlanNudgeEvery: 3}, 10)); got != 3 {
+	if got := countNudges(planRun(t, Options{PlanTool: litTasks, PlanNudgeEvery: 3}, 10)); got != 3 {
 		t.Errorf("nudged %d times, want 3", got)
 	}
 
 	// the default is every fifth
-	if got := countNudges(planRun(t, Options{PlanTool: "tasks"}, 11)); got != 2 {
+	if got := countNudges(planRun(t, Options{PlanTool: litTasks}, 11)); got != 2 {
 		t.Errorf("nudged %d times with the default, want 2 (iterations 5 and 10)", got)
 	}
 }
 
 func TestPlanRemindersCanBeSwitchedOffAndNeedAPlanTool(t *testing.T) {
-	if got := countNudges(planRun(t, Options{PlanTool: "tasks", PlanNudgeEvery: -1}, 12)); got != 0 {
+	if got := countNudges(planRun(t, Options{PlanTool: litTasks, PlanNudgeEvery: -1}, 12)); got != 0 {
 		t.Errorf("nudged %d times with the reminders off", got)
 	}
 
@@ -330,7 +331,7 @@ func TestPlanRemindersCanBeSwitchedOffAndNeedAPlanTool(t *testing.T) {
 }
 
 func TestPlanNudgeIsANotice(t *testing.T) {
-	if got := planNudge("tasks"); !strings.HasPrefix(got, noticePrefix) || !strings.Contains(got, "tasks") {
+	if got := planNudge(litTasks); !strings.HasPrefix(got, noticePrefix) || !strings.Contains(got, litTasks) {
 		t.Errorf("the nudge must carry the notice prefix and name the tool: %q", got)
 	}
 }
@@ -340,7 +341,7 @@ func TestPlanNudgeIsANotice(t *testing.T) {
 // hold both the original and the reposted call.
 func TestALongRunKeepsThePlanInView(t *testing.T) {
 	result := planRun(t, Options{
-		PlanTool:       "tasks",
+		PlanTool:       litTasks,
 		PlanNudgeEvery: -1,
 		PlanMinTurns:   1000,
 		ContextWindow:  2_000,
@@ -349,7 +350,7 @@ func TestALongRunKeepsThePlanInView(t *testing.T) {
 	posted := 0
 
 	for _, message := range result.Messages {
-		if a := message.Activity; a != nil && a.Kind == conversation.ActivityRequest && a.Name == "tasks" && strings.HasPrefix(a.ID, "plan-") {
+		if a := message.Activity; a != nil && a.Kind == conversation.ActivityRequest && a.Name == litTasks && strings.HasPrefix(a.ID, "plan-") {
 			posted++
 
 			if a.Arguments != planArgs {

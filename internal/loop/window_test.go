@@ -22,7 +22,7 @@ func requestFor(engine *Engine, messages []conversation.Message) (turnRequest, i
 // The heuristics must see what the engine actually records: a model repeating one
 // call and getting one answer is a loop, however it words the turns in between.
 func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
-	var messages []conversation.Message
+	messages := make([]conversation.Message, 0, 8)
 
 	for range 4 {
 		messages = append(messages,
@@ -36,7 +36,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 	}
 
 	// a different answer each time is progress
-	var polling []conversation.Message
+	polling := make([]conversation.Message, 0, 8)
 
 	for _, answer := range []string{"a", "b", "c", "d"} {
 		polling = append(polling,
@@ -72,10 +72,10 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		id := fmt.Sprintf("c%d", round)
 
 		messages = append(messages,
-			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: litRead, Arguments: `{"path":"x"}`}},
 			conversation.Message{
 				Type: conversation.TypeActivity, Text: strings.Repeat("line of file content ", 60),
-				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 60)},
+				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: litRead, Result: strings.Repeat("line of file content ", 60)},
 			},
 		)
 
@@ -122,7 +122,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 	)
 
 	engine, err := New(Options{
-		Client:        stub(t, []string{tool("c", "echo", "{}")}),
+		Client:        stub(t, []string{tool("c", litEcho, "{}")}),
 		Tools:         echoTool(new(int)),
 		ContextWindow: 3_000,
 		MaxIterations: 60,
@@ -157,6 +157,8 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 				requests++
 			case conversation.ActivityResponse:
 				responses++
+			default:
+				// a trigger is neither half
 			}
 		}
 

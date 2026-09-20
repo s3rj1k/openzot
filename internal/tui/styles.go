@@ -2,19 +2,18 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The brand colors (accent, secondary) are zot's neutral identity; the rest are
+// The brand color (accent) is zot's neutral identity; the rest are
 // fixed semantic and neutral colors for state and log text.
 var (
-	colAccent    = lipgloss.Color("#6B7280") // neutral slate (brand accent)
-	colSecondary = lipgloss.Color("#9CA3AF") // lighter slate  (brand secondary)
-	colFg        = lipgloss.Color("#E6E6E6")
-	colDim       = lipgloss.Color("#7A7A7A")
-	colFaint     = lipgloss.Color("#4A4A4A")
-	colGreen     = lipgloss.Color("#2DD4A7")
-	colRed       = lipgloss.Color("#FF5A5A")
-	colYellow    = lipgloss.Color("#F2C94C")
-	colCyan      = lipgloss.Color("#56C2FF")
-	colBlue      = lipgloss.Color("#5B8CFF")
+	colAccent = lipgloss.Color("#6B7280") // neutral slate (brand accent)
+	colFg     = lipgloss.Color("#E6E6E6")
+	colDim    = lipgloss.Color("#7A7A7A")
+	colFaint  = lipgloss.Color("#4A4A4A")
+	colGreen  = lipgloss.Color("#2DD4A7")
+	colRed    = lipgloss.Color("#FF5A5A")
+	colYellow = lipgloss.Color("#F2C94C")
+	colCyan   = lipgloss.Color("#56C2FF")
+	colBlue   = lipgloss.Color("#5B8CFF")
 )
 
 var (
@@ -58,7 +57,5 @@ var (
 
 	// Per-tool accents so the eye can scan the stream.
 	toolExecStyle  = lipgloss.NewStyle().Foreground(colBlue)
-	toolPlanStyle  = lipgloss.NewStyle().Bold(true).Foreground(colSecondary)
-	toolProgStyle  = lipgloss.NewStyle().Foreground(colSecondary)
 	toolOtherStyle = lipgloss.NewStyle().Foreground(colAccent)
 )

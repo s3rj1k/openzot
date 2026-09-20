@@ -53,10 +53,6 @@ func TestSettleNoticeNamesBothTerminalTools(t *testing.T) {
 	}
 }
 
-func containsFold(haystack, needle string) bool {
-	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
-}
-
 func TestTerminalToolsAreWellFormed(t *testing.T) {
 	tools := terminalTools()
 

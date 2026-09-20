@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -95,7 +94,7 @@ provider:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", configPath, "--dir", t.TempDir(), orderFile(t, "a task"))
+	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "a task"))
 
 	err := command()
 	if err == nil || !strings.Contains(err.Error(), "terminal") {
@@ -214,9 +213,10 @@ func readLog(t *testing.T, path string) []session.Record {
 		t.Fatalf("read log: %v", err)
 	}
 
-	var records []session.Record
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	records := make([]session.Record, 0, len(lines))
 
-	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+	for i, line := range lines {
 		var record session.Record
 
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
@@ -284,7 +284,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	text := builder.String()
 
-	for _, want := range []string{"zot [flags] <order.md>", "zot new", "zot config", "--dir", ".jsonl"} {
+	for _, want := range []string{"zot [flags] <order.md>", "zot new", "zot config", litDir, ".jsonl"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("usage does not mention %q:\n%s", want, text)
 		}
@@ -292,7 +292,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	// --dir belongs to both shapes: where a run works, and where `zot new`
 	// scaffolds - someone standing outside the project needs it either way
-	if n := strings.Count(text, "--dir"); n < 2 {
+	if n := strings.Count(text, litDir); n < 2 {
 		t.Errorf("usage should document --dir for both running an order and `zot new` (%d mentions):\n%s", n, text)
 	}
 
@@ -329,7 +329,7 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
 	dir := set.String("dir", ".", "")
 
-	if err := set.Parse([]string{"a.md", "b.md", "--dir", "proj"}); err != nil {
+	if err := set.Parse([]string{"a.md", "b.md", litDir, "proj"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
@@ -363,7 +363,7 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 }
 
 // withArgs runs a function with a fresh flag set and the given argv, so command()
-// can be exercised the way the shell invokes it. Command() chdirs into --dir, so the
+// can be exercised the way the shell invokes it. It chdirs into --dir, so the
 // working directory is put back afterwards: a later test must not inherit a
 // temp directory that is already gone.
 func withArgs(t *testing.T, args ...string) {
@@ -371,7 +371,9 @@ func withArgs(t *testing.T, args ...string) {
 
 	originalArgs := os.Args
 	originalFlags := pflag.CommandLine
-	originalDir, _ := os.Getwd()
+
+	// command chdirs into --dir; this registers the return to where the test began
+	t.Chdir(".")
 
 	os.Args = append([]string{"zot"}, args...)
 	pflag.CommandLine = pflag.NewFlagSet("zot", pflag.ContinueOnError)
@@ -380,10 +382,6 @@ func withArgs(t *testing.T, args ...string) {
 	t.Cleanup(func() {
 		os.Args = originalArgs
 		pflag.CommandLine = originalFlags
-
-		if originalDir != "" {
-			_ = os.Chdir(originalDir)
-		}
 	})
 }
 
@@ -467,7 +465,7 @@ provider:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", configPath, "--dir", workdir, orderFile(t, "do the thing"))
+	withArgs(t, "--config", configPath, litDir, workdir, orderFile(t, "do the thing"))
 
 	output, err := captureStdout(t, command)
 	if err != nil {
@@ -496,7 +494,7 @@ func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 
 	var out strings.Builder
 
-	if err := newOrder([]string{"--dir", project}, &out); err != nil {
+	if err := newOrder([]string{litDir, project}, &out); err != nil {
 		t.Fatalf("newOrder: %v", err)
 	}
 
@@ -542,7 +540,7 @@ provider:
       context: 100000
 `, server.URL))
 
-	withArgs(t, "--config", configPath, "--dir", project, written[0])
+	withArgs(t, "--config", configPath, litDir, project, written[0])
 
 	if _, err := captureStdout(t, command); err != nil {
 		t.Fatalf("run: %v", err)
@@ -641,7 +639,7 @@ provider:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", "config.yaml", "--dir", target, "order.md")
+	withArgs(t, "--config", "config.yaml", litDir, target, "order.md")
 
 	output, err := captureStdout(t, command)
 	if err != nil {
@@ -709,7 +707,7 @@ provider:
 		server := settle("success", `{"summary":"complete"}`)
 		defer server.Close()
 
-		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
+		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "first.md", "the first order"))
 
 		if _, err := captureStdout(t, command); err != nil {
@@ -729,7 +727,7 @@ provider:
 		server := settle("failure", `{"reason":"cannot"}`)
 		defer server.Close()
 
-		withArgs(t, "--config", configFor(t, server.URL), "--dir", project,
+		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "doomed.md", "the doomed order"))
 
 		quietStderr(t)
@@ -893,7 +891,7 @@ provider:
 
 	orderPath := orderFileIn(t, t.TempDir(), "1758300000.md", "the first task")
 
-	withArgs(t, "--config", configPath, "--dir", workdir, orderPath)
+	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
 	if _, err := captureStdout(t, command); err != nil {
 		t.Fatalf("run: %v", err)
@@ -920,7 +918,7 @@ provider:
 	}
 
 	// running the order again adds a run to the same log, after the first
-	withArgs(t, "--config", configPath, "--dir", workdir, orderPath)
+	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
 	if _, err := captureStdout(t, command); err != nil {
 		t.Fatalf("second run: %v", err)
@@ -941,38 +939,6 @@ provider:
 	if again := second[len(first)]; again.Kind != session.KindMeta {
 		t.Errorf("the second run must open with its own meta, got %+v", again)
 	}
-}
-
-func settleOnce(t *testing.T) string {
-	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-
-	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
-agent:
-  model: test-model
-provider:
-  base_url: %s
-  api_key: test-key
-  models:
-    test-model:
-      context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	return configPath
 }
 
 // The tasks tool end to end: a model lists its work, keeps going, and settles.
@@ -1018,7 +984,7 @@ provider:
 		t.Fatal(err)
 	}
 
-	withArgs(t, "--config", configPath, "--dir", t.TempDir(), orderFile(t, "fix the lexer"))
+	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "fix the lexer"))
 
 	if _, err := captureStdout(t, command); err != nil {
 		t.Fatalf("run: %v", err)
@@ -1081,27 +1047,6 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 }
 
-// declared is the model list a provider needs to run the named models: each
-// with a context window, since a model without one cannot run.
-func declared(names ...string) map[string]config.ModelConfig {
-	models := make(map[string]config.ModelConfig, len(names))
-
-	for _, name := range names {
-		models[name] = config.ModelConfig{Context: 100_000}
-	}
-
-	return models
-}
-
-// testDefaults is the built-in configuration with the one thing it deliberately
-// lacks: a model to run.
-func testDefaults() config.Config {
-	cfg := config.Defaults()
-	cfg.Agent.Model = "glm-5.2"
-
-	return cfg
-}
-
 // The example config is what `zot config` writes on first run, so it is the
 // first thing most people ever edit. Its knobs drifting from the code's own
 // defaults is not cosmetic: someone copies it, changes nothing, and gets
@@ -1143,28 +1088,6 @@ func TestTheExampleConfigLoadsAndValidates(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("the example config does not validate: %v", err)
 	}
-}
-
-// zot has no input channel: no stdin, no chat turn, no approval prompt - a run
-// is a work order, a provider and a read-only viewer. An agent that does not
-// know that asks a question and waits, and waiting is fatal in a way no other
-// prompt mistake is: nothing answers, the run burns its budget until a guard
-// kills it, and the work it never wrote is lost. These pin the directives that
-// prevent it. A prompt cannot be tested against a model here, so the patterns
-// are deliberately loose - they assert the directive survives a rewrite of the
-// wording, not the wording itself.
-var nonInteractiveDirectives = []struct {
-	need    string
-	pattern *regexp.Regexp
-}{
-	{"say the run is non-interactive", regexp.MustCompile(`(?i)non-interactive`)},
-	{"say nothing reaches the user", regexp.MustCompile(`(?i)nothing you address to the user is delivered|no reader|will never be seen|no one is watching`)},
-	{"forbid waiting for input", regexp.MustCompile(`(?i)never stop to wait|do not (stop and )?wait|NO further input`)},
-	{"name approval and confirmation as things not to wait for", regexp.MustCompile(`(?i)approval, permission or confirmation|approval|confirmation`)},
-	{"forbid ending a turn with a question", regexp.MustCompile(`(?i)never end your turn with a question|do not ask`)},
-	{"require deciding and recording the assumption instead", regexp.MustCompile(`(?i)assumption`)},
-	{"require a terminal tool call to end the task", regexp.MustCompile(`(?i)"success".*\n?.*"failure"|"failure"`)},
-	{"forbid simply stopping", regexp.MustCompile(`(?i)do not simply stop`)},
 }
 
 // contractHeading is how the contract is spotted in an assembled prompt.

@@ -47,7 +47,7 @@ You are an agent.
 		t.Fatalf("Load: %v", err)
 	}
 
-	if order.Title != "Rate limiting" || order.Objective != "add rate limiting to the API" {
+	if order.Title != litRateLimiting || order.Objective != "add rate limiting to the API" {
 		t.Errorf("title = %q, objective = %q", order.Title, order.Objective)
 	}
 
@@ -353,8 +353,8 @@ func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 	}{
 		{
 			name:  "a declared title wins",
-			order: Order{Title: "Rate limiting", Path: "/book/.zot/orders/add-rate-limiting-to-the-api.md"},
-			want:  "Rate limiting",
+			order: Order{Title: litRateLimiting, Path: "/book/.zot/orders/add-rate-limiting-to-the-api.md"},
+			want:  litRateLimiting,
 		},
 		{
 			name:  "the file name becomes one",

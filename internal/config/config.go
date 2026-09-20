@@ -249,7 +249,7 @@ func Load(path string) (Config, error) {
 		path = DefaultConfigPath()
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the config path is the one the operator named
 	switch {
 	case err == nil:
 		decoder := yaml.NewDecoder(bytes.NewReader(data))

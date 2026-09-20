@@ -106,11 +106,10 @@ func dropOrphanedActivities(messages []Message) []Message {
 			continue
 		}
 
-		switch message.Activity.Kind {
-		case ActivityRequest, ActivityResponse:
-			if !slices.ContainsFunc(messages, func(candidate Message) bool { return candidate.Activity.IsPair(message.Activity) }) {
-				continue
-			}
+		halfOfAPair := message.Activity.Kind == ActivityRequest || message.Activity.Kind == ActivityResponse
+
+		if halfOfAPair && !slices.ContainsFunc(messages, func(candidate Message) bool { return candidate.Activity.IsPair(message.Activity) }) {
+			continue
 		}
 
 		kept = append(kept, message)

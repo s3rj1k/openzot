@@ -30,6 +30,9 @@ type Skill struct {
 	Content string
 }
 
+// frontMatterFence opens and closes the front matter of a SKILL.md.
+const frontMatterFence = "---"
+
 // Load reads every skill under dir into memory, sorted by name.
 //
 // A skill is a subdirectory containing a SKILL.md whose front matter supplies
@@ -55,7 +58,7 @@ func Load(dir string) ([]Skill, error) {
 
 		skillDir := filepath.Join(dir, entry.Name())
 
-		content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+		content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md")) //nolint:gosec // G304: a SKILL.md inside the operator's skills directory
 		if err != nil {
 			continue
 		}
@@ -85,11 +88,11 @@ func parseSkill(directoryName, dir, content string) Skill {
 
 	lines := strings.Split(content, "\n")
 
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == frontMatterFence {
 		for _, line := range lines[1:] {
 			trimmed := strings.TrimSpace(line)
 
-			if trimmed == "---" {
+			if trimmed == frontMatterFence {
 				break
 			}
 
@@ -116,7 +119,7 @@ func parseSkill(directoryName, dir, content string) Skill {
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
 
-			if trimmed == "" || trimmed == "---" || strings.HasPrefix(trimmed, "#") {
+			if trimmed == "" || trimmed == frontMatterFence || strings.HasPrefix(trimmed, "#") {
 				continue
 			}
 

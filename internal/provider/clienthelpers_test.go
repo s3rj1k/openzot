@@ -19,13 +19,13 @@ func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*ClientConfig))
 
 	t.Cleanup(server.Close)
 
-	config := ClientConfig{Provider: "test", Model: "test-model", APIKey: "test-key", BaseURL: server.URL}
+	config := ClientConfig{Provider: "test", Model: litTestModel, APIKey: "test-key", BaseURL: server.URL}
 
 	for _, change := range tweak {
 		change(&config)
 	}
 
-	client, err := NewClient(config)
+	client, err := NewClient(t.Context(), config)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -40,7 +40,7 @@ func frames(t *testing.T, lines ...string) *Client {
 	return serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		w.Write([]byte(sse(lines...)))
+		_, _ = w.Write([]byte(sse(lines...)))
 	})
 }
 
@@ -86,6 +86,8 @@ func collect(client *Client, call fantasy.Call) turn {
 			result.usage = part.Usage
 		case fantasy.StreamPartTypeError:
 			result.err = part.Error
+		default:
+			// the other parts carry nothing these tests read
 		}
 	}
 

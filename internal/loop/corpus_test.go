@@ -243,13 +243,13 @@ func expectBool(t *testing.T, record corpusRecord) bool {
 // still be able to check, set from the first run of the port. A drop means the
 // adapter (or the model) started rejecting records it used to run.
 var corpusFloors = map[string]int{
-	"hasRepeatedSuffix":       37,
-	"hasRepeatedActivityTail": 16,
-	"hasRepeatedResultRun":    20,
-	"isThreadCyclic":          27,
-	"describeThreadCycle":     3,
-	"hasRepeatedTextRun":      14,
-	"createRepetitionGuard":   68,
+	litHasRepeatedSuffix:       37,
+	litHasRepeatedActivityTail: 16,
+	litHasRepeatedResultRun:    20,
+	litIsThreadCyclic:          27,
+	litDescribeThreadCycle:     3,
+	"hasRepeatedTextRun":       14,
+	"createRepetitionGuard":    68,
 }
 
 // TestCorpus runs every seeded case the typed model can express.
@@ -294,7 +294,7 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 	t.Helper()
 
 	switch record.Fn {
-	case "hasRepeatedSuffix", "hasRepeatedActivityTail", "hasRepeatedResultRun", "isThreadCyclic", "describeThreadCycle":
+	case litHasRepeatedSuffix, litHasRepeatedActivityTail, litHasRepeatedResultRun, litIsThreadCyclic, litDescribeThreadCycle:
 		if hasCycleOptions(record.Args) {
 			return false
 		}
@@ -305,19 +305,19 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 		}
 
 		switch record.Fn {
-		case "hasRepeatedSuffix":
+		case litHasRepeatedSuffix:
 			expectEqual(t, record.Fn, hasRepeatedSuffix(messages), expectBool(t, record))
 
-		case "hasRepeatedActivityTail":
+		case litHasRepeatedActivityTail:
 			expectEqual(t, record.Fn, hasRepeatedActivityTail(messages), expectBool(t, record))
 
-		case "hasRepeatedResultRun":
+		case litHasRepeatedResultRun:
 			expectEqual(t, record.Fn, hasRepeatedResultRun(messages), expectBool(t, record))
 
-		case "isThreadCyclic":
+		case litIsThreadCyclic:
 			expectEqual(t, record.Fn, describeCycle(messages) != "", expectBool(t, record))
 
-		case "describeThreadCycle":
+		case litDescribeThreadCycle:
 			var want *string
 
 			if err := json.Unmarshal(record.Expected, &want); err != nil {

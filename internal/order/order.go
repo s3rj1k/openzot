@@ -93,7 +93,7 @@ type frontMatter struct {
 
 // Load reads and parses one order file.
 func Load(path string) (Order, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the order path is the one the operator named
 	if err != nil {
 		return Order{}, fmt.Errorf("read order: %w", err)
 	}
@@ -231,14 +231,14 @@ func titleFromFilename(path string) string {
 // invented. A name already taken moves on to the next second rather than
 // overwriting: creating two orders in a second is routine, not an error.
 func Create(dir string, now time.Time) (string, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create order directory: %w", err)
 	}
 
-	for stamp := now.Unix(); ; stamp++ {
-		path := filepath.Join(dir, strconv.FormatInt(stamp, 10)+Ext)
+	for stampSec := now.Unix(); ; stampSec++ {
+		path := filepath.Join(dir, strconv.FormatInt(stampSec, 10)+Ext)
 
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) //nolint:gosec // G304: the path is built from the order directory and a timestamp
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}

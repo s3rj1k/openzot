@@ -27,7 +27,7 @@ func validConfig(tweak func(*Config)) Config {
 	c := Config{
 		Agent: Agent{Model: "m", MaxIterations: 1},
 		Provider: ProviderConfig{
-			BaseURL: "https://gw.example.com/v1", APIKey: "x",
+			BaseURL: litHTTPSGwExampleCom, APIKey: "x",
 			Models: map[string]ModelConfig{"m": {Context: 100_000}},
 		},
 	}
@@ -245,14 +245,14 @@ func TestValidate(t *testing.T) {
 	}
 
 	if err := validConfig(func(c *Config) {
-		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
+		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, Models: map[string]ModelConfig{litAllowed: {Model: litGpt54, Context: 100_000}}}
 	}).Validate(); err == nil {
 		t.Error("expected the model list to reject an unlisted model")
 	}
 
 	if err := validConfig(func(c *Config) {
-		c.Agent.Model = "allowed"
-		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
+		c.Agent.Model = litAllowed
+		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, Models: map[string]ModelConfig{litAllowed: {Model: litGpt54, Context: 100_000}}}
 	}).Validate(); err != nil {
 		t.Errorf("a declared model was rejected: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 	// not only the selected model: a listed model with no window is a mistake
 	// whether or not this run uses it
 	err := validConfig(func(c *Config) {
-		c.Provider.Models = map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: "gpt-5.4"}}
+		c.Provider.Models = map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: litGpt54}}
 	}).Validate()
 	if err == nil || !strings.Contains(err.Error(), "provider.models.spare") {
 		t.Errorf("an unused model with no context should still be refused, got %v", err)
@@ -324,7 +324,7 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 // at all. Silently accepting any model name is what a built-in table allowed.
 func TestValidateRefusesAProviderThatDeclaresNoModels(t *testing.T) {
 	err := validConfig(func(c *Config) {
-		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: "x"}
 	}).Validate()
 	if err == nil {
 		t.Fatal("a provider with no models was accepted")
@@ -340,7 +340,7 @@ func TestValidateRefusesAProviderThatDeclaresNoModels(t *testing.T) {
 func TestModelNamesAreSorted(t *testing.T) {
 	custom := ProviderConfig{Models: map[string]ModelConfig{
 		"small": {Model: "gpt-5.4-mini"},
-		"large": {Model: "gpt-5.4"},
+		"large": {Model: litGpt54},
 	}}
 	if got, want := custom.ModelNames(), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("model names = %v, want %v", got, want)
@@ -477,7 +477,7 @@ func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	}
 
 	cfg.Provider = ProviderConfig{
-		BaseURL: "https://gw.example.com/v1",
+		BaseURL: litHTTPSGwExampleCom,
 		Models:  map[string]ModelConfig{"m": {Context: 100_000}},
 	}
 
@@ -562,7 +562,7 @@ func TestMaxTimeIsValidated(t *testing.T) {
 		return Config{
 			Agent: Agent{Model: "m", MaxIterations: 10},
 			Provider: ProviderConfig{
-				BaseURL: "https://gw.example.com/v1", APIKey: "k",
+				BaseURL: litHTTPSGwExampleCom, APIKey: "k",
 				Models: map[string]ModelConfig{"m": {Context: 100_000}},
 			},
 		}
@@ -755,7 +755,7 @@ provider:
 	}
 
 	kwargs, _ := model.ExtraBody["chat_template_kwargs"].(map[string]any)
-	if kwargs["enable_thinking"] != false {
+	if thinking, ok := kwargs["enable_thinking"].(bool); !ok || thinking {
 		t.Errorf("extra_body = %v, want the nested settings kept", model.ExtraBody)
 	}
 

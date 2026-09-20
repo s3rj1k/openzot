@@ -29,9 +29,9 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 		if requests == 1 {
 			w.WriteHeader(http.StatusBadRequest)
 
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]any{
-					"message": "This model's maximum context length is 8192 tokens, however you requested 9000",
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				litError: map[string]any{
+					litMessage: "This model's maximum context length is 8192 tokens, however you requested 9000",
 				},
 			})
 
@@ -46,9 +46,9 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 
 	t.Cleanup(server.Close)
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -193,16 +193,16 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": map[string]any{"message": "maximum context length exceeded"},
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			litError: map[string]any{litMessage: "maximum context length exceeded"},
 		})
 	}))
 
 	defer server.Close()
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -256,9 +256,9 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -304,9 +304,9 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -346,9 +346,9 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		if requests == 1 {
 			w.WriteHeader(http.StatusBadRequest)
 
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]any{
-					"message": "This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens.",
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				litError: map[string]any{
+					litMessage: "This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens.",
 				},
 			})
 
@@ -363,9 +363,9 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
@@ -408,8 +408,8 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		if requests == 1 {
 			w.WriteHeader(http.StatusBadRequest)
 
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]any{"message": "prompt is too long"},
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				litError: map[string]any{litMessage: "prompt is too long"},
 			})
 
 			return
@@ -423,9 +423,9 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 
 	defer server.Close()
 
-	client, _ := provider.NewClient(provider.ClientConfig{
-		Provider: "custom",
-		Model:    "test-model",
+	client, _ := provider.NewClient(t.Context(), provider.ClientConfig{
+		Provider: litCustom,
+		Model:    litTestModel,
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})

@@ -314,7 +314,7 @@ func functions(workdir string) template.FuncMap {
 				path = filepath.Join(workdir, path)
 			}
 
-			content, err := os.ReadFile(path)
+			content, err := os.ReadFile(path) //nolint:gosec // G304: the order template asked for this file by name
 			if err != nil {
 				return "", err
 			}

@@ -24,15 +24,15 @@ func cyclicValue() map[string]any {
 }
 
 // cycleResponse is a tool result as the conversation holds it.
-func cycleResponse(name, arguments string, result any) conversation.Message {
+func cycleResponse(result any) conversation.Message {
 	return conversation.Message{
 		Type:     conversation.TypeActivity,
-		Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "call", Name: name, Arguments: arguments, Result: result},
+		Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "call", Name: "search", Arguments: `{"q":"same"}`, Result: result},
 	}
 }
 
 func TestCycleCircularResult(t *testing.T) {
-	cyclic := cycleResponse("search", `{"q":"same"}`, cyclicValue())
+	cyclic := cycleResponse(cyclicValue())
 
 	messages := []conversation.Message{
 		{Type: conversation.TypeUser, Text: "A"},
@@ -55,9 +55,9 @@ func TestCycleCircularResult(t *testing.T) {
 
 func TestRepeatedResultRunCircularResult(t *testing.T) {
 	messages := []conversation.Message{
-		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
-		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
-		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
+		cycleResponse(cyclicValue()),
+		cycleResponse(cyclicValue()),
+		cycleResponse(cyclicValue()),
 	}
 
 	if !hasRepeatedResultRun(messages) {
@@ -68,9 +68,9 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 	// cyclic one
 
 	mixed := []conversation.Message{
-		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
-		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
-		cycleResponse("search", `{"q":"same"}`, map[string]any{"records": []any{"something"}}),
+		cycleResponse(cyclicValue()),
+		cycleResponse(cyclicValue()),
+		cycleResponse(map[string]any{"records": []any{"something"}}),
 	}
 
 	if hasRepeatedResultRun(mixed) {

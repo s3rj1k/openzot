@@ -8,8 +8,8 @@ import (
 )
 
 // activity builds one half of a tool-call pair.
-func activity(kind ActivityKind, id, name, arguments string, result any) Message {
-	entry := &Activity{Kind: kind, ID: id, Name: name, Arguments: arguments}
+func activity(kind ActivityKind, name, arguments string, result any) Message {
+	entry := &Activity{Kind: kind, ID: "c1", Name: name, Arguments: arguments}
 
 	if kind == ActivityResponse {
 		entry.Result = result
@@ -34,11 +34,13 @@ func textOf(message fantasy.Message) string {
 	var text string
 
 	var textSb35 strings.Builder
+
 	for _, part := range message.Content {
 		if piece, ok := part.(fantasy.TextPart); ok {
 			textSb35.WriteString(piece.Text)
 		}
 	}
+
 	text += textSb35.String()
 
 	return text
@@ -47,8 +49,8 @@ func textOf(message fantasy.Message) string {
 func TestToPromptPairsToolCalls(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "list the files"},
-		activity(ActivityRequest, "c1", "shell", `{"command":"ls"}`, nil),
-		activity(ActivityResponse, "c1", "shell", `{"command":"ls"}`, "README.md"),
+		activity(ActivityRequest, "shell", `{"command":"ls"}`, nil),
+		activity(ActivityResponse, "shell", `{"command":"ls"}`, "README.md"),
 		{Type: TypeBot, Text: "there is a README"},
 	}
 
@@ -90,7 +92,7 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 func TestToPromptDropsOrphanedResult(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "go"},
-		activity(ActivityResponse, "c1", "shell", `{}`, "output"),
+		activity(ActivityResponse, "shell", `{}`, "output"),
 	}
 
 	for _, message := range ToPrompt(messages) {
@@ -105,7 +107,7 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 func TestToPromptDropsDanglingRequest(t *testing.T) {
 	messages := []Message{
 		{Type: TypeUser, Text: "go"},
-		activity(ActivityRequest, "c1", "shell", `{}`, nil),
+		activity(ActivityRequest, "shell", `{}`, nil),
 	}
 
 	prompt := ToPrompt(messages)
@@ -158,8 +160,8 @@ func TestToPromptRoleMapping(t *testing.T) {
 
 func TestToPromptEncodesStructuredResults(t *testing.T) {
 	messages := []Message{
-		activity(ActivityRequest, "c1", "search", `{}`, nil),
-		activity(ActivityResponse, "c1", "search", `{}`, map[string]any{"records": []any{}}),
+		activity(ActivityRequest, "search", `{}`, nil),
+		activity(ActivityResponse, "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
 	prompt := ToPrompt(messages)
