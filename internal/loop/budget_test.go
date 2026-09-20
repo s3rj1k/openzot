@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // Budget semantics, ported from the TypeScript engine's maxIterations and
@@ -487,7 +488,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -540,7 +541,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 
 	t.Cleanup(failing.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -581,7 +582,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	// The abort landed during a backoff wait, but the provider failure that
 	// preceded it is carried along as the evidence - it is the exchange the
 	// operator quit to go and read. A bare "context canceled" would discard it.
-	if result.Err == nil || !IsProviderError(result.Err) {
+	if result.Err == nil || !provider.IsProviderError(result.Err) {
 		t.Errorf("aborted result carries %v, want the last provider failure preserved", result.Err)
 	}
 }
@@ -671,7 +672,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -753,7 +754,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -829,7 +830,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -915,7 +916,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -1038,7 +1039,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -1085,7 +1086,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -1146,7 +1147,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -1227,7 +1228,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",

@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/tools"
 )
 
@@ -348,34 +349,34 @@ func (c Config) Validate() error {
 	if _, ok := c.Providers[c.DefaultProvider]; !ok {
 		return fmt.Errorf("provider %q is not configured (declare it under providers: with a base_url and api_key)", c.DefaultProvider)
 	}
-	if provider := c.Providers[c.DefaultProvider]; len(provider.Models) == 0 {
+	if endpoint := c.Providers[c.DefaultProvider]; len(endpoint.Models) == 0 {
 		return fmt.Errorf(
 			"provider %q declares no models: list %q under providers.%s.models, with its context window",
 			c.DefaultProvider, c.Agent.Model, c.DefaultProvider)
-	} else if _, ok := provider.Models[c.Agent.Model]; !ok {
+	} else if _, ok := endpoint.Models[c.Agent.Model]; !ok {
 		return fmt.Errorf("model %q is not configured for provider %q (available: %s)",
-			c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(provider), ", "))
+			c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(endpoint), ", "))
 	}
-	for name, provider := range c.Providers {
+	for name, endpoint := range c.Providers {
 		// there is no built-in endpoint to fall back on, and finding out
 		// mid-run that there is nowhere to send the request is worse than at
 		// load
-		if provider.BaseURL == "" {
+		if endpoint.BaseURL == "" {
 			return fmt.Errorf("providers.%s: base_url is not set", name)
 		}
 
 		// Every model states its own window, in sorted order so the first
 		// error is the same one every time.
-		for _, model := range ProviderModels(provider) {
-			if provider.Models[model].Context <= 0 {
+		for _, model := range ProviderModels(endpoint) {
+			if endpoint.Models[model].Context <= 0 {
 				return fmt.Errorf(
 					"providers.%s.models.%s: context is required - set the model's context window, in tokens",
 					name, model)
 			}
 
-			if effort := strings.ToLower(strings.TrimSpace(provider.Models[model].ReasoningEffort)); !loop.ValidReasoningEffort(effort) {
+			if effort := strings.ToLower(strings.TrimSpace(endpoint.Models[model].ReasoningEffort)); !provider.ValidReasoningEffort(effort) {
 				return fmt.Errorf("providers.%s.models.%s: reasoning_effort %q is not known (use %s)",
-					name, model, provider.Models[model].ReasoningEffort, strings.Join(loop.ReasoningEfforts, ", "))
+					name, model, endpoint.Models[model].ReasoningEffort, strings.Join(provider.ReasoningEfforts, ", "))
 			}
 		}
 	}

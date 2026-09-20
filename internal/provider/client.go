@@ -1,4 +1,8 @@
-package loop
+// Package provider is zot's connection to a model: an OpenAI-compatible
+// endpoint reached through fantasy, the classification of what goes wrong with
+// it (retriable, rate limited, context too long), and the evidence a failed
+// exchange leaves. It knows nothing of the conversation being had over it.
+package provider
 
 import (
 	"context"
@@ -63,6 +67,11 @@ func sdkOptions(config ClientConfig) []option.RequestOption {
 // Config returns the resolved configuration.
 func (c *Client) Config() ClientConfig {
 	return c.config
+}
+
+// Model is the language model the client talks to, for an agent to run on.
+func (c *Client) Model() fantasy.LanguageModel {
+	return c.model
 }
 
 // toolCallsModel makes a turn that asks for tools a tool turn, whatever the

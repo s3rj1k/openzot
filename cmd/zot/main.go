@@ -41,6 +41,7 @@ import (
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
@@ -451,7 +452,7 @@ type runOptions struct {
 
 // orderEnv is what an order's prompt can know about the run beyond the order: the
 // tools it really has, where it is working, and what it is talking to.
-func orderEnv(cfg config.Config, client *loop.Client, opts loop.Options, workdir, sessionPath string) order.Env {
+func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, workdir, sessionPath string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
@@ -611,7 +612,7 @@ func toolOutputLimit(window, percent int) int {
 
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
+func resolve(cfg config.Config) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
 	if cfg.DefaultProvider == "" {
@@ -656,7 +657,7 @@ func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 	contextWindow := mc.Context
 	contentArray := mc.ContentArray
 
-	client, err := loop.NewClient(loop.ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: cfg.DefaultProvider,
 		Model:    model,
 		APIKey:   credential,

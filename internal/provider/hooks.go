@@ -1,4 +1,4 @@
-package loop
+package provider
 
 import (
 	"charm.land/fantasy"

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // toolCalls is one model turn asking for several tools at once, finishing with
@@ -226,7 +227,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 
 // bodyOfTheFirstRequest runs one turn against a server that keeps what it was
 // sent, with the given model settings.
-func bodyOfTheFirstRequest(t *testing.T, tweak func(*ClientConfig)) map[string]any {
+func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map[string]any {
 	t.Helper()
 
 	var body map[string]any
@@ -243,10 +244,10 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*ClientConfig)) map[string]a
 
 	t.Cleanup(server.Close)
 
-	config := ClientConfig{Provider: "custom", Model: "test-model", APIKey: "k", BaseURL: server.URL}
+	config := provider.ClientConfig{Provider: "custom", Model: "test-model", APIKey: "k", BaseURL: server.URL}
 	tweak(&config)
 
-	client, err := NewClient(config)
+	client, err := provider.NewClient(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*ClientConfig)) map[string]a
 // A model's reasoning_effort and extra_body go out with every request; a model
 // with neither sends a request without them.
 func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
-	body := bodyOfTheFirstRequest(t, func(c *ClientConfig) {
+	body := bodyOfTheFirstRequest(t, func(c *provider.ClientConfig) {
 		c.ReasoningEffort = "low"
 		c.ExtraBody = map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
 	})
@@ -277,7 +278,7 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 		t.Errorf("chat_template_kwargs = %v, want the extra body merged in", body["chat_template_kwargs"])
 	}
 
-	plain := bodyOfTheFirstRequest(t, func(*ClientConfig) {})
+	plain := bodyOfTheFirstRequest(t, func(*provider.ClientConfig) {})
 
 	for _, key := range []string{"reasoning_effort", "chat_template_kwargs"} {
 		if _, sent := plain[key]; sent {
@@ -314,4 +315,18 @@ func kindsOf(kinds []EventKind) []string {
 	}
 
 	return names
+}
+
+// A model calling a tool with no parameters often sends "" for the arguments;
+// the call is announced with an empty object, not with nothing.
+func TestAnEmptyInputIsAnEmptyObject(t *testing.T) {
+	for _, input := range []string{"", "  ", "{}"} {
+		if arguments := decodeInput(input); arguments == nil || len(arguments) != 0 {
+			t.Errorf("decodeInput(%q) = %v, want an empty object", input, arguments)
+		}
+	}
+
+	if arguments := decodeInput("[1]"); arguments != nil {
+		t.Errorf("input that is not an object decoded to %v, want nil", arguments)
+	}
 }

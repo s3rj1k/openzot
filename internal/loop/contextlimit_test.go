@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openzot/openzot/internal/provider"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,7 +17,7 @@ import (
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
-func contextLimitOnce(t *testing.T) (*Client, *int) {
+func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 	t.Helper()
 
 	requests := 0
@@ -44,7 +45,7 @@ func contextLimitOnce(t *testing.T) (*Client, *int) {
 
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -157,7 +158,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	engine.window = floor
 
 	// no stated window, so the only move is stepping the window down
-	if engine.narrowWindow(ContextLimit{}, func(Event) {}) {
+	if engine.narrowWindow(provider.ContextLimit{}, func(Event) {}) {
 		t.Errorf("the window narrowed to %d, below the %d floor", engine.window, floor)
 	}
 
@@ -175,7 +176,7 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if !engine.narrowWindow(ContextLimit{}, func(Event) {}) {
+	if !engine.narrowWindow(provider.ContextLimit{}, func(Event) {}) {
 		t.Fatal("expected the budget to narrow")
 	}
 
@@ -197,7 +198,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -252,7 +253,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -299,7 +300,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -357,7 +358,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := NewClient(ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -416,7 +417,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 
 	defer server.Close()
 
-	client, _ := NewClient(ClientConfig{
+	client, _ := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",

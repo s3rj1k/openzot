@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // Recorder writes a run into a session log as the engine hands it over.
@@ -105,7 +106,7 @@ func (r *Recorder) Result(result loop.Result) {
 		Reason:        string(result.Reason),
 		Message:       result.Message,
 		Error:         cause,
-		Failure:       loop.FailureOf(result.Err),
+		Failure:       provider.FailureOf(result.Err),
 		Code:          result.ExitCode(),
 		Iterations:    result.Budget.Iterations,
 		Calls:         result.Budget.Calls,

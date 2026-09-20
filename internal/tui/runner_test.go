@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // testWindow is the context window every test engine is given. A window is
@@ -27,7 +28,7 @@ const testWindow = 1_000_000
 // hanging on a spinner nobody will ever stop.
 
 // scriptedClient answers with the given SSE frame sets, one per turn.
-func scriptedClient(t *testing.T, turns ...[]string) *loop.Client {
+func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 	t.Helper()
 
 	turn := 0
@@ -51,7 +52,7 @@ func scriptedClient(t *testing.T, turns ...[]string) *loop.Client {
 
 	t.Cleanup(server.Close)
 
-	client, err := loop.NewClient(loop.ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -142,7 +143,7 @@ func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (r *recordingModel) View() string { return "" }
 
 // engineFor is an engine over the client for a run of "do the thing".
-func engineFor(t *testing.T, client *loop.Client, tweak ...func(*loop.Options)) *loop.Engine {
+func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Options)) *loop.Engine {
 	t.Helper()
 
 	options := loop.Options{
@@ -225,7 +226,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	defer server.Close()
 
-	client, err := loop.NewClient(loop.ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -310,7 +311,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := loop.NewClient(loop.ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",
@@ -372,7 +373,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	t.Cleanup(server.Close)
 
-	client, err := loop.NewClient(loop.ClientConfig{
+	client, err := provider.NewClient(provider.ClientConfig{
 		Provider: "custom",
 		Model:    "test-model",
 		APIKey:   "k",

@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // Kind identifies a record.
@@ -107,7 +108,7 @@ type Result struct {
 	// provider response. The raw exchange is what troubleshooting needs: an
 	// opaque upstream "ERROR" and a proper context-length message read the
 	// same in Error, but the refused request's size tells them apart.
-	Failure *loop.Failure `json:"failure,omitempty"`
+	Failure *provider.Failure `json:"failure,omitempty"`
 
 	Code int `json:"code"`
 

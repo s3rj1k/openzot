@@ -116,7 +116,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 		options = append(options, fantasy.WithProviderOptions(provider))
 	}
 
-	return fantasy.NewAgent(e.options.Client.model, options...)
+	return fantasy.NewAgent(e.options.Client.Model(), options...)
 }
 
 // providerOptions is what the model's config asks fantasy to send beyond the

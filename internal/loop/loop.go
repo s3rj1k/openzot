@@ -11,12 +11,13 @@ import (
 
 	"charm.land/fantasy"
 	"charm.land/fantasy/schema"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // Options configures a run.
 type Options struct {
 	// Client is the provider connection.
-	Client *Client
+	Client *provider.Client
 
 	// Instructions is the system prompt.
 	Instructions string
@@ -526,7 +527,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// remember the failure so an abort during the ensuing backoff still
 			// carries it - only a provider error, so a bare cancellation does
 			// not overwrite the exchange worth keeping
-			if IsProviderError(err) {
+			if provider.IsProviderError(err) {
 				lastFailure = err
 			}
 
@@ -543,7 +544,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			// a context-limit rejection is recoverable: narrow the window the
 			// thread is trimmed to and retry
-			if limit, ok := DetectContextLimit(err); ok && e.canContinue(budget) {
+			if limit, ok := provider.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
 				if e.narrowWindow(limit, emit) {
@@ -555,9 +556,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// than ours - which is why 429 is not IsRetriable. Waiting out the
 			// advised delay is the other half of that contract; without it a
 			// single throttle response ends an overnight run outright.
-			limited := IsRateLimited(err)
+			limited := provider.IsRateLimited(err)
 
-			if (limited || IsRetriable(err)) && e.canContinue(budget) {
+			if (limited || provider.IsRetriable(err)) && e.canContinue(budget) {
 				budget.spendContinuation()
 				retries++
 
@@ -574,7 +575,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 					// the advised delay is honoured, but the backoff stays a
 					// floor under it - "Retry-After: 0" must not turn into the
 					// instant-retry loop the backoff exists to prevent
-					advised, ok := RetryAfter(err)
+					advised, ok := provider.RetryAfter(err)
 					delay = rateLimitWait(advised, ok, delay)
 				}
 
@@ -811,7 +812,7 @@ func cycleDetail(heuristic string) string {
 //
 // Only the window changes. The conversation itself is untouched; the oldest
 // messages are forgotten to fit it on the next request.
-func (e *Engine) narrowWindow(limit ContextLimit, emit func(Event)) bool {
+func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
 	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
 		e.window = limit.SuggestedLimit
 

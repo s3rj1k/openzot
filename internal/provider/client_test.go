@@ -1,4 +1,4 @@
-package loop
+package provider
 
 import (
 	"context"
@@ -108,8 +108,8 @@ func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
 		t.Fatalf("calls = %+v", result.calls)
 	}
 
-	if arguments := decodeInput(result.calls[0].Input); arguments == nil || len(arguments) != 0 {
-		t.Errorf("arguments = %v, want an empty object", arguments)
+	if input := result.calls[0].Input; input != "" && input != "{}" {
+		t.Errorf("input = %q, want empty or an empty object", input)
 	}
 }
 
