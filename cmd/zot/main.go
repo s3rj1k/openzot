@@ -39,6 +39,7 @@ import (
 
 	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/config"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/provider"
@@ -501,7 +502,7 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 
 	opts.Client = client
 	opts.Instructions = prompt
-	opts.Messages = []loop.Message{{Type: loop.TypeUser, Text: taskKickoff}}
+	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: taskKickoff}}
 
 	task := o.Objective
 
@@ -607,7 +608,7 @@ func toolOutputLimit(window, percent int) int {
 		percent = tools.DefaultOutputPercent
 	}
 
-	return loop.BytesForTokens(window * percent / 100)
+	return conversation.BytesForTokens(window * percent / 100)
 }
 
 // resolve turns a configuration into a provider client and the agent options a

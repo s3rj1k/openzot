@@ -2,6 +2,7 @@ package loop
 
 import (
 	"encoding/json"
+	"github.com/openzot/openzot/internal/conversation"
 	"math"
 	"os"
 	"testing"
@@ -12,7 +13,7 @@ import (
 // function, its arguments and the value it must return.
 //
 // The corpus was captured from an engine whose messages are open maps; zot's are
-// typed. So each record is first read into loop.Message, and a record whose shape
+// typed. So each record is first read into conversation.Message, and a record whose shape
 // the typed model cannot express - a message field zot has no place for, a
 // recorded usage, an option the port turned into a constant - is counted and
 // skipped rather than bent to fit. The floors in TestCorpus fail the suite if the
@@ -67,30 +68,30 @@ func loadCorpus(t *testing.T) corpusFile {
 // two to differ is one it cannot express.
 type argumentForms map[string]string
 
-func typedMessage(raw map[string]any, forms argumentForms) (Message, bool) {
+func typedMessage(raw map[string]any, forms argumentForms) (conversation.Message, bool) {
 	for key := range raw {
 		switch key {
 		case "type", "text", "meta":
 		default:
-			return Message{}, false
+			return conversation.Message{}, false
 		}
 	}
 
-	var message Message
+	var message conversation.Message
 
 	if value, present := raw["type"]; present {
 		kind, ok := value.(string)
 		if !ok {
-			return Message{}, false
+			return conversation.Message{}, false
 		}
 
-		message.Type = MessageType(kind)
+		message.Type = conversation.MessageType(kind)
 	}
 
 	if value, present := raw["text"]; present {
 		text, ok := value.(string)
 		if !ok {
-			return Message{}, false
+			return conversation.Message{}, false
 		}
 
 		message.Text = text
@@ -99,7 +100,7 @@ func typedMessage(raw map[string]any, forms argumentForms) (Message, bool) {
 	if meta, present := raw["meta"]; present {
 		activity, ok := typedActivity(meta, forms)
 		if !ok {
-			return Message{}, false
+			return conversation.Message{}, false
 		}
 
 		message.Activity = activity
@@ -108,7 +109,7 @@ func typedMessage(raw map[string]any, forms argumentForms) (Message, bool) {
 	return message, true
 }
 
-func typedActivity(meta any, forms argumentForms) (*Activity, bool) {
+func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool) {
 	fields, ok := meta.(map[string]any)
 	if !ok || len(fields) != 1 {
 		return nil, false
@@ -154,7 +155,7 @@ func typedActivity(meta any, forms argumentForms) (*Activity, bool) {
 		return nil, false
 	}
 
-	activity := &Activity{Kind: ActivityKind(kind), Name: name}
+	activity := &conversation.Activity{Kind: conversation.ActivityKind(kind), Name: name}
 
 	form := "string"
 
@@ -180,7 +181,7 @@ func typedActivity(meta any, forms argumentForms) (*Activity, bool) {
 
 	result, hasResult := function["result"]
 
-	if hasResult != (activity.Kind == ActivityResponse) {
+	if hasResult != (activity.Kind == conversation.ActivityResponse) {
 		return nil, false
 	}
 
@@ -189,7 +190,7 @@ func typedActivity(meta any, forms argumentForms) (*Activity, bool) {
 	return activity, true
 }
 
-func typedMessages(t *testing.T, raw json.RawMessage) ([]Message, bool) {
+func typedMessages(t *testing.T, raw json.RawMessage) ([]conversation.Message, bool) {
 	t.Helper()
 
 	var maps []map[string]any
@@ -198,7 +199,7 @@ func typedMessages(t *testing.T, raw json.RawMessage) ([]Message, bool) {
 		t.Fatalf("decode messages: %v", err)
 	}
 
-	messages := make([]Message, 0, len(maps))
+	messages := make([]conversation.Message, 0, len(maps))
 	forms := argumentForms{}
 
 	for _, entry := range maps {

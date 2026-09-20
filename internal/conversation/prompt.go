@@ -1,49 +1,6 @@
-package loop
+package conversation
 
 import "charm.land/fantasy"
-
-// EventKind identifies what happened.
-type EventKind string
-
-const (
-	EventIteration      EventKind = "iteration"
-	EventToken          EventKind = "token"
-	EventReasoningToken EventKind = "reasoningToken"
-	EventMessage        EventKind = "message"
-	EventToolCallStart  EventKind = "toolCallStart"
-	EventToolCallEnd    EventKind = "toolCallEnd"
-	EventToolCallError  EventKind = "toolCallError"
-	EventRetry          EventKind = "retry"
-	EventRunaway        EventKind = "runaway"
-	EventNotice         EventKind = "notice"
-	EventUsage          EventKind = "usage"
-)
-
-// Event is emitted as a run progresses.
-type Event struct {
-	Kind      EventKind
-	Text      string
-	Tool      string
-	Iteration int
-
-	// MessageType and Activity describe a completed message.
-	MessageType MessageType
-	Activity    *Activity
-
-	// Args are a tool call's decoded arguments; Result is what it returned.
-	Args   map[string]any
-	Result any
-
-	// InputTokens and OutputTokens carry the run's cumulative provider-reported
-	// token usage on an EventUsage.
-	InputTokens  int
-	OutputTokens int
-
-	// Failure is the provider error behind an EventRetry, so a consumer can
-	// persist the failing exchange the moment it happens rather than waiting
-	// for the run to end - which a kill would never reach.
-	Failure error
-}
 
 // toPrompt renders the conversation into the prompt a model call carries.
 //
@@ -51,7 +8,7 @@ type Event struct {
 // assistant turn carrying a tool call, and a response half becomes a tool
 // message referencing the same id. Providers validate that pairing, so a
 // response whose request was trimmed away is dropped rather than sent.
-func toPrompt(messages []Message) fantasy.Prompt {
+func ToPrompt(messages []Message) fantasy.Prompt {
 	var (
 		prompt  fantasy.Prompt
 		pending = map[string]bool{}

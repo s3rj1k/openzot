@@ -2,6 +2,7 @@ package loop
 
 import (
 	"encoding/json"
+	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 )
 
@@ -48,16 +49,6 @@ func safeStringify(value any) string {
 	return string(encoded)
 }
 
-// output is what a response reports back, for comparison: the failure if there
-// was one, otherwise the result.
-func (a *Activity) output() any {
-	if a.Failure != "" {
-		return map[string]any{"error": a.Failure}
-	}
-
-	return a.Result
-}
-
 // hasRepeatedSuffix reports whether the conversation ends in a repeating block
 // of messages - the plainest form of a loop, where the model and its context
 // cycle through the same exchange verbatim.
@@ -69,7 +60,7 @@ func (a *Activity) output() any {
 // It requires the repeats to be byte-identical and adjacent, which is its
 // blind spot: one interleaved message - a reasoning turn between tool calls -
 // breaks the run. hasRepeatedResultRun covers that case.
-func hasRepeatedSuffix(messages []Message) bool {
+func hasRepeatedSuffix(messages []conversation.Message) bool {
 	if len(messages) < cycleMinPatternLength*cycleMinRepetitions {
 		return false
 	}
@@ -113,7 +104,7 @@ func equalStrings(a, b []string) bool {
 
 // activityTailEntry is one tool-call activity reduced to its identity.
 type activityTailEntry struct {
-	kind   ActivityKind
+	kind   conversation.ActivityKind
 	name   string
 	input  string
 	output string
@@ -133,13 +124,13 @@ type activityTailEntry struct {
 //
 // A request whose repeats produce genuinely different outputs is spared: polling
 // an endpoint until it changes is progress, not a loop.
-func hasRepeatedActivityTail(messages []Message) bool {
+func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
 
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
 
-		if message.Type != TypeActivity || message.Activity == nil {
+		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			break
 		}
 
@@ -151,8 +142,8 @@ func hasRepeatedActivityTail(messages []Message) bool {
 			input: safeStringify(activity.Arguments),
 		}
 
-		if activity.Kind == ActivityResponse {
-			entry.output = safeStringify(activity.output())
+		if activity.Kind == conversation.ActivityResponse {
+			entry.output = safeStringify(activity.Output())
 			entry.hasOutput = true
 		}
 
@@ -170,11 +161,11 @@ func hasRepeatedActivityTail(messages []Message) bool {
 	var requestInputs, responseOutputs []string
 
 	for _, entry := range tail {
-		if entry.kind == ActivityRequest {
+		if entry.kind == conversation.ActivityRequest {
 			requestInputs = append(requestInputs, entry.input)
 		}
 
-		if entry.kind == ActivityResponse {
+		if entry.kind == conversation.ActivityResponse {
 			responseOutputs = append(responseOutputs, entry.output)
 		}
 	}
@@ -207,7 +198,7 @@ func hasRepeatedActivityTail(messages []Message) bool {
 	for index := 0; index < len(tail)-1; index++ {
 		request, response := tail[index], tail[index+1]
 
-		if request.kind != ActivityRequest || response.kind != ActivityResponse || request.name != response.name {
+		if request.kind != conversation.ActivityRequest || response.kind != conversation.ActivityResponse || request.name != response.name {
 			continue
 		}
 
@@ -265,26 +256,26 @@ func distinct(values []string) int {
 //
 // Synthetic "_"-prefixed activities are skipped, so a notice injected to nudge
 // the model out of a loop cannot break the run and mask the loop.
-func hasRepeatedResultRun(messages []Message) bool {
+func hasRepeatedResultRun(messages []conversation.Message) bool {
 	var signatures []string
 
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
 
-		if message.Type != TypeActivity || message.Activity == nil {
+		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			continue
 		}
 
 		activity := message.Activity
 
-		if activity.Kind != ActivityResponse || strings.HasPrefix(activity.Name, "_") {
+		if activity.Kind != conversation.ActivityResponse || strings.HasPrefix(activity.Name, "_") {
 			continue
 		}
 
 		signatures = append(signatures, safeStringify([]any{
 			activity.Name,
 			safeStringify(activity.Arguments),
-			safeStringify(activity.output()),
+			safeStringify(activity.Output()),
 		}))
 
 		// measured from the newest backwards, so once the window is full the
@@ -315,14 +306,14 @@ func hasRepeatedResultRun(messages []Message) bool {
 // model's scratchpad and activity carries tool output; both are legitimately
 // repetitive - enumerations, grids, table rows - and neither is the answer the
 // user sees.
-func hasRepeatedMessageTextRun(messages []Message) bool {
+func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
 	start := len(messages) - 5
 	if start < 0 {
 		start = 0
 	}
 
 	for _, message := range messages[start:] {
-		if message.Type == TypeReasoning || message.Type == TypeActivity {
+		if message.Type == conversation.TypeReasoning || message.Type == conversation.TypeActivity {
 			continue
 		}
 
@@ -337,7 +328,7 @@ func hasRepeatedMessageTextRun(messages []Message) bool {
 // cycleHeuristics is ordered: the first to fire is the one reported.
 var cycleHeuristics = []struct {
 	name   string
-	detect func([]Message) bool
+	detect func([]conversation.Message) bool
 }{
 	{"repeated_suffix", hasRepeatedSuffix},
 	{"repeated_activity_tail", hasRepeatedActivityTail},
@@ -347,7 +338,7 @@ var cycleHeuristics = []struct {
 
 // describeCycle names the first heuristic to fire, or returns the empty string
 // when the conversation is progressing.
-func describeCycle(messages []Message) string {
+func describeCycle(messages []conversation.Message) string {
 	for _, heuristic := range cycleHeuristics {
 		if heuristic.detect(messages) {
 			return heuristic.name

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 	"net/http"
 	"net/http/httptest"
@@ -59,17 +60,17 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 }
 
 // longConversation builds enough history to be worth trimming.
-func longConversation(turns int) []Message {
-	messages := make([]Message, 0, turns)
+func longConversation(turns int) []conversation.Message {
+	messages := make([]conversation.Message, 0, turns)
 
 	for index := 0; index < turns; index++ {
-		kind := TypeUser
+		kind := conversation.TypeUser
 
 		if index%2 == 1 {
-			kind = TypeBot
+			kind = conversation.TypeBot
 		}
 
-		messages = append(messages, Message{
+		messages = append(messages, conversation.Message{
 			Type: kind,
 			Text: fmt.Sprintf("turn %d: %s", index, strings.Repeat("padding ", 200)),
 		})
@@ -265,7 +266,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:       client,
-		Messages:     []Message{{Type: TypeUser, Text: "go"}},
+		Messages:     []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		RetryBackoff: -1, // the retry itself is under test, not its pacing
 	})
 	if err != nil {
@@ -312,7 +313,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   client,
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

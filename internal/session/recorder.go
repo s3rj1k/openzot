@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -57,7 +58,7 @@ func (r *Recorder) wrote(err error) {
 // whole of it and writes the tail it has not seen. Called once with the messages
 // a run is seeded with, it records them ahead of the run, so a session that dies
 // in its first turn still says what it was asked to do.
-func (r *Recorder) Conversation(messages []loop.Message) {
+func (r *Recorder) Conversation(messages []conversation.Message) {
 	for r.recorded < len(messages) {
 		r.wrote(r.writer.Message(messages[r.recorded]))
 

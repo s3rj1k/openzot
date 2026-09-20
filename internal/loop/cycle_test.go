@@ -1,6 +1,9 @@
 package loop
 
-import "testing"
+import (
+	"github.com/openzot/openzot/internal/conversation"
+	"testing"
+)
 
 // Cases the corpus cannot carry. See notPortableCases in divergence_test.go for
 // which captured records these stand in for.
@@ -20,20 +23,20 @@ func cyclicValue() map[string]any {
 }
 
 // cycleResponse is a tool result as the conversation holds it.
-func cycleResponse(name, arguments string, result any) Message {
-	return Message{
-		Type:     TypeActivity,
-		Activity: &Activity{Kind: ActivityResponse, ID: "call", Name: name, Arguments: arguments, Result: result},
+func cycleResponse(name, arguments string, result any) conversation.Message {
+	return conversation.Message{
+		Type:     conversation.TypeActivity,
+		Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "call", Name: name, Arguments: arguments, Result: result},
 	}
 }
 
 func TestCycleCircularResult(t *testing.T) {
 	cyclic := cycleResponse("search", `{"q":"same"}`, cyclicValue())
 
-	messages := []Message{
-		{Type: TypeUser, Text: "A"},
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "A"},
 		cyclic,
-		{Type: TypeUser, Text: "A"},
+		{Type: conversation.TypeUser, Text: "A"},
 		cyclic,
 	}
 
@@ -50,7 +53,7 @@ func TestCycleCircularResult(t *testing.T) {
 }
 
 func TestRepeatedResultRunCircularResult(t *testing.T) {
-	messages := []Message{
+	messages := []conversation.Message{
 		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
 		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
 		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
@@ -63,7 +66,7 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 	// a genuinely different result must still break the run, even alongside a
 	// cyclic one
 
-	mixed := []Message{
+	mixed := []conversation.Message{
 		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
 		cycleResponse("search", `{"q":"same"}`, cyclicValue()),
 		cycleResponse("search", `{"q":"same"}`, map[string]any{"records": []any{"something"}}),
@@ -77,11 +80,11 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 // TestDescribeAttributesTheHeuristic pins that attribution reports which check
 // fired, not merely that one did.
 func TestDescribeAttributesTheHeuristic(t *testing.T) {
-	messages := []Message{
-		{Type: TypeUser, Text: "hello"},
-		{Type: TypeBot, Text: "hi"},
-		{Type: TypeUser, Text: "hello"},
-		{Type: TypeBot, Text: "hi"},
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "hello"},
+		{Type: conversation.TypeBot, Text: "hi"},
+		{Type: conversation.TypeUser, Text: "hello"},
+		{Type: conversation.TypeBot, Text: "hi"},
 	}
 
 	if got, want := describeCycle(messages), "repeated_suffix"; got != want {

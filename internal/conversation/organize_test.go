@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 import (
 	"reflect"
@@ -378,7 +378,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 // The whole point, end to end: a history that trimming and interleaving have
 // mangled still renders into something a provider accepts.
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
-	chat := toPrompt([]Message{
+	chat := ToPrompt([]Message{
 		{Type: TypeInstructions, Text: "you are a coding agent"},
 		// this result's call fell outside the trimmed window
 		response("gone", "read", "{}", "old contents"),

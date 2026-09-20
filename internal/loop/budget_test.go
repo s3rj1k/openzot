@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -437,7 +438,7 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 }
 
 // containsText reports whether any message holds the given text.
-func containsText(messages []Message, want string) bool {
+func containsText(messages []conversation.Message, want string) bool {
 	for _, message := range messages {
 		if strings.Contains(message.Text, want) {
 			return true
@@ -448,7 +449,7 @@ func containsText(messages []Message, want string) bool {
 }
 
 // mentionsAFailure reports whether any tool result carries an error.
-func mentionsAFailure(messages []Message) bool {
+func mentionsAFailure(messages []conversation.Message) bool {
 	for _, message := range messages {
 		if message.Activity != nil && message.Activity.Failure != "" {
 			return true
@@ -459,16 +460,16 @@ func mentionsAFailure(messages []Message) bool {
 }
 
 // countActivities counts each half of the tool-call pairs.
-func countActivities(messages []Message) (requests, responses int) {
+func countActivities(messages []conversation.Message) (requests, responses int) {
 	for _, message := range messages {
 		if message.Activity == nil {
 			continue
 		}
 
 		switch message.Activity.Kind {
-		case ActivityRequest:
+		case conversation.ActivityRequest:
 			requests++
-		case ActivityResponse:
+		case conversation.ActivityResponse:
 			responses++
 		}
 	}
@@ -502,7 +503,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
 		RetryBackoff:     20 * time.Millisecond,
@@ -553,7 +554,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:           client,
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 5,
 		RetryBackoff:     time.Hour,
 	})
@@ -686,7 +687,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:     client,
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
@@ -768,7 +769,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
 		RetryBackoff:     20 * time.Millisecond,
@@ -849,7 +850,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 10,
 		MaxIterations:    20,
 		MaxSettles:       5,
@@ -932,7 +933,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 10,
 		MaxIterations:    20,
 		RetryBackoff:     base,
@@ -1054,7 +1055,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 2,
 		MaxIterations:    40,
 		MaxSettles:       5,
@@ -1098,7 +1099,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
 		RetryBackoff:     -1,
@@ -1164,7 +1165,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:   client,
 		Tools:    echoTool(&calls),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		// generous, so a consecutive bound cannot be what fires
 		MaxContinuations: 1_000,
 		MaxRecoveries:    recoveries,
@@ -1244,7 +1245,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           client,
 		Tools:            echoTool(&calls),
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 1,
 		MaxIterations:    100,
 		MaxCycles:        10_000,

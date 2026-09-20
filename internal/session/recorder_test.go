@@ -10,6 +10,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -26,10 +27,10 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 
 	recorder := NewRecorder(writer, nil)
 
-	recorder.Conversation([]loop.Message{
-		{Type: loop.TypeUser, Text: "add a health endpoint"},
-		{Type: loop.TypeReasoning, Text: "I should look at the router first,\nthen add the handler."},
-		{Type: loop.TypeBot, Text: "on it"},
+	recorder.Conversation([]conversation.Message{
+		{Type: conversation.TypeUser, Text: "add a health endpoint"},
+		{Type: conversation.TypeReasoning, Text: "I should look at the router first,\nthen add the handler."},
+		{Type: conversation.TypeBot, Text: "on it"},
 	})
 
 	records := readLog(t, path)
@@ -61,17 +62,17 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 
 	recorder := NewRecorder(writer, nil)
 
-	conversation := []loop.Message{{Type: loop.TypeUser, Text: "add a health endpoint"}}
+	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "add a health endpoint"}}
 
-	recorder.Conversation(conversation)
+	recorder.Conversation(messages)
 
 	recorder.Event(loop.Event{Kind: loop.EventToolCallStart, Tool: "shell", Text: "go test ./...", Iteration: 1})
 
-	conversation = append(conversation, loop.Message{
-		Type: loop.TypeActivity,
+	messages = append(messages, conversation.Message{
+		Type: conversation.TypeActivity,
 		Text: "ok",
-		Activity: &loop.Activity{
-			Kind:      loop.ActivityResponse,
+		Activity: &conversation.Activity{
+			Kind:      conversation.ActivityResponse,
 			ID:        "call_1",
 			Name:      "shell",
 			Arguments: `{"command":"go test ./..."}`,
@@ -82,7 +83,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	recorder.Result(loop.Result{
 		Reason:   loop.StopSettled,
 		Message:  "finished",
-		Messages: conversation,
+		Messages: messages,
 		Budget:   loop.Budget{Iterations: 3, Calls: 2, Cycles: 1, Settles: 1, InputTokens: 1200, OutputTokens: 340},
 	})
 
@@ -96,13 +97,13 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	}
 
 	// the type has to survive as the string the engine's own type names
-	if records[1].Message.Type != loop.TypeUser || records[3].Message.Type != loop.TypeActivity {
+	if records[1].Message.Type != conversation.TypeUser || records[3].Message.Type != conversation.TypeActivity {
 		t.Errorf("message types = %q, %q", records[1].Message.Type, records[3].Message.Type)
 	}
 
 	activity := records[3].Message.Activity
 
-	if activity == nil || activity.Kind != loop.ActivityResponse || activity.ID != "call_1" ||
+	if activity == nil || activity.Kind != conversation.ActivityResponse || activity.ID != "call_1" ||
 		activity.Name != "shell" || activity.Arguments != `{"command":"go test ./..."}` || activity.Result != "ok" {
 		t.Errorf("the call was not recorded whole: %+v", activity)
 	}
@@ -166,7 +167,7 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 
 	writer.Close()
 
-	recorder.Conversation([]loop.Message{{Type: loop.TypeUser, Text: "a"}})
+	recorder.Conversation([]conversation.Message{{Type: conversation.TypeUser, Text: "a"}})
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 	recorder.Result(loop.Result{})
 
@@ -243,16 +244,16 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	recorder := NewRecorder(writer, nil)
 
-	conversation := []loop.Message{{Type: loop.TypeUser, Text: "the original task"}, {Type: loop.TypeUser, Text: "carry on"}}
+	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "the original task"}, {Type: conversation.TypeUser, Text: "carry on"}}
 
-	recorder.Conversation(conversation)
-	recorder.Conversation(conversation)
+	recorder.Conversation(messages)
+	recorder.Conversation(messages)
 
-	conversation = append(conversation, loop.Message{Type: loop.TypeBot, Text: "ok"})
+	messages = append(messages, conversation.Message{Type: conversation.TypeBot, Text: "ok"})
 
-	recorder.Conversation(conversation)
+	recorder.Conversation(messages)
 
-	recorder.Result(loop.Result{Reason: loop.StopSettled, Messages: conversation})
+	recorder.Result(loop.Result{Reason: loop.StopSettled, Messages: messages})
 
 	var got []string
 
@@ -313,11 +314,11 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	NewRecorder(writer, nil).Conversation([]loop.Message{{
-		Type: loop.TypeActivity,
+	NewRecorder(writer, nil).Conversation([]conversation.Message{{
+		Type: conversation.TypeActivity,
 		Text: "ok",
-		Activity: &loop.Activity{
-			Kind: loop.ActivityResponse, ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`, Result: "out",
+		Activity: &conversation.Activity{
+			Kind: conversation.ActivityResponse, ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`, Result: "out",
 		},
 	}})
 

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // readLog reads a log the way anyone does: one JSON value per line. A line that
@@ -109,10 +109,10 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 	}
 
 	steps := []func() error{
-		func() error { return writer.Message(loop.Message{Type: "user", Text: "go"}) },
-		func() error { return writer.Message(loop.Message{Type: "reasoning", Text: "think\nabout\nit"}) },
+		func() error { return writer.Message(conversation.Message{Type: "user", Text: "go"}) },
+		func() error { return writer.Message(conversation.Message{Type: "reasoning", Text: "think\nabout\nit"}) },
 		func() error {
-			return writer.Message(loop.Message{Type: "activity", Activity: &loop.Activity{
+			return writer.Message(conversation.Message{Type: "activity", Activity: &conversation.Activity{
 				Kind: "request", ID: "c1", Name: "shell", Arguments: `{"command":"ls"}`,
 			}})
 		},
@@ -159,7 +159,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 		var err error
 
 		if i%2 == 0 {
-			err = writer.Message(loop.Message{Type: "bot", Text: fmt.Sprintf("message %d", i)})
+			err = writer.Message(conversation.Message{Type: "bot", Text: fmt.Sprintf("message %d", i)})
 		} else {
 			err = writer.Event(Event{Kind: "iteration", Iteration: i})
 		}
@@ -190,7 +190,7 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 
 	defer writer.Close()
 
-	if err := writer.Message(loop.Message{Type: "reasoning", Text: "the model's own words"}); err != nil {
+	if err := writer.Message(conversation.Message{Type: "reasoning", Text: "the model's own words"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +215,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = first.Message(loop.Message{Type: "user", Text: "first run"})
+	_ = first.Message(conversation.Message{Type: "user", Text: "first run"})
 	_ = first.Result(Result{Reason: "settled"})
 
 	before, _ := os.ReadFile(path)
@@ -225,7 +225,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 		t.Fatalf("second Open: %v", err)
 	}
 
-	_ = second.Message(loop.Message{Type: "user", Text: "second run"})
+	_ = second.Message(conversation.Message{Type: "user", Text: "second run"})
 	_ = second.Result(Result{Reason: "failed"})
 
 	after, _ := os.ReadFile(path)
@@ -253,7 +253,7 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ = first.Message(loop.Message{Type: "user", Text: "before the kill"})
+	_ = first.Message(conversation.Message{Type: "user", Text: "before the kill"})
 	_ = first.Close()
 
 	// what a kill mid-write leaves: half a record, no newline
@@ -341,7 +341,7 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 			for i := 0; i < each; i++ {
 				text := strings.Repeat(fmt.Sprintf("w%d-%d ", w, i), 40)
 
-				if err := writer.Message(loop.Message{Type: "bot", Text: text}); err != nil {
+				if err := writer.Message(conversation.Message{Type: "bot", Text: text}); err != nil {
 					t.Errorf("write: %v", err)
 				}
 			}
@@ -366,7 +366,7 @@ func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
 		t.Fatalf("Result: %v", err)
 	}
 
-	if err := writer.Message(loop.Message{Type: "user", Text: "too late"}); err == nil {
+	if err := writer.Message(conversation.Message{Type: "user", Text: "too late"}); err == nil {
 		t.Error("writing after the result must be an error, not a silent drop")
 	}
 
@@ -403,7 +403,7 @@ func TestAToolCallIsRecordedInFull(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	_ = writer.Message(loop.Message{Type: "activity", Activity: &loop.Activity{
+	_ = writer.Message(conversation.Message{Type: "activity", Activity: &conversation.Activity{
 		Kind: "response", ID: "call_1", Name: "shell", Arguments: `{"command":"go test ./..."}`, Result: "ok",
 	}})
 

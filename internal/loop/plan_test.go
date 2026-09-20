@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"fmt"
+	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
 )
@@ -10,10 +11,10 @@ import (
 const planArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"fix it","status":"in_progress"}]}`
 
 // planCall is the model calling its plan tool and being answered.
-func planCall(id, args, answer string) []Message {
-	return []Message{
-		activity(ActivityRequest, id, "tasks", args, nil),
-		activity(ActivityResponse, id, "tasks", args, answer),
+func planCall(id, args, answer string) []conversation.Message {
+	return []conversation.Message{
+		activity(conversation.ActivityRequest, id, "tasks", args, nil),
+		activity(conversation.ActivityResponse, id, "tasks", args, answer),
 	}
 }
 
@@ -42,7 +43,7 @@ func TestRepostedPlan(t *testing.T) {
 	engine := planEngine(t, Options{})
 
 	messages := append(planCall("a", `{"tasks":[]}`, "old plan"), planCall("b", planArgs, "the plan")...)
-	messages = append(messages, Message{Type: TypeUser, Text: "later"})
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: "later"})
 
 	t.Run("a plan that fell out of the window is posted again", func(t *testing.T) {
 		posted, ok := engine.repostedPlan(messages, 5)
@@ -52,7 +53,7 @@ func TestRepostedPlan(t *testing.T) {
 
 		call, result := posted[0].Activity, posted[1].Activity
 
-		if call.Kind != ActivityRequest || result.Kind != ActivityResponse || call.ID != result.ID {
+		if call.Kind != conversation.ActivityRequest || result.Kind != conversation.ActivityResponse || call.ID != result.ID {
 			t.Errorf("not a paired call and result: %+v %+v", call, result)
 		}
 
@@ -79,17 +80,17 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("no plan, nothing to post", func(t *testing.T) {
-		if _, ok := engine.repostedPlan([]Message{{Type: TypeUser, Text: "hi"}}, 1); ok {
+		if _, ok := engine.repostedPlan([]conversation.Message{{Type: conversation.TypeUser, Text: "hi"}}, 1); ok {
 			t.Error("a plan was invented")
 		}
 	})
 
 	t.Run("a refused call is not the plan", func(t *testing.T) {
-		refused := append([]Message(nil), messages[:4]...)
+		refused := append([]conversation.Message(nil), messages[:4]...)
 		refused = append(refused,
-			activity(ActivityRequest, "c", "tasks", `{"tasks":[]}`, nil),
-			Message{Type: TypeActivity, Activity: &Activity{Kind: ActivityResponse, ID: "c", Name: "tasks", Arguments: `{"tasks":[]}`, Failure: "tasks needs at least one task"}},
-			Message{Type: TypeUser, Text: "later"},
+			activity(conversation.ActivityRequest, "c", "tasks", `{"tasks":[]}`, nil),
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "c", Name: "tasks", Arguments: `{"tasks":[]}`, Failure: "tasks needs at least one task"}},
+			conversation.Message{Type: conversation.TypeUser, Text: "later"},
 		)
 
 		posted, ok := engine.repostedPlan(refused, 6)
@@ -99,7 +100,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("another tool is not the plan", func(t *testing.T) {
-		other := []Message{activity(ActivityResponse, "x", "shell", "{}", "out"), {Type: TypeUser, Text: "later"}}
+		other := []conversation.Message{activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: "later"}}
 
 		if _, ok := engine.repostedPlan(other, 1); ok {
 			t.Error("a shell result was taken for the plan")
@@ -119,23 +120,23 @@ func TestRepostedPlan(t *testing.T) {
 }
 
 // history is a plan, then n turns of tool work each costing about cost tokens.
-func history(n int, filler string) []Message {
-	messages := []Message{{Type: TypeUser, Text: "kickoff"}}
+func history(n int, filler string) []conversation.Message {
+	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "kickoff"}}
 	messages = append(messages, planCall("plan", planArgs, "the plan")...)
 
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("c%d", i)
 
 		messages = append(messages,
-			activity(ActivityRequest, id, "read", `{"path":"x"}`, nil),
-			activity(ActivityResponse, id, "read", `{"path":"x"}`, filler),
+			activity(conversation.ActivityRequest, id, "read", `{"path":"x"}`, nil),
+			activity(conversation.ActivityResponse, id, "read", `{"path":"x"}`, filler),
 		)
 	}
 
 	return messages
 }
 
-func starts(messages []Message) []int {
+func starts(messages []conversation.Message) []int {
 	// the plan is turn one, every pair after it another, and the next is coming
 	out := []int{0, 1}
 
@@ -255,8 +256,8 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 
 	// the next request forgets again, but the posted plan is well inside the window
 	messages = append(messages,
-		activity(ActivityRequest, "n", "read", `{"path":"y"}`, nil),
-		activity(ActivityResponse, "n", "read", `{"path":"y"}`, strings.Repeat("file content ", 60)),
+		activity(conversation.ActivityRequest, "n", "read", `{"path":"y"}`, nil),
+		activity(conversation.ActivityResponse, "n", "read", `{"path":"y"}`, strings.Repeat("file content ", 60)),
 	)
 
 	messages = engine.fitToWindow(messages, &forgotten, append(starts(messages[:size]), size, len(messages)), nil, func(Event) {})
@@ -296,7 +297,7 @@ func countNudges(result Result) int {
 	nudges := 0
 
 	for _, message := range result.Messages {
-		if message.Type == TypeUser && strings.Contains(message.Text, planNudge("tasks")) {
+		if message.Type == conversation.TypeUser && strings.Contains(message.Text, planNudge("tasks")) {
 			nudges++
 		}
 	}
@@ -346,7 +347,7 @@ func TestALongRunKeepsThePlanInView(t *testing.T) {
 	posted := 0
 
 	for _, message := range result.Messages {
-		if a := message.Activity; a != nil && a.Kind == ActivityRequest && a.Name == "tasks" && strings.HasPrefix(a.ID, "plan-") {
+		if a := message.Activity; a != nil && a.Kind == conversation.ActivityRequest && a.Name == "tasks" && strings.HasPrefix(a.ID, "plan-") {
 			posted++
 
 			if a.Arguments != planArgs {

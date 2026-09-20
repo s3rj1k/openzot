@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 // Token costs here are estimates, not counts. zot talks to providers whose
 // tokenizers are private, change independently, or differ from OpenAI's
@@ -22,7 +22,7 @@ const messageOverhead = 10
 // estimateTokens prices text at one token per three UTF-8 bytes, then adds 25%
 // headroom. Each division rounds up, because under-counting can make a provider
 // reject a request whereas over-counting merely trims a little early.
-func estimateTokens(text string) int {
+func EstimateTokens(text string) int {
 	if text == "" {
 		return 0
 	}
@@ -33,8 +33,8 @@ func estimateTokens(text string) int {
 }
 
 // estimateMessageTokens is a message's text cost plus its wire envelope.
-func estimateMessageTokens(text string) int {
-	return estimateTokens(text) + messageOverhead
+func EstimateMessageTokens(text string) int {
+	return EstimateTokens(text) + messageOverhead
 }
 
 // BytesForTokens is roughly how many bytes of text a number of tokens stands for,

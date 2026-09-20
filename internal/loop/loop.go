@@ -11,6 +11,7 @@ import (
 
 	"charm.land/fantasy"
 	"charm.land/fantasy/schema"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -23,7 +24,7 @@ type Options struct {
 	Instructions string
 
 	// Messages seeds the conversation.
-	Messages []Message
+	Messages []conversation.Message
 
 	// Tools the model may call.
 	Tools []fantasy.AgentTool
@@ -46,7 +47,7 @@ type Options struct {
 	// The slice handed over is the whole conversation as it then stands, not a
 	// delta. The engine only ever appends to it - what is sent on the wire is
 	// trimmed to the window, but the conversation itself is never rewritten.
-	OnConversation func([]Message)
+	OnConversation func([]conversation.Message)
 
 	// OnEvent, when set, sees every event alongside the function Run is given.
 	// It is for a sink that has to see the whole run whoever is watching it - a
@@ -119,45 +120,6 @@ type Options struct {
 	ContextWindow int
 }
 
-// MessageType identifies what a message is.
-//
-// A named type rather than a bare string: these values decide how a message is
-// rendered to the provider and whether the runaway backstop scans it. A typo in
-// a string literal would silently route a message down the wrong path - a system
-// prompt rendered as ordinary history, say - and nothing would report it.
-type MessageType string
-
-// The message types the loop understands.
-const (
-	// TypeUser is input from the operator, and the channel the loop injects its
-	// own notices on.
-	TypeUser MessageType = "user"
-
-	// TypeBot is the model's answer.
-	TypeBot MessageType = "bot"
-
-	// TypeReasoning is the model's scratchpad. Never replayed to the provider,
-	// and exempt from the runaway-text backstop.
-	TypeReasoning MessageType = "reasoning"
-
-	// TypeActivity is one half of a tool-call pair.
-	TypeActivity MessageType = "activity"
-
-	// TypeInstructions is system context - the instructions that shape the run.
-	// Always ordered ahead of everything else.
-	TypeInstructions MessageType = "instructions"
-)
-
-// Message is one entry in the conversation.
-type Message struct {
-	Type MessageType `json:"type"`
-	Text string      `json:"text"`
-
-	// Activity is the tool call this message carries, on a TypeActivity
-	// message. Nil on every other type.
-	Activity *Activity `json:"activity,omitempty"`
-}
-
 // Result is the outcome of a run.
 type Result struct {
 	// Reason is why the run ended.
@@ -167,7 +129,7 @@ type Result struct {
 	Message string
 
 	// Messages is the conversation as it ended.
-	Messages []Message
+	Messages []conversation.Message
 
 	// Budget is what the run spent.
 	Budget Budget
@@ -238,7 +200,7 @@ func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 		return 0
 	}
 
-	e.toolTokens = estimateTokens(string(encoded))
+	e.toolTokens = conversation.EstimateTokens(string(encoded))
 
 	return e.toolTokens
 }
@@ -422,7 +384,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		}
 	}
 
-	messages := append([]Message(nil), e.options.Messages...)
+	messages := append([]conversation.Message(nil), e.options.Messages...)
 
 	budget := Budget{}
 
@@ -487,7 +449,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		if e.options.PlanTool != "" && e.planEvery > 0 && budget.Iterations%e.planEvery == 0 && nudged != budget.Iterations {
 			nudged = budget.Iterations
 
-			messages = append(messages, Message{Type: TypeUser, Text: planNudge(e.options.PlanTool)})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: planNudge(e.options.PlanTool)})
 		}
 
 		// a failed call is retried from the same place: it is one turn, not two
@@ -617,7 +579,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				"answer cut off at the output limit; asking the model to continue (%d/%d)",
 				budget.Continuations, e.maxContinuations)})
 
-			messages = append(messages, Message{Type: TypeUser, Text: truncationNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: truncationNotice()})
 
 			continue
 		}
@@ -678,7 +640,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				"the model returned an empty turn; nudging it to continue (%d/%d)",
 				budget.Empties, e.maxEmpties)})
 
-			messages = append(messages, Message{Type: TypeUser, Text: settleNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: settleNotice()})
 
 			continue
 		}
@@ -697,7 +659,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			"the model stopped without recording an outcome; nudging it to settle (%d/%d)",
 			budget.Settles, e.maxSettles)})
 
-		messages = append(messages, Message{Type: TypeUser, Text: settleNotice()})
+		messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: settleNotice()})
 	}
 }
 
@@ -725,30 +687,30 @@ func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
 }
 
 // handOver gives the conversation as it stands to the OnConversation hook.
-func (e *Engine) handOver(messages []Message) {
+func (e *Engine) handOver(messages []conversation.Message) {
 	if e.options.OnConversation != nil {
 		e.options.OnConversation(messages)
 	}
 }
 
 // activityMessage renders one half of a tool-call pair.
-func activityMessage(kind ActivityKind, call fantasy.ToolCallContent, result any, failure string) Message {
-	activity := &Activity{
+func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallContent, result any, failure string) conversation.Message {
+	activity := &conversation.Activity{
 		Kind:      kind,
 		ID:        call.ToolCallID,
 		Name:      call.ToolName,
 		Arguments: call.Input,
 	}
 
-	if kind == ActivityResponse {
+	if kind == conversation.ActivityResponse {
 		activity.Result = result
 		activity.Failure = failure
 	}
 
 	// the text is what the model is shown; a request shows nothing, because the
 	// call itself is carried in the wire format's tool_calls field
-	return Message{
-		Type:     TypeActivity,
+	return conversation.Message{
+		Type:     conversation.TypeActivity,
 		Text:     activity.ResultText(),
 		Activity: activity,
 	}
@@ -756,7 +718,7 @@ func activityMessage(kind ActivityKind, call fantasy.ToolCallContent, result any
 
 // checkCycle looks for repetition and nudges the model, or stops the run once
 // nudging has failed enough times.
-func (e *Engine) checkCycle(messages []Message, budget *Budget) ([]Message, *Result) {
+func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
 	detected := describeCycle(messages)
 
 	if detected == "" {
@@ -778,7 +740,7 @@ func (e *Engine) checkCycle(messages []Message, budget *Budget) ([]Message, *Res
 
 	budget.Cycles++
 
-	return append(messages, Message{Type: TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
+	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
 }
 
 // cycleDetail turns a heuristic name into something the model can act on.
@@ -841,7 +803,7 @@ func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) boo
 // back in front of the model when forgetting has left it with too little to go
 // on. It returns the conversation, which has grown by the plan when that was
 // posted. forgotten is the run's offset into messages and only moves forward.
-func (e *Engine) fitToWindow(messages []Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []Message {
+func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
 	if !e.forgetOldest(messages, forgotten, tools, emit) {
 		return messages
 	}
@@ -884,16 +846,16 @@ func turnsHeld(turnStarts []int, forgotten int) int {
 
 // forgetOldest moves the offset forward as far as the window calls for, and
 // reports whether it moved.
-func (e *Engine) forgetOldest(messages []Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
+func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
 	// the system prompt and the tool schemas are sent on every request and are
 	// part of what fills the window
-	used := estimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
+	used := conversation.EstimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
 
 	for _, message := range messages[*forgotten:] {
-		used += messageCost(message)
+		used += conversation.Cost(message)
 	}
 
-	next := forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, messageCost)
+	next := conversation.Forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, conversation.Cost)
 	if next == *forgotten {
 		return false
 	}
@@ -910,7 +872,7 @@ func (e *Engine) forgetOldest(messages []Message, forgotten *int, tools []fantas
 // tool - as a fresh call and result to append to the conversation. It reports
 // false when there is no plan, or when the plan is still in the window and so
 // needs no help.
-func (e *Engine) repostedPlan(messages []Message, forgotten int) ([]Message, bool) {
+func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
 	if e.options.PlanTool == "" {
 		return nil, false
 	}
@@ -918,7 +880,7 @@ func (e *Engine) repostedPlan(messages []Message, forgotten int) ([]Message, boo
 	for index := len(messages) - 1; index >= 0; index-- {
 		activity := messages[index].Activity
 
-		if activity == nil || activity.Kind != ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
+		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
 			continue
 		}
 
@@ -928,12 +890,12 @@ func (e *Engine) repostedPlan(messages []Message, forgotten int) ([]Message, boo
 
 		id := fmt.Sprintf("plan-%d", len(messages))
 
-		call := Activity{Kind: ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
-		answer := Activity{Kind: ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
+		call := conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
+		answer := conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
 
-		return []Message{
-			{Type: TypeActivity, Activity: &call},
-			{Type: TypeActivity, Text: answer.ResultText(), Activity: &answer},
+		return []conversation.Message{
+			{Type: conversation.TypeActivity, Activity: &call},
+			{Type: conversation.TypeActivity, Text: answer.ResultText(), Activity: &answer},
 		}, true
 	}
 
@@ -942,8 +904,8 @@ func (e *Engine) repostedPlan(messages []Message, forgotten int) ([]Message, boo
 
 // buildRequest assembles the provider request from what the window still holds:
 // the conversation from the forgotten offset on.
-func (e *Engine) buildRequest(messages []Message, forgotten int) turnRequest {
-	chat := toPrompt(messages[forgotten:])
+func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) turnRequest {
+	chat := conversation.ToPrompt(messages[forgotten:])
 
 	// Forgetting takes the oldest first, which is the run's opening user message.
 	// A conversation with no user turn at all is invalid to strict providers:
@@ -1041,7 +1003,7 @@ func (e *Engine) toolDefinitions() []fantasy.Tool {
 	return tools
 }
 
-func (e *Engine) finish(messages []Message, budget Budget, reason StopReason, detail string, err error) Result {
+func (e *Engine) finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
 	return Result{
 		Reason:   reason,
 		Message:  detail,

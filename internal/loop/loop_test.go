@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -184,7 +185,7 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 3,
 
 		// disable the cycle guard so the iteration cap is what fires
@@ -206,7 +207,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxCalls:      2,
 		MaxIterations: 50,
 		MaxCycles:     1000,
@@ -224,7 +225,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 func TestEmptyTurnsAreBounded(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{stop()}),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxEmpties: 2,
 	})
 
@@ -243,7 +244,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 			[]string{text("half an answ"), truncated()},
 			[]string{settle("er, continued")},
 		),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
 	if result.Reason != StopSettled {
@@ -272,7 +273,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 func TestTruncationIsBounded(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:           stub(t, []string{text("x"), truncated()}),
-		Messages:         []Message{{Type: TypeUser, Text: "go"}},
+		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 2,
 	})
 
@@ -287,7 +288,7 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{"q":"same"}`)}),
 		Tools:         echoTool(&calls),
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 50,
 		MaxCycles:     1,
 	})
@@ -308,7 +309,7 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 			[]string{text("All done, the task is completed."), stop()},
 			[]string{tool("c9", SuccessTool, `{"summary":"really done"}`)},
 		),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
@@ -328,7 +329,7 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
@@ -348,13 +349,13 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 	settled := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c1", SuccessTool, `{"summary":"shipped it"}`)}),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
 	failed := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
@@ -374,7 +375,7 @@ func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 func TestSettleModeGivesUpEventually(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client:     stub(t, []string{text("I believe I am finished."), stop()}),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 2,
 	})
 
@@ -386,7 +387,7 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 func TestCancellationStopsTheRun(t *testing.T) {
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("hi"), stop()}),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -409,7 +410,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 			[]string{tool("c1", "missing", `{}`)},
 			[]string{settle("recovered")},
 		),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
 	if result.Reason != StopSettled {
@@ -440,7 +441,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 			[]string{settle("noted")},
 		),
 		Tools:    tools,
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
 	var reported bool
@@ -459,7 +460,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 func TestEventsAreEmitted(t *testing.T) {
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{text("hello"), tool("c1", SuccessTool, `{"summary":"done"}`)}),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -615,7 +616,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:        client,
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 1,
 	})
 	if err != nil {
@@ -709,13 +710,13 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	}
 
 	// an old user kickoff followed by enough tool-round bulk to evict it
-	messages := []Message{{Type: TypeUser, Text: "the kickoff"}}
+	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
 
 	for i := 0; i < 40; i++ {
 		id := fmt.Sprintf("c%d", i)
 		messages = append(messages,
-			Message{Type: TypeActivity, Activity: &Activity{Kind: ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
-			Message{Type: TypeActivity, Activity: &Activity{Kind: ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 200)}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 200)}},
 		)
 	}
 
@@ -752,9 +753,9 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 // reasoning, the words and the request are handed over before the handler runs,
 // not at the next iteration boundary the killed run never reaches.
 func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
-	var handed [][]Message
+	var handed [][]conversation.Message
 
-	var seenByHandler []Message
+	var seenByHandler []conversation.Message
 
 	tools := []fantasy.AgentTool{namedTool("echo", func(context.Context) (any, error) {
 		seenByHandler = handed[len(handed)-1]
@@ -771,9 +772,11 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 			},
 			[]string{settle("done")},
 		),
-		Tools:          tools,
-		ContextWindow:  testWindow,
-		OnConversation: func(messages []Message) { handed = append(handed, append([]Message(nil), messages...)) },
+		Tools:         tools,
+		ContextWindow: testWindow,
+		OnConversation: func(messages []conversation.Message) {
+			handed = append(handed, append([]conversation.Message(nil), messages...))
+		},
 	})
 
 	var got []string
@@ -788,7 +791,7 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 		t.Fatalf("the handler ran when only %v had been handed over", got)
 	}
 
-	if last := seenByHandler[len(seenByHandler)-1]; last.Activity == nil || last.Activity.Kind != ActivityRequest {
+	if last := seenByHandler[len(seenByHandler)-1]; last.Activity == nil || last.Activity.Kind != conversation.ActivityRequest {
 		t.Errorf("the request must be handed over with its turn, got %+v", last)
 	}
 }

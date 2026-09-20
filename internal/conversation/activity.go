@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 import "encoding/json"
 
@@ -84,6 +84,16 @@ func (a *Activity) IsPair(other *Activity) bool {
 	return a.Name == other.Name && a.Arguments == other.Arguments
 }
 
+// Output is what a response reports back, for comparison: the failure if there
+// was one, otherwise the result.
+func (a *Activity) Output() any {
+	if a.Failure != "" {
+		return map[string]any{"error": a.Failure}
+	}
+
+	return a.Result
+}
+
 // ResultText renders what the model is shown for a response.
 //
 // A failure is presented as a JSON object rather than bare prose so the model
@@ -93,7 +103,7 @@ func (a *Activity) ResultText() string {
 		return ""
 	}
 
-	value := a.output()
+	value := a.Output()
 
 	if value == nil {
 		return ""

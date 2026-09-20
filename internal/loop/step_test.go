@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -48,7 +49,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 			[3]string{"c2", SuccessTool, `{"summary":"all done"}`},
 		)}),
 		Tools:      []fantasy.AgentTool{countTool(&ran, "echo")},
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
@@ -76,7 +77,7 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 			[3]string{"c2", "echo", `{}`},
 		)}),
 		Tools:    []fantasy.AgentTool{countTool(&ran, "echo")},
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxCalls: 1,
 	})
 
@@ -105,7 +106,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 				[]string{settle("done")},
 			),
 			Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
-			Messages:      []Message{{Type: TypeUser, Text: "go"}},
+			Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 			MaxIterations: 5,
 		})
 
@@ -130,7 +131,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 			[]string{settle("done")},
 		),
 		Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 5,
 	})
 
@@ -149,9 +150,9 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 	result := run(t, Options{ContextWindow: testWindow,
 		Client: stub(t, []string{settle("carrying on")}),
-		Messages: []Message{
-			{Type: TypeUser, Text: "go"},
-			{Type: TypeBot, Text: "I began"},
+		Messages: []conversation.Message{
+			{Type: conversation.TypeUser, Text: "go"},
+			{Type: conversation.TypeBot, Text: "I began"},
 		},
 	})
 
@@ -169,7 +170,7 @@ func TestACallThatNeverReachedATool(t *testing.T) {
 			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
 			[]string{settle("noted")},
 		),
-		Messages:      []Message{{Type: TypeUser, Text: "go"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 5,
 	})
 
@@ -210,7 +211,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 				),
 				Tools:         []fantasy.AgentTool{countTool(&ran, "echo")},
 				Unrepaired:    test.unrepaired,
-				Messages:      []Message{{Type: TypeUser, Text: "go"}},
+				Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 				MaxIterations: 5,
 			})
 
@@ -252,7 +253,7 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 		t.Fatal(err)
 	}
 
-	run(t, Options{ContextWindow: testWindow, Client: client, Messages: []Message{{Type: TypeUser, Text: "go"}}})
+	run(t, Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
 
 	if body == nil {
 		t.Fatal("the server saw no request")
@@ -293,7 +294,7 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 
 	engine, err := New(Options{ContextWindow: testWindow,
 		Client:   stub(t, []string{settle("hi")}),
-		Messages: []Message{{Type: TypeUser, Text: "go"}},
+		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		OnEvent:  func(event Event) { sunk = append(sunk, event.Kind) },
 	})
 	if err != nil {

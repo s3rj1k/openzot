@@ -11,6 +11,7 @@ import (
 	"charm.land/fantasy/jsonrepair"
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // errRunaway is what the streaming guard ends a degenerate turn with. It is
@@ -51,7 +52,7 @@ type turnRequest struct {
 // iteration.
 type step struct {
 	engine   *Engine
-	messages *[]Message
+	messages *[]conversation.Message
 	budget   *Budget
 	emit     func(Event)
 
@@ -79,7 +80,7 @@ type step struct {
 	started map[string]bool
 }
 
-func (s *step) reset(messages *[]Message, budget *Budget, emit func(Event)) {
+func (s *step) reset(messages *[]conversation.Message, budget *Budget, emit func(Event)) {
 	minChars := RunawayGuardMinChars
 
 	*s = step{
@@ -165,8 +166,7 @@ func (e *Engine) runStep(
 	agent fantasy.Agent,
 	state *step,
 	call turnRequest,
-	messages *[]Message,
-	budget *Budget,
+	messages *[]conversation.Message, budget *Budget,
 	emit func(Event),
 ) (turnResult, error) {
 	// A turn can end while the provider is still streaming - the runaway guard
@@ -279,15 +279,15 @@ func (s *step) flush() {
 	s.flushed = true
 
 	if reasoning := s.reasoning.String(); reasoning != "" {
-		*s.messages = append(*s.messages, Message{Type: TypeReasoning, Text: reasoning})
+		*s.messages = append(*s.messages, conversation.Message{Type: conversation.TypeReasoning, Text: reasoning})
 
-		s.emit(Event{Kind: EventMessage, MessageType: TypeReasoning, Text: reasoning})
+		s.emit(Event{Kind: EventMessage, MessageType: conversation.TypeReasoning, Text: reasoning})
 	}
 
 	if text := s.text.String(); text != "" {
-		*s.messages = append(*s.messages, Message{Type: TypeBot, Text: text})
+		*s.messages = append(*s.messages, conversation.Message{Type: conversation.TypeBot, Text: text})
 
-		s.emit(Event{Kind: EventMessage, MessageType: TypeBot, Text: text})
+		s.emit(Event{Kind: EventMessage, MessageType: conversation.TypeBot, Text: text})
 	}
 }
 
@@ -346,7 +346,7 @@ func (s *step) callOf(id string) fantasy.ToolCallContent {
 // a shell call can outlast the run, and a run killed inside one must still leave
 // what the model thought and asked for.
 func (s *step) begin(call fantasy.ToolCallContent, handOver bool) {
-	*s.messages = append(*s.messages, activityMessage(ActivityRequest, call, nil, ""))
+	*s.messages = append(*s.messages, activityMessage(conversation.ActivityRequest, call, nil, ""))
 
 	s.emit(Event{Kind: EventToolCallStart, Tool: call.ToolName, Args: decodeInput(call.Input), Text: call.Input})
 
@@ -361,14 +361,14 @@ func (s *step) end(call fantasy.ToolCallContent, output, failure string) {
 	if failure != "" {
 		s.emit(Event{Kind: EventToolCallError, Tool: call.ToolName, Text: failure})
 
-		*s.messages = append(*s.messages, activityMessage(ActivityResponse, call, nil, failure))
+		*s.messages = append(*s.messages, activityMessage(conversation.ActivityResponse, call, nil, failure))
 
 		return
 	}
 
 	s.emit(Event{Kind: EventToolCallEnd, Tool: call.ToolName, Result: output})
 
-	*s.messages = append(*s.messages, activityMessage(ActivityResponse, call, output, ""))
+	*s.messages = append(*s.messages, activityMessage(conversation.ActivityResponse, call, output, ""))
 }
 
 // guardedTool is a tool as fantasy runs it, with the engine looking on: it is

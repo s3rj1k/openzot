@@ -13,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -149,7 +150,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 	options := loop.Options{
 		Client:        client,
 		ContextWindow: testWindow,
-		Messages:      []loop.Message{{Type: loop.TypeUser, Text: "do the thing"}},
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "do the thing"}},
 
 		// a persistent outage is retried with a growing backoff; these tests are
 		// about what reaches the screen, not about waiting an outage out

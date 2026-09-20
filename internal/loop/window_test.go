@@ -3,29 +3,15 @@ package loop
 import (
 	"context"
 	"fmt"
+	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
 )
 
-// costs prices a message by the length of its text, so a test states its window
-// in plain numbers.
-func costs(message Message) int { return len(message.Text) }
-
-// ten returns n messages costing ten each.
-func ten(n int) []Message {
-	messages := make([]Message, n)
-
-	for i := range messages {
-		messages[i] = Message{Type: TypeUser, Text: strings.Repeat("x", 10)}
-	}
-
-	return messages
-}
-
 // requestFor is what the engine would send for a conversation it has not seen
 // before: forgetting applied from scratch, then the request built. It also
 // returns how many messages were forgotten.
-func requestFor(engine *Engine, messages []Message) (turnRequest, int) {
+func requestFor(engine *Engine, messages []conversation.Message) (turnRequest, int) {
 	forgotten := 0
 
 	messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
@@ -33,71 +19,15 @@ func requestFor(engine *Engine, messages []Message) (turnRequest, int) {
 	return engine.buildRequest(messages, forgotten), forgotten
 }
 
-// The window here is 1000 with the marks at 50% and 90%: 500 and 900.
-func TestForget(t *testing.T) {
-	tests := []struct {
-		name string
-		n    int // messages, ten each
-		from int // already forgotten
-		used int
-		want int
-	}{
-		{"below the soft mark nothing goes", 40, 0, 499, 0},
-		{"at the soft mark one goes", 40, 0, 500, 1},
-		{"in the soft zone still only one", 40, 0, 899, 1},
-		{"a forgotten offset carries on from where it was", 40, 5, 700, 6},
-		{"at the hard mark it goes until under it", 40, 0, 950, 6},
-		{"one drop that lands exactly on the hard mark is not enough", 40, 0, 910, 2},
-		{"way over the hard mark goes on until under", 40, 0, 1100, 21},
-		{"the floor caps it even when still over the hard mark", 40, 0, 1400, 38},
-		{"the newest two are never forgotten", 4, 0, 5000, 2},
-		{"a conversation shorter than the floor keeps everything", 2, 0, 5000, 0},
-		{"an empty conversation", 0, 0, 5000, 0},
-		{"an offset already past the floor does not move back", 4, 3, 5000, 3},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs); got != test.want {
-				t.Errorf("forget = %d, want %d", got, test.want)
-			}
-		})
-	}
-}
-
-// One oversized newest message is kept, whatever it costs, and what came
-// before it is what goes.
-func TestForgetSpendsTheOldestFirstAndKeepsAnOversizedNewest(t *testing.T) {
-	messages := append(ten(3), Message{Type: TypeUser, Text: strings.Repeat("y", 5000)})
-
-	if got := forget(messages, 0, 5030, 1000, 50, 90, costs); got != 2 {
-		t.Errorf("forget = %d, want the two oldest gone and the newest two kept", got)
-	}
-}
-
-// A tool call carries its cost outside the text. Priced by text alone, a request
-// half would look free and a large write would slip past the window.
-func TestMessageCostCountsTheToolCall(t *testing.T) {
-	bare := Message{Type: TypeActivity}
-
-	call := Message{Type: TypeActivity, Activity: &Activity{
-		Kind: ActivityRequest, ID: "c1", Name: "write", Arguments: strings.Repeat("x", 900),
-	}}
-
-	if messageCost(call) <= messageCost(bare)+200 {
-		t.Errorf("a request's arguments must be priced: %d vs %d", messageCost(call), messageCost(bare))
-	}
-}
-
 // The heuristics must see what the engine actually records: a model repeating one
 // call and getting one answer is a loop, however it words the turns in between.
 func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
-	var messages []Message
+	var messages []conversation.Message
 
 	for range 4 {
 		messages = append(messages,
-			activity(ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
-			activity(ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, "same"),
+			activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
+			activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, "same"),
 		)
 	}
 
@@ -106,12 +36,12 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 	}
 
 	// a different answer each time is progress
-	var polling []Message
+	var polling []conversation.Message
 
 	for _, answer := range []string{"a", "b", "c", "d"} {
 		polling = append(polling,
-			activity(ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
-			activity(ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, answer),
+			activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
+			activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, answer),
 		)
 	}
 
@@ -132,7 +62,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	}
 
 	var (
-		messages  = []Message{{Type: TypeUser, Text: "the kickoff"}}
+		messages  = []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
 		forgotten int
 		firstLoss = -1
 		hard      = window * DefaultContextHard / 100
@@ -142,9 +72,9 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		id := fmt.Sprintf("c%d", round)
 
 		messages = append(messages,
-			Message{Type: TypeActivity, Activity: &Activity{Kind: ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
-			Message{Type: TypeActivity, Text: strings.Repeat("line of file content ", 60),
-				Activity: &Activity{Kind: ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 60)}},
+			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
+			conversation.Message{Type: conversation.TypeActivity, Text: strings.Repeat("line of file content ", 60),
+				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 60)}},
 		)
 
 		before := forgotten
@@ -160,10 +90,10 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		}
 
 		// what the request carries is what is left after the offset
-		used := estimateTokens(engine.instructions())
+		used := conversation.EstimateTokens(engine.instructions())
 
 		for _, message := range messages[forgotten:] {
-			used += messageCost(message)
+			used += conversation.Cost(message)
 		}
 
 		if used >= hard {
@@ -221,9 +151,9 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 	for _, message := range result.Messages {
 		if message.Activity != nil {
 			switch message.Activity.Kind {
-			case ActivityRequest:
+			case conversation.ActivityRequest:
 				requests++
-			case ActivityResponse:
+			case conversation.ActivityResponse:
 				responses++
 			}
 		}

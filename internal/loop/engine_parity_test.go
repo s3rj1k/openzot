@@ -2,6 +2,7 @@ package loop
 
 import (
 	"fmt"
+	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
 )
@@ -19,11 +20,11 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 
 	// [A B A B] - the last pair repeats the previous pair, which the repeated-suffix
 	// heuristic flags as a cycle
-	cyclic := []Message{
-		{Type: TypeBot, Text: "let me try that"},
-		{Type: TypeUser, Text: "ok"},
-		{Type: TypeBot, Text: "let me try that"},
-		{Type: TypeUser, Text: "ok"},
+	cyclic := []conversation.Message{
+		{Type: conversation.TypeBot, Text: "let me try that"},
+		{Type: conversation.TypeUser, Text: "ok"},
+		{Type: conversation.TypeBot, Text: "let me try that"},
+		{Type: conversation.TypeUser, Text: "ok"},
 	}
 
 	if next, stop := engine.checkCycle(cyclic, budget); stop != nil || next == nil {
@@ -35,9 +36,9 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	}
 
 	// a clean, non-cyclic round breaks the run and must zero the counter
-	clean := []Message{
-		{Type: TypeUser, Text: "now do something different"},
-		{Type: TypeBot, Text: "sure, here is a fresh approach"},
+	clean := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "now do something different"},
+		{Type: conversation.TypeBot, Text: "sure, here is a fresh approach"},
 	}
 
 	if next, stop := engine.checkCycle(clean, budget); stop != nil || next != nil {
@@ -65,11 +66,11 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	huge := strings.Repeat("lorem ipsum dolor sit amet consectetur adipiscing ", 2000)
 	args := fmt.Sprintf(`{"content":%q}`, huge)
 
-	messages := []Message{
+	messages := []conversation.Message{
 		request("big", "write", args),
 		response("big", "write", args, "ok"),
-		{Type: TypeUser, Text: "a short recent question"},
-		{Type: TypeBot, Text: "a short recent answer"},
+		{Type: conversation.TypeUser, Text: "a short recent question"},
+		{Type: conversation.TypeBot, Text: "a short recent answer"},
 	}
 
 	req, forgotten := requestFor(engine, messages)
@@ -161,7 +162,7 @@ func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 			[]string{settle("done")},               // settling ends the run
 		),
 		Tools:      echoTool(new(int)),
-		Messages:   []Message{{Type: TypeUser, Text: "go"}},
+		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxEmpties: 3,
 	})
 

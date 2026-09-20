@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 import (
 	"testing"
@@ -49,7 +49,7 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 		{Type: TypeBot, Text: "there is a README"},
 	}
 
-	prompt := toPrompt(messages)
+	prompt := ToPrompt(messages)
 
 	if len(prompt) != 4 {
 		t.Fatalf("got %d messages, want 4: %+v", len(prompt), prompt)
@@ -90,7 +90,7 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 		activity(ActivityResponse, "c1", "shell", `{}`, "output"),
 	}
 
-	for _, message := range toPrompt(messages) {
+	for _, message := range ToPrompt(messages) {
 		if message.Role == fantasy.MessageRoleTool {
 			t.Fatalf("an orphaned tool result must be dropped: %+v", message)
 		}
@@ -105,7 +105,7 @@ func TestToPromptDropsDanglingRequest(t *testing.T) {
 		activity(ActivityRequest, "c1", "shell", `{}`, nil),
 	}
 
-	prompt := toPrompt(messages)
+	prompt := ToPrompt(messages)
 
 	for _, message := range prompt {
 		if _, ok := toolCallOf(message); ok {
@@ -126,7 +126,7 @@ func TestToPromptRoleMapping(t *testing.T) {
 		{Type: TypeUser, Text: "a question"},
 	}
 
-	prompt := toPrompt(messages)
+	prompt := ToPrompt(messages)
 
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
@@ -159,7 +159,7 @@ func TestToPromptEncodesStructuredResults(t *testing.T) {
 		activity(ActivityResponse, "c1", "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
-	prompt := toPrompt(messages)
+	prompt := ToPrompt(messages)
 
 	if len(prompt) != 2 {
 		t.Fatalf("got %d messages, want 2", len(prompt))
@@ -180,7 +180,7 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	}
 
 	for index, message := range cases {
-		if prompt := toPrompt([]Message{message}); len(prompt) != 0 {
+		if prompt := ToPrompt([]Message{message}); len(prompt) != 0 {
 			t.Errorf("case %d: a malformed activity reached the wire as %+v", index, prompt)
 		}
 	}

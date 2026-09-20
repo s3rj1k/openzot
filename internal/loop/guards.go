@@ -95,6 +95,11 @@ const (
 	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
 
+	// narrowFloor is the share of the configured window a rejection can narrow
+	// the effective window down to, as a divisor: a provider that keeps saying
+	// "too long" is wrong about its own ceiling only so far.
+	narrowFloor = 4
+
 	// DefaultContextSoft is the share of the context window, in percent, at which
 	// the oldest message starts being forgotten on every request.
 	DefaultContextSoft = 50

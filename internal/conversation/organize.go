@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 // Message hygiene applied before a conversation goes on the wire.
 //

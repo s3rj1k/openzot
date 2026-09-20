@@ -1,4 +1,4 @@
-package loop
+package conversation
 
 import (
 	"strings"
@@ -14,12 +14,12 @@ func TestEstimateTokensPricesRepresentativeInput(t *testing.T) {
 		"４日 동안 비가 내렸다. 안녕하세요 여러분",
 		strings.Repeat("identifier", 100),
 	} {
-		if got := estimateTokens(text); got <= 0 {
+		if got := EstimateTokens(text); got <= 0 {
 			t.Errorf("estimateTokens(%.30q) = %d, want a positive estimate", text, got)
 		}
 	}
 
-	if got := estimateTokens(""); got != 0 {
+	if got := EstimateTokens(""); got != 0 {
 		t.Errorf("estimateTokens(empty) = %d, want 0", got)
 	}
 }
@@ -30,7 +30,7 @@ func TestEstimateTokensPricesRepresentativeInput(t *testing.T) {
 func TestNonASCIIInputIsPricedByUTF8Bytes(t *testing.T) {
 	text := "你好世界 안녕하세요"
 
-	if got, runes := estimateTokens(text), utf8.RuneCountInString(text); got < runes {
+	if got, runes := EstimateTokens(text), utf8.RuneCountInString(text); got < runes {
 		t.Errorf("estimate = %d, want at least %d for non-ASCII input", got, runes)
 	}
 }
@@ -41,7 +41,7 @@ func TestNonASCIIInputIsPricedByUTF8Bytes(t *testing.T) {
 func TestEstimateIsConservativeForDenseASCII(t *testing.T) {
 	text := strings.Repeat("a", 120)
 
-	if got, englishCost := estimateTokens(text), len(text)/4; got <= englishCost {
+	if got, englishCost := EstimateTokens(text), len(text)/4; got <= englishCost {
 		t.Errorf("estimate = %d, want a safety margin above the %d ordinary English would cost", got, englishCost)
 	}
 }
@@ -51,7 +51,7 @@ func TestEstimateGrowsWithTheText(t *testing.T) {
 	previous := 0
 
 	for repeat := 1; repeat <= 20; repeat++ {
-		got := estimateTokens(strings.Repeat(base, repeat))
+		got := EstimateTokens(strings.Repeat(base, repeat))
 		if got <= previous {
 			t.Fatalf("%d repeats estimated %d, not more than %d", repeat, got, previous)
 		}
@@ -65,11 +65,11 @@ func TestEstimateGrowsWithTheText(t *testing.T) {
 func TestAMessageCostsMoreThanItsText(t *testing.T) {
 	const text = "a short message"
 
-	if got, bare := estimateMessageTokens(text), estimateTokens(text); got <= bare {
+	if got, bare := EstimateMessageTokens(text), EstimateTokens(text); got <= bare {
 		t.Errorf("message estimate = %d, want more than the bare text's %d", got, bare)
 	}
 
-	if got := estimateMessageTokens(""); got <= 0 {
+	if got := EstimateMessageTokens(""); got <= 0 {
 		t.Errorf("an empty message estimated %d, want its envelope priced", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestAMessageCostsMoreThanItsText(t *testing.T) {
 // a tool result must be priced like any other bytes rather than treated as free.
 func TestLiteralControlSequencesRemainPriced(t *testing.T) {
 	for _, text := range []string{"<|im_end|>", "<|endoftext|>", "<|endofprompt|>"} {
-		if got := estimateTokens(text); got < 2 {
+		if got := EstimateTokens(text); got < 2 {
 			t.Errorf("estimateTokens(%q) = %d, want literal text priced", text, got)
 		}
 	}

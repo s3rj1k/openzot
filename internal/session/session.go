@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -64,7 +64,7 @@ type Record struct {
 	Meta *Meta `json:"meta,omitempty"`
 
 	// Message is set on a KindMessage record.
-	Message *loop.Message `json:"message,omitempty"`
+	Message *conversation.Message `json:"message,omitempty"`
 
 	// Event is set on a KindEvent record.
 	Event *Event `json:"event,omitempty"`
@@ -233,7 +233,7 @@ func (w *Writer) write(record Record) error {
 }
 
 // Message records a conversation entry.
-func (w *Writer) Message(message loop.Message) error {
+func (w *Writer) Message(message conversation.Message) error {
 	return w.write(Record{Kind: KindMessage, At: time.Now().UTC(), Message: &message})
 }
 

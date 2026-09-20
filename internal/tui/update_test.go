@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -167,7 +168,7 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 	// content and is deliberately not drawn twice
 	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "here is "})
 	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "the answer"})
-	m.handleEvent(loop.Event{Kind: loop.EventMessage, MessageType: loop.TypeBot, Text: "here is the answer"})
+	m.handleEvent(loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
 
 	m.flushPending()
 
