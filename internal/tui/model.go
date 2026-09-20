@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,6 +104,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+
 		vpHeight := max(msg.Height-reserved, 1)
 		if !m.ready {
 			m.vp = viewport.New(msg.Width, vpHeight)
@@ -111,7 +113,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vp.Width = msg.Width
 			m.vp.Height = vpHeight
 		}
+
 		m.rewrap()
+
 		return m, nil
 
 	case tea.KeyMsg:
@@ -121,30 +125,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "g", "home":
 			m.vp.GotoTop()
 			m.follow = false
+
 			return m, nil
 		case "G", "end":
 			m.vp.GotoBottom()
 			m.follow = true
+
 			return m, nil
 		}
+
 		var cmd tea.Cmd
+
 		m.vp, cmd = m.vp.Update(msg)
 		m.follow = m.vp.AtBottom()
+
 		return m, cmd
 
 	case spinner.TickMsg:
 		if m.status != statusRunning {
 			return m, nil
 		}
+
 		var cmd tea.Cmd
+
 		m.spinner, cmd = m.spinner.Update(msg)
+
 		return m, cmd
 
 	case tickMsg:
 		if m.status != statusRunning {
 			return m, nil
 		}
+
 		m.elapsed = time.Since(m.startedAt)
+
 		return m, tickCmd()
 
 	case eventMsg:
@@ -240,7 +254,7 @@ func (m *model) finish(result loop.Result) {
 	}
 }
 
-// --- viewport content management --------------------------------------------
+// --- viewport content management --------------------------------------------.
 
 // DefaultMaxScrollback is the on-screen log cap used when a caller does not set
 // its own (Meta.MaxScrollback). An autonomous run can emit an unbounded number of
@@ -254,7 +268,7 @@ func (m *model) appendEntry(s string) {
 	m.entries = append(m.entries, s)
 
 	// The buffer may grow a quarter past the cap before trimming, so the (linear)
-	// re-wrap a trim costs is amortised over many appends rather than paid on every
+	// re-wrap a trim costs is amortized over many appends rather than paid on every
 	// append once the cap is reached.
 	slack := m.maxEntries / 4
 
@@ -289,9 +303,11 @@ func (m *model) appendEntry(s string) {
 func (m *model) flushPending() {
 	text := strings.TrimSpace(m.pending)
 	m.pending = ""
+
 	if text == "" {
 		return
 	}
+
 	m.appendEntry(thoughtStyle.Render("  ◆ " + text))
 }
 
@@ -312,6 +328,7 @@ func (m *model) render() {
 	if !m.ready {
 		return
 	}
+
 	body := m.committedWrapped
 	if m.truncated {
 		marker := m.wrap(dividerStyle.Render("  ⋮ earlier activity trimmed — the full run is in the session log"))
@@ -321,13 +338,17 @@ func (m *model) render() {
 			body = marker
 		}
 	}
+
 	if p := strings.TrimSpace(m.pending); p != "" {
 		if body != "" {
 			body += "\n"
 		}
+
 		body += m.wrapRecord(thoughtStyle.Render("  ◆ " + p))
 	}
+
 	m.vp.SetContent(body)
+
 	if m.follow {
 		m.vp.GotoBottom()
 	}
@@ -337,6 +358,7 @@ func (m *model) wrap(s string) string {
 	if s == "" || m.vp.Width <= 0 {
 		return s
 	}
+
 	return lipgloss.NewStyle().Width(m.vp.Width).Render(s)
 }
 
@@ -383,12 +405,13 @@ func (m model) wrapRecord(s string) string {
 	return strings.Join(rows[:limit-1], "\n") + "\n" + outputStyle.Render("    …")
 }
 
-// --- view -------------------------------------------------------------------
+// --- view -------------------------------------------------------------------.
 
 func (m model) View() string {
 	if !m.ready {
 		return "starting zot…"
 	}
+
 	return strings.Join([]string{
 		m.titleBar(),
 		m.metaBar(),
@@ -400,6 +423,7 @@ func (m model) View() string {
 
 func (m model) titleBar() string {
 	left := titleStyle.Render("✦ zot") + " " + m.badge()
+
 	room := m.width - lipgloss.Width(left) - 2
 	if room < 8 {
 		return left
@@ -421,8 +445,8 @@ func (m model) badge() string {
 	case statusFailed:
 		return statusFailStyle.Render("✗ failed")
 	default:
-		// Keep the spinner and label as separate same-colour pieces: nesting the
-		// spinner's own ANSI inside another style breaks the run of colour.
+		// Keep the spinner and label as separate same-color pieces: nesting the
+		// spinner's own ANSI inside another style breaks the run of color.
 		return m.spinner.View() + statusRunningStyle.Render("working")
 	}
 }
@@ -441,7 +465,7 @@ func (m model) metaBar() string {
 
 	// iterations renders "n" or "n/max" when a limit is set, so progress against a
 	// configured budget is visible.
-	iterations := fmt.Sprintf("%d", m.iteration)
+	iterations := strconv.Itoa(m.iteration)
 	iterationsWidth := 4
 
 	if m.maxIterations > 0 {
@@ -511,7 +535,9 @@ func (m model) footer() string {
 	if m.status == statusRunning {
 		return hints
 	}
+
 	tail := footerStyle.Render("  ·  press " + keyHint.Render("q") + " to exit")
+
 	return hints + tail
 }
 
@@ -535,7 +561,7 @@ func fmtTokens(n int) string {
 	case n >= 1_000:
 		return fmt.Sprintf("%.1fk", float64(n)/1_000)
 	default:
-		return fmt.Sprintf("%d", n)
+		return strconv.Itoa(n)
 	}
 }
 

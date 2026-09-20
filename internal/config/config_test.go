@@ -13,10 +13,12 @@ import (
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
+
 	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+
 	return path
 }
 
@@ -32,6 +34,7 @@ func validConfig(tweak func(*Config)) Config {
 	if tweak != nil {
 		tweak(&c)
 	}
+
 	return c
 }
 
@@ -42,9 +45,11 @@ func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	if c.Agent.Model != "" {
 		t.Errorf("default model = %q, want none", c.Agent.Model)
 	}
+
 	if c.Provider.BaseURL != "" || len(c.Provider.Models) != 0 {
 		t.Errorf("default provider = %+v, want none", c.Provider)
 	}
+
 	if c.Agent.MaxIterations <= 0 {
 		t.Error("expected a positive default max_iterations")
 	}
@@ -188,10 +193,12 @@ func TestSecretEnvReference(t *testing.T) {
 provider:
   api_key: '$MY_PROVIDER_KEY'
 `)
+
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if got := cfg.Provider.APIKey; got != "sk-from-env" {
 		t.Errorf("resolved secret = %q, want sk-from-env", got)
 	}
@@ -205,10 +212,12 @@ func TestAuthorizationEnvReference(t *testing.T) {
 provider:
   api_key: '${GATEWAY_DEFAULT_KEY}'
 `)
+
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if got := cfg.Provider.APIKey; got != "sk-gateway-default" {
 		t.Errorf("provider key = %q, want sk-gateway-default", got)
 	}
@@ -218,23 +227,29 @@ func TestValidate(t *testing.T) {
 	if err := validConfig(nil).Validate(); err != nil {
 		t.Errorf("unexpected error for a valid config: %v", err)
 	}
+
 	if err := validConfig(func(c *Config) { c.Agent.Model = "" }).Validate(); err == nil {
 		t.Error("expected an error for an empty model")
 	}
+
 	if err := validConfig(func(c *Config) { c.Agent.MaxIterations = 0 }).Validate(); err == nil {
 		t.Error("expected an error for non-positive max_iterations")
 	}
+
 	if err := validConfig(func(c *Config) { c.Provider = ProviderConfig{} }).Validate(); err == nil {
 		t.Error("expected an error when no provider is declared")
 	}
+
 	if err := validConfig(func(c *Config) { c.Provider.BaseURL = "" }).Validate(); err == nil {
 		t.Error("expected an error for a provider with no base_url")
 	}
+
 	if err := validConfig(func(c *Config) {
 		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
 	}).Validate(); err == nil {
 		t.Error("expected the model list to reject an unlisted model")
 	}
+
 	if err := validConfig(func(c *Config) {
 		c.Agent.Model = "allowed"
 		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
@@ -330,6 +345,7 @@ func TestModelNamesAreSorted(t *testing.T) {
 	if got, want := custom.ModelNames(), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("model names = %v, want %v", got, want)
 	}
+
 	if got := (ProviderConfig{}).ModelNames(); len(got) != 0 {
 		t.Fatalf("no models should mean no names, got %v", got)
 	}
@@ -360,18 +376,22 @@ func TestScrubProviderSecrets(t *testing.T) {
 provider:
   api_key: $ZAI_API_KEY
 `)
+
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	ScrubProviderSecrets(cfg)
 
 	if _, ok := os.LookupEnv("ZAI_API_KEY"); ok {
 		t.Error("ZAI_API_KEY should be removed after scrub")
 	}
+
 	if got := os.Getenv("OPENAI_API_KEY"); got != "sk-openai" {
 		t.Errorf("a variable the config never named was touched: OPENAI_API_KEY = %q", got)
 	}
+
 	if got := os.Getenv("ZOT_TEST_UNRELATED"); got != "keep-me" {
 		t.Errorf("ZOT_TEST_UNRELATED = %q, want keep-me", got)
 	}
@@ -549,6 +569,7 @@ func TestMaxTimeIsValidated(t *testing.T) {
 	}
 
 	good := base()
+
 	good.Agent.MaxTime = "45m"
 	if err := good.Validate(); err != nil {
 		t.Errorf("a valid duration must pass: %v", err)
@@ -560,21 +581,23 @@ func TestMaxTimeIsValidated(t *testing.T) {
 	}
 
 	bad := base()
+
 	bad.Agent.MaxTime = "half an hour"
 	if err := bad.Validate(); err == nil {
 		t.Error("a malformed max_time must fail validation")
 	}
 
 	negative := base()
+
 	negative.Agent.MaxTime = "-5m"
 	if err := negative.Validate(); err == nil {
 		t.Error("a negative max_time must fail validation")
 	}
 }
 
-// Every budget the run honours is a config key. The two-word ones
+// Every budget the run honors is a config key. The two-word ones
 // (max_continuations, max_recoveries) are the easy ones to misspell, and a
-// misspelt key is rejected at load rather than silently ignored.
+// misspelled key is rejected at load rather than silently ignored.
 func TestEveryBudgetIsReadFromTheFile(t *testing.T) {
 	path := writeConfig(t, `
 agent:
@@ -797,10 +820,12 @@ provider:
   base_url: https://proxy.example.com/v1
   api_key: $PROXY_KEY
 `)
+
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if got := cfg.Provider.APIKey; got != "sk-proxy" {
 		t.Errorf("key = %q, want the explicitly configured one", got)
 	}

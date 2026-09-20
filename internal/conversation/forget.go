@@ -3,7 +3,7 @@ package conversation
 import "encoding/json"
 
 // Short-term memory is the context window, and it is managed lazily. Nothing is
-// summarised and nothing is thrown away for good - the session log keeps every
+// summarized and nothing is thrown away for good - the session log keeps every
 // message - the request just stops carrying the oldest ones.
 //
 // Below the soft mark the whole conversation is sent. From the soft mark the
@@ -13,14 +13,14 @@ import "encoding/json"
 // mark is what keeps a request from ever being rejected for length.
 
 const (
-	// keepNewest is how many of the newest messages are never forgotten, so one
+	// KeepNewest is how many of the newest messages are never forgotten, so one
 	// oversized fresh tool result cannot evict the turn that has to interpret it.
 	keepNewest = 2
 )
 
 // forget returns the new offset into messages below which everything is
 // forgotten, given used - the estimated cost of the whole request - against a
-// window. from is the offset already in force; it never moves backwards.
+// window. From is the offset already in force; it never moves backwards.
 func Forget(messages []Message, from, used, window, soft, hard int, cost func(Message) int) int {
 	if used < window*soft/100 {
 		return from

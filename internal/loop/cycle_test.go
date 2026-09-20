@@ -11,7 +11,7 @@ import (
 //
 // Both concern a value containing a reference cycle. JSON has no way to express
 // one, so these could not be seeded - but the underlying question survives the
-// port: a tool result that cannot be marshalled must not be the thing that aborts
+// port: a tool result that cannot be marshaled must not be the thing that aborts
 // a run. A cycle check that panics is worse than no cycle check.
 
 // cyclicValue returns a map that contains itself, which json.Marshal rejects.

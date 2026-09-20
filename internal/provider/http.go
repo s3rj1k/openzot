@@ -15,7 +15,7 @@ import (
 // None of them is a wall-clock cap on the exchange, and that is deliberate: an
 // http.Client.Timeout covers the body read as well, so it kills a stream that is
 // actively producing tokens - and it does so with "Client.Timeout exceeded while
-// reading body", which no retry classifier recognises, ending the run. A
+// reading body", which no retry classifier recognizes, ending the run. A
 // reasoning model can think for minutes before its first token and stream for
 // many more after it; a turn that is still producing is working, not hung.
 //
@@ -61,7 +61,7 @@ func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 // errStreamStalled is what a stream that went silent fails with. A sentinel, so
-// the retry rules can recognise it by type rather than by its wording.
+// the retry rules can recognize it by type rather than by its wording.
 var errStreamStalled = errors.New("the stream stalled")
 
 // stallReader fails a stream that has gone silent, without bounding one that is
@@ -71,7 +71,7 @@ var errStreamStalled = errors.New("the stream stalled")
 // ever cut off once it stops saying anything at all. Firing closes the body,
 // which unblocks the read the consumer is parked in; the error that surfaces is
 // replaced with one naming the stall, because "use of closed network connection"
-// is neither true nor recognisable as transient.
+// is neither true nor recognizable as transient.
 type stallReader struct {
 	inner   io.ReadCloser
 	timeout time.Duration

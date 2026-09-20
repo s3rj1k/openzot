@@ -28,10 +28,10 @@ func renderToolStart(name string, args map[string]any) string {
 	}
 }
 
-// renderToolEnd produces an optional follow-up line summarising a tool result.
+// renderToolEnd produces an optional follow-up line summarizing a tool result.
 // It returns "" when there is nothing worth showing.
 //
-// zot's tools return plain strings, so that is the case handled first; the map
+// Zot's tools return plain strings, so that is the case handled first; the map
 // form is kept for a caller whose own tool returns something structured.
 func renderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
@@ -49,6 +49,7 @@ func renderToolEnd(name string, result any) string {
 			if tail := commandOutput(m); tail != "" {
 				out += "\n" + tail
 			}
+
 			return out
 		}
 	}
@@ -60,7 +61,7 @@ func renderToolEnd(name string, result any) string {
 	return okStyle.Render("    ✓ done")
 }
 
-// renderTextResult summarises a string result.
+// renderTextResult summarizes a string result.
 //
 // A shell command's output is the thing the operator most wants to see, so it is
 // echoed; how much of it stays on screen is the viewer's call (see
@@ -119,7 +120,7 @@ func commandOutput(m map[string]any) string {
 	return renderOutputLines(text)
 }
 
-// --- small helpers over the loosely-typed arg/result maps -------------------
+// --- small helpers over the loosely-typed arg/result maps -------------------.
 
 // renderTasks lays the task list out as a checklist, one line per task, headed by
 // how much of it is done. The list is the one piece of the run worth reading in
@@ -151,7 +152,7 @@ func renderTasks(args map[string]any) string {
 	return b.String()
 }
 
-// taskMarker is the glyph drawn beside a task, coloured for its status.
+// taskMarker is the glyph drawn beside a task, colored for its status.
 func taskMarker(status plan.TaskStatus) string {
 	switch status {
 	case plan.TaskDone:
@@ -183,6 +184,7 @@ func compactArgs(args map[string]any) string {
 	for k, v := range args {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, truncate(fmt.Sprint(v), 40)))
 	}
+
 	return strings.Join(parts, " ")
 }
 
@@ -190,6 +192,7 @@ func str(m map[string]any, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
 	}
+
 	return ""
 }
 
@@ -213,20 +216,21 @@ func pad(s string, n int) string {
 	for len(s) < n {
 		s += " "
 	}
+
 	return s
 }
 
 // shortPath fits a directory into max columns from the right, because the
 // informative end of a path is the last segment, not the first.
 //
-// truncate keeps the head, which for /workspaces/monorepo-zot/repos/zot/tool
+// Truncate keeps the head, which for /workspaces/monorepo-zot/repos/zot/tool
 // yields "/workspaces/monorepo-zot/repos/z…" - every character spent on the
 // part shared by every project on the machine, and the one word naming this one
 // cut off. This drops whole leading segments instead and marks the cut with a
 // leading "…/", so the same path reads "…/repos/zot/tool".
 //
 // Segments are kept whole: half a directory name is not a directory name, and a
-// path is read by recognising its parts. Only when the final segment alone will
+// path is read by recognizing its parts. Only when the final segment alone will
 // not fit is it cut, and then from the left, so the end of the name survives.
 func shortPath(path string, max int) string {
 	if max <= 0 {

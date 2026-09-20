@@ -7,9 +7,9 @@ import "encoding/json"
 // The engine used to carry these in a `map[string]any` under a `meta.activity`
 // key, inherited from a hosted API whose messages are a generic envelope: one
 // shape that has to carry attachments, ratings, triggers and a dozen other
-// things zot has no concept of. zot has exactly one thing to put there - a tool
+// things zot has no concept of. Zot has exactly one thing to put there - a tool
 // call - and a map buys nothing for it: every read is a type assertion that can
-// fail silently, a misspelt key is a compile-time success and a runtime no-op,
+// fail silently, a misspelled key is a compile-time success and a runtime no-op,
 // and nothing tells you which keys are expected.
 //
 // So it is a struct. A missing field is a compile error, the shape is the

@@ -17,7 +17,7 @@ import (
 
 // errRunaway is what the streaming guard ends a degenerate turn with. It is
 // returned from a stream callback to stop fantasy reading the stream, then
-// recognised by runStep, which keeps what the turn had said so far.
+// recognized by runStep, which keeps what the turn had said so far.
 var errRunaway = errors.New("loop: the turn ran away")
 
 // turnResult is what one model call produced.
@@ -45,7 +45,7 @@ type turnRequest struct {
 // step is one iteration's model call, and the tools it runs, as the engine sees
 // them.
 //
-// fantasy's Agent does the work of a step - the call, checking and repairing the
+// Fantasy's Agent does the work of a step - the call, checking and repairing the
 // tool calls, running the tools - and this is what keeps the engine's own
 // conversation in step with it: it turns the agent's callbacks into events and
 // into the messages the conversation is made of, in the order the engine has
@@ -293,7 +293,7 @@ func (s *step) flush() {
 }
 
 // onToolResult records the calls that never reached a tool: one to a tool that
-// does not exist, or whose input could not be read even after repair. fantasy
+// does not exist, or whose input could not be read even after repair. Fantasy
 // answers those itself, so the wrapper never sees them.
 func (s *step) onToolResult(result fantasy.ToolResultContent) error {
 	if s.started[result.ToolCallID] || s.terminalSeen || s.callsExhausted {

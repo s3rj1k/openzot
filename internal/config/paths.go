@@ -27,6 +27,7 @@ func ConfigDir(path string) string {
 	if strings.TrimSpace(path) == "" {
 		path = DefaultConfigPath()
 	}
+
 	return filepath.Dir(path)
 }
 
@@ -34,6 +35,7 @@ func xdgConfigHome() string {
 	if dir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); dir != "" {
 		return dir
 	}
+
 	return filepath.Join(homeDir(), ".config")
 }
 

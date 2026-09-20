@@ -13,23 +13,23 @@ import (
 // and the first to fire is the one reported, because a stuck run is otherwise
 // only ever "stopped for looping" and the four fail in very different ways.
 //
-// Their behaviour was pinned against the implementation they were ported from;
+// Their behavior was pinned against the implementation they were ported from;
 // see corpus_test.go.
 
 const (
-	// cycleMinRepetitions is how many consecutive repeats of a pattern make a
+	// CycleMinRepetitions is how many consecutive repeats of a pattern make a
 	// cycle: [A B A B] is cyclic.
 	cycleMinRepetitions = 2
 
-	// cycleMinPatternLength is the shortest pattern considered, in messages. Two
+	// CycleMinPatternLength is the shortest pattern considered, in messages. Two
 	// catches the common ask/answer/ask/answer loop.
 	cycleMinPatternLength = 2
 
-	// cycleMinResultRepetitions is how many consecutive identical tool results
+	// CycleMinResultRepetitions is how many consecutive identical tool results
 	// make a loop.
 	cycleMinResultRepetitions = 3
 
-	// cycleMinTail is how many trailing activity messages the activity-tail
+	// CycleMinTail is how many trailing activity messages the activity-tail
 	// heuristic needs before it will judge them.
 	cycleMinTail = 8
 )
@@ -38,7 +38,7 @@ const (
 // to a sentinel rather than failing.
 //
 // Values reaching the heuristics include tool results, which can be anything -
-// including structures that cannot be marshalled. A cycle check must never be
+// including structures that cannot be marshaled. A cycle check must never be
 // the thing that aborts a run, so an unserialisable value collapses to a
 // constant - which makes two such values compare equal, and is the intended
 // trade: the alternative is no check at all.
@@ -61,7 +61,7 @@ func safeStringify(value any) string {
 //
 // It requires the repeats to be byte-identical and adjacent, which is its
 // blind spot: one interleaved message - a reasoning turn between tool calls -
-// breaks the run. hasRepeatedResultRun covers that case.
+// breaks the run. HasRepeatedResultRun covers that case.
 func hasRepeatedSuffix(messages []conversation.Message) bool {
 	if len(messages) < cycleMinPatternLength*cycleMinRepetitions {
 		return false
@@ -120,7 +120,6 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
 
 	for _, message := range slices.Backward(messages) {
-
 		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			break
 		}
@@ -181,12 +180,12 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	}
 
 	// pair each request with the response that follows it, so a request whose
-	// answers keep changing can be recognised as progress
+	// answers keep changing can be recognized as progress
 
 	outputSets := map[string]map[string]struct{}{}
 	outputCounts := map[string]int{}
 
-	for index := 0; index < len(tail)-1; index++ {
+	for index := range len(tail) - 1 {
 		request, response := tail[index], tail[index+1]
 
 		if request.kind != conversation.ActivityRequest || response.kind != conversation.ActivityResponse || request.name != response.name {
@@ -251,7 +250,6 @@ func hasRepeatedResultRun(messages []conversation.Message) bool {
 	var signatures []string
 
 	for _, message := range slices.Backward(messages) {
-
 		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			continue
 		}

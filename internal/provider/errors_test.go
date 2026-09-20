@@ -210,7 +210,7 @@ func TestDetectContextLimitRecognisesLlamaCpp(t *testing.T) {
 
 	limit, ok := DetectContextLimit(err)
 	if !ok {
-		t.Fatal("llama.cpp's wording was not recognised as a length rejection")
+		t.Fatal("llama.cpp's wording was not recognized as a length rejection")
 	}
 
 	if limit.SuggestedLimit != 0 {
@@ -248,7 +248,7 @@ func TestFailureOfCarriesTheBodyNotTheDump(t *testing.T) {
 }
 
 func TestFailureOfIsAbsentWithoutAStatus(t *testing.T) {
-	for _, err := range []error{nil, errors.New("cancelled"), &fantasy.ProviderError{Message: "cut connection"}} {
+	for _, err := range []error{nil, errors.New("canceled"), &fantasy.ProviderError{Message: "cut connection"}} {
 		if FailureOf(err) != nil {
 			t.Errorf("%v carries no wire evidence", err)
 		}

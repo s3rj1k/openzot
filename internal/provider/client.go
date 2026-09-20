@@ -77,9 +77,9 @@ func (c *Client) Model() fantasy.LanguageModel {
 // toolCallsModel makes a turn that asks for tools a tool turn, whatever the
 // provider called its ending.
 //
-// fantasy runs the tools of a turn only when it finished as "tool_calls", but
+// Fantasy runs the tools of a turn only when it finished as "tool_calls", but
 // endpoints in the wild finish a turn that carries tool calls as "stop", or as
-// something unrecognised. The calls are what the model asked for, and they are
+// something unrecognized. The calls are what the model asked for, and they are
 // run; only a turn cut short - by length, a content filter or an error - has
 // calls that cannot be trusted, and those stay as fantasy reports them.
 type toolCallsModel struct {
@@ -111,7 +111,7 @@ func (m toolCallsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 	}, nil
 }
 
-// streamUsage reads a chunk's token counts. fantasy ignores a usage block that
+// streamUsage reads a chunk's token counts. Fantasy ignores a usage block that
 // carries no total, and a server is free to leave the total out.
 func streamUsage(
 	chunk openaisdk.ChatCompletionChunk,

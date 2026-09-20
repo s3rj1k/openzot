@@ -1,6 +1,6 @@
 // Command zot is an automated software factory you watch, not drive.
 //
-// zot takes work orders, not prompts. A work order is one file: a front matter
+// Zot takes work orders, not prompts. A work order is one file: a front matter
 // block with the durable objective, the acceptance criteria that define "done"
 // and the constraints the work must hold to, then the system prompt itself, a
 // Go template that reads that block. Each order becomes one autonomous run: the
@@ -46,7 +46,7 @@ var (
 	isTerminal = tui.IsInteractive
 	runViewer  = tui.Run
 
-	// execute is the engine entry point - run.Run everywhere in production,
+	// Execute is the engine entry point - run.Run everywhere in production,
 	// replaced by tests so no provider is ever reached.
 	execute = run.Run
 )
@@ -66,6 +66,7 @@ func command() error {
 			fmt.Println(config.DefaultConfigPath())
 			return nil
 		}
+
 		return editConfig()
 	}
 
@@ -80,6 +81,7 @@ func command() error {
 	configPath := pflag.String("config", "", "path to zot config (default: "+config.DefaultConfigPath()+", optional)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
 	pflag.Usage = usage
+
 	pflag.Parse()
 
 	// The run is shown in the full-screen viewer and nowhere else, so with no
@@ -198,7 +200,7 @@ func loadOrder(args []string) (order.Order, error) {
 		// The retraining moment: someone typed prose where an order file goes. The
 		// error has to teach the new shape, not just report a missing file.
 		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
-			return order.Order{}, fmt.Errorf("work orders are files, not prose - write the order first:\n\n  zot new")
+			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  zot new")
 		}
 
 		return order.Order{}, err

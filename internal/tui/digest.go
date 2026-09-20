@@ -2,17 +2,18 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/openzot/openzot/internal/loop"
 )
 
 // DigestStatus maps a run's stop reason and exit code to the one human word a
-// digest shows: "done", "failed", or "cancelled".
+// digest shows: "done", "failed", or "canceled".
 func DigestStatus(reason string, code int) string {
 	switch reason {
 	case string(loop.StopAborted):
-		return "cancelled"
+		return "canceled"
 	case string(loop.StopFailed):
 		return "failed"
 	}
@@ -31,7 +32,7 @@ func DigestStatus(reason string, code int) string {
 // operator what the run spent or where its record is. The digest is a small,
 // fixed block that survives on the main screen and carries both.
 type Digest struct {
-	// Status is the human-readable ending: "done", "failed", "cancelled".
+	// Status is the human-readable ending: "done", "failed", "canceled".
 	Status string
 
 	// Session is the log the run was appended to, empty when none was written.
@@ -78,10 +79,10 @@ func RenderDigest(d Digest) string {
 	}
 
 	rows = append(rows,
-		row{"iterations", fmt.Sprintf("%d", d.Iterations)},
-		row{"calls", fmt.Sprintf("%d", d.Calls)},
-		row{"input-tokens", fmt.Sprintf("%d", d.InputTokens)},
-		row{"output-tokens", fmt.Sprintf("%d", d.OutputTokens)},
+		row{"iterations", strconv.Itoa(d.Iterations)},
+		row{"calls", strconv.Itoa(d.Calls)},
+		row{"input-tokens", strconv.Itoa(d.InputTokens)},
+		row{"output-tokens", strconv.Itoa(d.OutputTokens)},
 	)
 
 	if m := strings.TrimSpace(d.Message); m != "" {

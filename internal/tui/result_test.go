@@ -21,6 +21,7 @@ func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	if !ok {
 		t.Fatalf("runError() = %T, want *AgentExitError", err)
 	}
+
 	if exitErr.Code != 1 || !strings.Contains(exitErr.Error(), "verification failed") {
 		t.Errorf("exit error = %+v, want code 1 and the agent message", exitErr)
 	}

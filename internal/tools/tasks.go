@@ -24,7 +24,7 @@ type taskInput struct {
 //
 // Tasks is a reflective tool: it changes nothing on disk. Its value is that the
 // model has to state what the work needs and where each part stands, in a
-// structured form, which both organises its own reasoning and makes the run
+// structured form, which both organizes its own reasoning and makes the run
 // followable in the viewer and the session log. Every call carries the whole
 // list and replaces the last, so there is nothing to merge and no state here:
 // the latest call is the truth.

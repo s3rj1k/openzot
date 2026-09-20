@@ -551,7 +551,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 	}
 }
 
-// Cancelling a run must cut a backoff short rather than making the caller wait
+// Canceling a run must cut a backoff short rather than making the caller wait
 // out a pause that no longer has a retry at the end of it.
 func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -721,7 +721,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 		t.Errorf("continuations = %d, want the rate limit to cost exactly one", result.Budget.Recoveries)
 	}
 
-	// the provider asked for a second; honouring that is the whole point, so a
+	// the provider asked for a second; honoring that is the whole point, so a
 	// retry that came back sooner means the advice was ignored
 	if elapsed < time.Second {
 		t.Errorf("retried after %s, want the advised second to be waited out", elapsed)
@@ -729,7 +729,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 }
 
 // A provider that advises an absurd Retry-After must not park an unattended run
-// for hours: the advice is honoured up to a cap, and no further.
+// for hours: the advice is honored up to a cap, and no further.
 func TestAnAbsurdRetryAfterIsCapped(t *testing.T) {
 	if got := rateLimitWait(48*time.Hour, true, time.Second); got != MaxRateLimitWait {
 		t.Errorf("wait = %s, want the cap %s", got, MaxRateLimitWait)

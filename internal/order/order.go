@@ -1,7 +1,7 @@
 // Package order defines the work order: the document a zot run is dispatched
 // from.
 //
-// zot deliberately takes no prose on the command line. A factory accepts a work
+// Zot deliberately takes no prose on the command line. A factory accepts a work
 // order, not a conversation. The order is a file so it outlives the invocation:
 // it can be edited, committed and re-run, and every run of it starts from zero.
 //
@@ -58,7 +58,7 @@ func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersNam
 // Order is one work order: a single run's brief, and the prompt it is run with.
 type Order struct {
 	// Title is an optional short label for the order, for people rather than
-	// for the agent: it is how a human recognises the order in a list or a
+	// for the agent: it is how a human recognizes the order in a list or a
 	// viewer. The prompt may use it, but nothing does by default.
 	Title string
 
@@ -110,10 +110,10 @@ func Load(path string) (Order, error) {
 
 // Parse reads an order: the front matter, then the prompt.
 //
-// Unknown front matter keys are rejected - a typo like "acceptence:" must fail
+// Unknown front matter keys are rejected - a typo like "acceptance:" must fail
 // loudly rather than silently dropping the criteria the operator thought they
 // set. The prompt is parsed as a template and run once against stand-in data, so
-// a syntax error or a misspelt field is found now, at load, before a provider is
+// a syntax error or a misspelled field is found now, at load, before a provider is
 // touched, and not when the run reaches it.
 func Parse(data []byte) (Order, error) {
 	header, body, err := splitFrontMatter(string(data))
@@ -139,11 +139,11 @@ func Parse(data []byte) (Order, error) {
 	}
 
 	if order.Objective == "" {
-		return Order{}, fmt.Errorf("no objective")
+		return Order{}, errors.New("no objective")
 	}
 
 	if strings.TrimSpace(order.Body) == "" {
-		return Order{}, fmt.Errorf("no prompt: the text after the front matter is the system prompt, and it is empty")
+		return Order{}, errors.New("no prompt: the text after the front matter is the system prompt, and it is empty")
 	}
 
 	if err := order.check(); err != nil {
@@ -166,7 +166,7 @@ func splitFrontMatter(text string) (header, body string, err error) {
 	}
 
 	if start == len(lines) || strings.TrimSpace(lines[start]) != "---" {
-		return "", "", fmt.Errorf("no front matter: an order starts with a line of three dashes, then its objective")
+		return "", "", errors.New("no front matter: an order starts with a line of three dashes, then its objective")
 	}
 
 	for end := start + 1; end < len(lines); end++ {
@@ -175,7 +175,7 @@ func splitFrontMatter(text string) (header, body string, err error) {
 		}
 	}
 
-	return "", "", fmt.Errorf("the front matter is not closed: it ends with a line of three dashes")
+	return "", "", errors.New("the front matter is not closed: it ends with a line of three dashes")
 }
 
 // DisplayTitle is what to call this order on screen.

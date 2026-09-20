@@ -277,6 +277,7 @@ func planRun(t *testing.T, options Options, iterations int) Result {
 		[]string{tool("p", "tasks", planArgs)},
 		[]string{tool("c", "echo", "{}")},
 	)
+
 	options.Tools = append(echoTool(new(int)), namedTool("tasks", func(context.Context) (any, error) { return "tasks: 0/2 done", nil }))
 	options.MaxIterations = iterations
 	options.MaxCycles = 100000

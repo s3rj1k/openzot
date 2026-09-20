@@ -17,7 +17,7 @@ import (
 // notice from the model's own output. The prefix is a label, not a filter: the
 // cycle detector scans notices like any other message. Detection survives that
 // because the nudge for a given repetition is itself identical every time it is
-// injected, so an interleaved notice repeats along with the behaviour it is
+// injected, so an interleaved notice repeats along with the behavior it is
 // answering instead of breaking up the run of it - and the result-run detector,
 // which is what fires on a tool loop, reads only tool results and never sees
 // them at all.
@@ -25,7 +25,7 @@ const noticePrefix = "!NB:"
 
 // cycleNotice tells the model it is repeating itself.
 //
-// Naming the specific behaviour matters. "You appear to be stuck" produces
+// Naming the specific behavior matters. "You appear to be stuck" produces
 // another lap; "you have called the same tool with the same arguments and got
 // the same answer" produces a different approach.
 func cycleNotice(detail string) string {

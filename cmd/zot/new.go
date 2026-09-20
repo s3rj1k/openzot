@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,7 +38,7 @@ func newOrder(args []string, out io.Writer) error {
 	}
 
 	if set.NArg() > 0 {
-		return fmt.Errorf("zot new takes no arguments: it opens a blank order in your editor - write the objective there")
+		return errors.New("zot new takes no arguments: it opens a blank order in your editor - write the objective there")
 	}
 
 	path, err := order.Create(order.OrdersDir(*dir), time.Now())
@@ -83,6 +84,7 @@ func editConfig() error {
 		if err := os.WriteFile(path, configs.ExampleConfigYAML, 0o600); err != nil {
 			return fmt.Errorf("write config template: %w", err)
 		}
+
 		fmt.Fprintf(os.Stderr, "Created %s from the template.\n", path)
 	}
 
@@ -108,7 +110,7 @@ func openInEditor(path string) error {
 	if editor == "" {
 		fmt.Println(path)
 
-		return fmt.Errorf("no editor found; set $EDITOR (the file is at the path above)")
+		return errors.New("no editor found; set $EDITOR (the file is at the path above)")
 	}
 
 	cmd := exec.Command(editor, path)

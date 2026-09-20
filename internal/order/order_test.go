@@ -80,6 +80,7 @@ func TestLoadErrors(t *testing.T) {
 		{"an empty objective", "---\nobjective:\n---\nbody", "no objective"},
 		{"no objective key", "---\ntitle: x\n---\nbody", "no objective"},
 		{"no prompt", "---\nobjective: do it\n---\n  \n\n", "no prompt"},
+		//nolint:misspell // the misspelled key is the fixture
 		{"an unknown front matter key", "---\nobjective: do it\nacceptence:\n  - x\n---\nbody", "acceptence"},
 		{"front matter that is not YAML", "---\nobjective: [unclosed\n---\nbody", "front matter"},
 		{"a prompt that does not parse", simple("{{ .Objective "), "prompt"},
@@ -110,7 +111,7 @@ func TestLoadErrors(t *testing.T) {
 func TestATypoInABranchIsFoundAtLoad(t *testing.T) {
 	_, err := Parse([]byte(simple("{{ if .Acceptance }}{{ .Acceptnce }}{{ end }}")))
 	if err == nil || !strings.Contains(err.Error(), "Acceptnce") {
-		t.Errorf("err = %v, want the misspelt field named", err)
+		t.Errorf("err = %v, want the misspelled field named", err)
 	}
 
 	_, err = Parse([]byte(simple("{{ range .Constraints }}{{ .Nope }}{{ end }}")))
@@ -240,7 +241,7 @@ func TestFileExpandsTheHomeDirectory(t *testing.T) {
 
 // Whatever the prompt says, the contract is in what the agent is given - once.
 func TestTheContractIsAlwaysThereExactlyOnce(t *testing.T) {
-	bare, err := Parse([]byte(simple("Just do {{ .Objective }}.")))
+	bare, err := Parse([]byte(simple("Start by {{ .Objective }}.")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +251,7 @@ func TestTheContractIsAlwaysThereExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if strings.Count(got, Contract) != 1 || !strings.HasPrefix(got, "Just do do the thing.") {
+	if strings.Count(got, Contract) != 1 || !strings.HasPrefix(got, "Start by do the thing.") {
 		t.Errorf("a prompt without the contract must get it, once, after its own text:\n%s", got)
 	}
 

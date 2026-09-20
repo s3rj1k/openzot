@@ -1,6 +1,6 @@
 package conversation
 
-// Token costs here are estimates, not counts. zot talks to providers whose
+// Token costs here are estimates, not counts. Zot talks to providers whose
 // tokenizers are private, change independently, or differ from OpenAI's
 // vocabulary, and a model-specific vocabulary would make one provider look
 // precise while adding several megabytes and staying an approximation

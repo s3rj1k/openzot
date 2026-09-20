@@ -159,14 +159,14 @@ func TestShellRequiresACommand(t *testing.T) {
 	}
 }
 
-// A cancelled context stops a command rather than waiting out its timeout.
+// A canceled context stops a command rather than waiting out its timeout.
 func TestShellRespectsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	cancel()
 
 	if _, err := shellHandler(ctx, map[string]any{"command": "sleep 5"}); err == nil {
-		t.Log("a cancelled run returned output rather than an error, which is acceptable")
+		t.Log("a canceled run returned output rather than an error, which is acceptable")
 	}
 }
 

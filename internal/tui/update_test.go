@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -305,11 +306,14 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 			rows := strings.Split(m.committedWrapped, "\n")
 
 			dividers := 0
+
 			for _, row := range rows {
 				if !strings.Contains(row, "iteration 4") {
 					continue
 				}
+
 				dividers++
+
 				if !strings.Contains(row, "─── iteration 4 ───") {
 					t.Errorf("divider broke across rows at width %d: %q", width, row)
 				}
@@ -386,7 +390,7 @@ func TestBadgeReflectsStatus(t *testing.T) {
 		badges[st] = badge
 	}
 
-	// and each says which state it is, in words rather than colour alone
+	// and each says which state it is, in words rather than color alone
 	for st, want := range map[status]string{
 		statusRunning: "working",
 		statusDone:    "done",
@@ -425,7 +429,6 @@ func TestExitBecomesAnError(t *testing.T) {
 	m.finish(loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
 
 	err := m.runError()
-
 	if err == nil {
 		t.Fatal("a failed run must surface as an error")
 	}
@@ -764,7 +767,8 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	// pays anyway, now bounded to the cap)
 	m := newModel("do the thing", "m", "b", "d")
 
-	limit := m.maxEntries          // DefaultMaxScrollback
+	limit := m.maxEntries // DefaultMaxScrollback
+
 	total := limit + limit/4 + 200 // enough to force a trim past the cap + slack
 	for i := range total {
 		m.appendEntry(fmt.Sprintf("line %d", i))
@@ -814,7 +818,7 @@ func TestScrollbackCapIsConfigurable(t *testing.T) {
 	}
 
 	if len(m.entries) > m.maxEntries+m.maxEntries/4 {
-		t.Errorf("a custom cap of %d must be honoured, kept %d", m.maxEntries, len(m.entries))
+		t.Errorf("a custom cap of %d must be honored, kept %d", m.maxEntries, len(m.entries))
 	}
 
 	if len(m.entries) < m.maxEntries {
@@ -1001,7 +1005,7 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	next, _ := m.Update(doneMsg{result: loop.Result{
 		Reason:  loop.StopError,
 		Message: "the provider failed",
-		Err:     fmt.Errorf("provider: Model 'x' not found (404)"),
+		Err:     errors.New("provider: Model 'x' not found (404)"),
 	}})
 	m = next.(model)
 

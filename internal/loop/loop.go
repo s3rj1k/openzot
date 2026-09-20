@@ -318,9 +318,9 @@ func rateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.
 	return advised
 }
 
-// wait pauses for d, or until the run is cancelled - whichever comes first. It
+// wait pauses for d, or until the run is canceled - whichever comes first. It
 // does not report which: the caller loops back to the cancellation check at the
-// top of Run, so a cancelled wait ends the run there rather than in two places.
+// top of Run, so a canceled wait ends the run there rather than in two places.
 func (e *Engine) wait(ctx context.Context, d time.Duration) {
 	if d <= 0 {
 		return
@@ -398,7 +398,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return e.finish(messages, budget, StopAborted, "run cancelled", firstNonNil(lastFailure, err))
+			return e.finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
 		}
 
 		// hand the conversation over before spending anything on the next turn,
@@ -478,7 +478,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// failure still preserves the failing exchange (and its dump)
 			// rather than discarding the very thing being diagnosed.
 			if ctx.Err() != nil {
-				return e.finish(messages, budget, StopAborted, "run cancelled", firstNonNil(lastFailure, err))
+				return e.finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
 			}
 
 			// a context-limit rejection is recoverable: narrow the window the
@@ -499,6 +499,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			if (limited || provider.IsRetriable(err)) && e.canContinue(budget) {
 				budget.spendContinuation()
+
 				retries++
 
 				emit(Event{Kind: EventRetry, Text: err.Error(), Failure: err})
@@ -511,7 +512,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				delay := backoffFor(e.retryBackoff, retries)
 
 				if limited {
-					// the advised delay is honoured, but the backoff stays a
+					// the advised delay is honored, but the backoff stays a
 					// floor under it - "Retry-After: 0" must not turn into the
 					// instant-retry loop the backoff exists to prevent
 					advised, ok := provider.RetryAfter(err)
@@ -779,7 +780,7 @@ func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) boo
 // fitToWindow forgets the oldest messages as the window fills, and puts the plan
 // back in front of the model when forgetting has left it with too little to go
 // on. It returns the conversation, which has grown by the plan when that was
-// posted. forgotten is the run's offset into messages and only moves forward.
+// posted. Forgotten is the run's offset into messages and only moves forward.
 func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
 	if !e.forgetOldest(messages, forgotten, tools, emit) {
 		return messages

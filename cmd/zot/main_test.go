@@ -323,7 +323,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 // The CLI uses pflag (GNU-style), so a flag may appear AFTER the positional
 // order paths: `zot orders/a.md --dir proj` parses --dir as a flag and keeps
 // the paths intact. The stdlib flag package stopped at the first non-flag,
-// folding the flag into the positionals - this locks the behaviour that
+// folding the flag into the positionals - this locks the behavior that
 // motivated the switch.
 func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
@@ -363,7 +363,7 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 }
 
 // withArgs runs a function with a fresh flag set and the given argv, so command()
-// can be exercised the way the shell invokes it. command() chdirs into --dir, so the
+// can be exercised the way the shell invokes it. Command() chdirs into --dir, so the
 // working directory is put back afterwards: a later test must not inherit a
 // temp directory that is already gone.
 func withArgs(t *testing.T, args ...string) {
@@ -597,8 +597,10 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var requests atomic.Int32
-	var sawContext, sawSkill atomic.Bool
+	var (
+		requests             atomic.Int32
+		sawContext, sawSkill atomic.Bool
+	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1069,9 +1071,11 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1101,7 +1105,7 @@ func testDefaults() config.Config {
 // The example config is what `zot config` writes on first run, so it is the
 // first thing most people ever edit. Its knobs drifting from the code's own
 // defaults is not cosmetic: someone copies it, changes nothing, and gets
-// different behaviour from someone who has no config file at all. The provider
+// different behavior from someone who has no config file at all. The provider
 // and model are the exception - there are no defaults for those, and the
 // example shows the shape of declaring them.
 func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {

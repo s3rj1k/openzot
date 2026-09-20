@@ -22,7 +22,7 @@ import (
 // required, and this one is large enough that no test trims by accident.
 const testWindow = 1_000_000
 
-// runAgent is the seam between the engine and the screen. It is a pure pump,
+// RunAgent is the seam between the engine and the screen. It is a pure pump,
 // and the thing worth proving about a pump is that nothing goes missing: every
 // event reaches the program, an error reaches it too, and the stream always
 // ends with a done message so the viewer knows the run is over rather than
@@ -256,7 +256,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 	}
 }
 
-// A cancelled run still has to end cleanly: the pump drains and the done
+// A canceled run still has to end cleanly: the pump drains and the done
 // message arrives, or the viewer never comes back.
 func TestRunAgentEndsOnCancellation(t *testing.T) {
 	client := scriptedClient(t, []string{
@@ -286,7 +286,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 // the CLI, but the guarantee belongs to the viewer, not to the exit.
 func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	streaming := make(chan struct{})
-	cancelled := make(chan struct{})
+	canceled := make(chan struct{})
 
 	markStreaming := sync.OnceFunc(func() { close(streaming) })
 
@@ -305,7 +305,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		// and report whether the client ever went away
 		select {
 		case <-r.Context().Done():
-			close(cancelled)
+			close(canceled)
 		case <-time.After(20 * time.Second):
 		}
 	}))
@@ -342,14 +342,14 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	}
 
 	select {
-	case <-cancelled:
+	case <-canceled:
 	case <-time.After(15 * time.Second):
 		t.Fatal("the agent was still running after the viewer quit")
 	}
 }
 
 // Quitting the viewer must hand the caller the run's aborted outcome, for the
-// session. runViewer used to return the moment the program did, racing the
+// session. RunViewer used to return the moment the program did, racing the
 // engine's ending against the caller's deferred session close - a quit run was
 // logged as "running/interrupted" forever, with no outcome at all.
 func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {

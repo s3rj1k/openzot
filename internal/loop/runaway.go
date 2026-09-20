@@ -148,19 +148,19 @@ func hasRepeatedTextRun(text string, options textRunOptions) bool {
 
 // Guard thresholds for the structural-enumeration exemption.
 const (
-	// structureAggressiveGate is the MaxUniqueRatio at or above which a caller
+	// StructureAggressiveGate is the MaxUniqueRatio at or above which a caller
 	// has explicitly opted into aggressive detection, lifting the exemption.
 	structureAggressiveGate = 0.5
 
-	// minStructureNewlines is how many newlines the window needs before it can
+	// MinStructureNewlines is how many newlines the window needs before it can
 	// count as a multi-line block at all.
 	minStructureNewlines = 2
 
-	// structureHapaxFloor is the novelty ratio above which a repeating phrase is
+	// StructureHapaxFloor is the novelty ratio above which a repeating phrase is
 	// treated as part of a progressing list.
 	structureHapaxFloor = 0.1
 
-	// minDistinctLineLeads is the complementary signal: a real list starts each
+	// MinDistinctLineLeads is the complementary signal: a real list starts each
 	// line with a different token, a loop repeats the same one.
 	minDistinctLineLeads = 3
 )
@@ -215,7 +215,7 @@ type guardReason struct {
 //
 // Where hasRepeatedTextRun re-scans a whole block, runawayGuard maintains a rolling
 // window of normalised words and a running count of every phrase in it. Each
-// pushed chunk costs O(1) amortised, so it can run on every streamed token and
+// pushed chunk costs O(1) amortized, so it can run on every streamed token and
 // latch within a few repeats - long before the heavier backstop would react.
 type runawayGuard struct {
 	ngram          int
@@ -459,7 +459,7 @@ func (g *runawayGuard) Reason() *guardReason {
 }
 
 // splitKeepingSeparators splits on whitespace runs, keeping them, so the result
-// alternates word, separator, word, separator, ... exactly as the JavaScript
+// alternates word, separator, word, separator, ... Exactly as the JavaScript
 // `split(/(\s+)/)` it mirrors.
 func splitKeepingSeparators(text string) []string {
 	var (

@@ -11,10 +11,10 @@ import (
 // These messages are how the background run talks to the Bubble Tea program. The
 // UI never calls the engine directly; it only reacts to these.
 type (
-	// eventMsg carries one event of the run as it happens.
+	// EventMsg carries one event of the run as it happens.
 	eventMsg struct{ ev loop.Event }
 
-	// doneMsg is the run's ending. It is always the last message, and it carries
+	// DoneMsg is the run's ending. It is always the last message, and it carries
 	// everything the run has to say about how it ended: the reason, what the
 	// terminal tool wrote, and - on a failure - the error behind it.
 	doneMsg struct{ result loop.Result }
@@ -26,7 +26,7 @@ type (
 // which the caller reads once done is closed.
 //
 // All the autonomy lives in the engine - it loops the model through
-// plan/act/observe/exit on its own. runAgent is a pure pump: event in, tea.Msg out.
+// plan/act/observe/exit on its own. RunAgent is a pure pump: event in, tea.Msg out.
 func runAgent(ctx context.Context, p *tea.Program, engine *loop.Engine, results chan<- loop.Result, done chan<- struct{}) {
 	defer close(done)
 

@@ -88,11 +88,13 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 
 	// the recent turns must survive (sanity: forgetting did keep something)
 	var keptRecent bool
+
 	for _, message := range req.messages {
 		if strings.Contains(textOf(message), "short recent") {
 			keptRecent = true
 		}
 	}
+
 	if !keptRecent {
 		t.Error("the recent turns must survive forgetting")
 	}
@@ -124,6 +126,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// but the guidance must name the terminal tools (settle notice), not the plain
 	// empty notice - proving the settle-aware nudge fired
 	var sawTerminalGuidance bool
+
 	for _, message := range result.Messages {
 		if strings.Contains(message.Text, SuccessTool) {
 			sawTerminalGuidance = true

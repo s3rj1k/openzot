@@ -4,6 +4,7 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -53,7 +54,7 @@ func ParseTasks(args map[string]any) ([]Task, error) {
 	raw, _ := args["tasks"].([]any)
 
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("tasks needs at least one task")
+		return nil, errors.New("tasks needs at least one task")
 	}
 
 	tasks := make([]Task, 0, len(raw))

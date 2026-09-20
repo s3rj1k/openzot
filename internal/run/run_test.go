@@ -146,6 +146,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+
 	offered, err := LoadSkills(skillsDir)
 	if err != nil {
 		t.Fatal(err)
@@ -192,10 +193,12 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 // writeCfg writes a config file and returns its path.
 func writeCfg(t *testing.T, body string) string {
 	t.Helper()
+
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+
 	return path
 }
 
@@ -535,17 +538,21 @@ provider:
       max_iterations: 50
       context: 32000
 `)
+
 	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	client, opts, err := Resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
+
 	if got := client.Config().Model; got != "gpt-5" {
 		t.Errorf("model = %q, want gpt-5", got)
 	}
+
 	if opts.MaxIterations != 50 {
 		t.Errorf("max iterations = %d, want 50 (from custom model)", opts.MaxIterations)
 	}
@@ -691,7 +698,6 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg.Provider = config.ProviderConfig{}
 
 	err := Run(t.Context(), cfg, testOrder("task"), logged(t))
-
 	if err == nil {
 		t.Fatal("an unconfigured provider must fail")
 	}
@@ -1234,6 +1240,7 @@ func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 // run itself.
 func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	cfg := stubProviderConfig(t)
+
 	client, opts, err := Resolve(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1337,7 +1344,7 @@ func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 
 // The settle and call budgets are configurable, and the config values have to
 // actually reach the run - otherwise the knob in the example config is a lie.
-// max_settles is the one the operator most wants: how hard zot pushes the model
+// Max_settles is the one the operator most wants: how hard zot pushes the model
 // to record an outcome before giving up.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
@@ -1448,6 +1455,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 
 		mu.Lock()
+
 		bodies = append(bodies, string(body))
 		mu.Unlock()
 
@@ -1540,9 +1548,11 @@ func headlessViewer(ctx context.Context, meta tui.Meta, opts loop.Options) (loop
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}

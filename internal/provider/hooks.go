@@ -10,7 +10,7 @@ import (
 
 // The rules that shape a request to what OpenAI-compatible servers accept.
 //
-// fantasy's provider builds the request and offers a hook at each point where zot
+// Fantasy's provider builds the request and offers a hook at each point where zot
 // needs it to come out differently. Each hook here wraps fantasy's own compat
 // function rather than replacing it, so what that does - reasoning effort, extra
 // body, tool-result media - still happens.
@@ -18,7 +18,7 @@ import (
 // prepareCall is the request parameters, once fantasy has set them.
 //
 // The token limit goes out as max_tokens, the field every OpenAI-compatible
-// server reads. fantasy sends max_completion_tokens instead for any model whose
+// server reads. Fantasy sends max_completion_tokens instead for any model whose
 // name looks like a reasoning model, which a compat server behind a gateway alias
 // such as "gpt-5" would never see.
 func prepareCall(

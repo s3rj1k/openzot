@@ -15,7 +15,7 @@ import (
 const (
 	// DefaultMaxIterations caps agentic rounds - one model call plus the tools
 	// it requests. The loop is iterative rather than recursive, so any value is
-	// safe; this is a behavioural bound, not a stack one.
+	// safe; this is a behavioral bound, not a stack one.
 	DefaultMaxIterations = 1000
 
 	// DefaultMaxContinuations caps CONSECUTIVE recovery attempts - output
@@ -94,7 +94,7 @@ const (
 	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
 
-	// narrowFloor is the share of the configured window a rejection can narrow
+	// NarrowFloor is the share of the configured window a rejection can narrow
 	// the effective window down to, as a divisor: a provider that keeps saying
 	// "too long" is wrong about its own ceiling only so far.
 	narrowFloor = 4
@@ -162,7 +162,7 @@ const (
 	// StopUnsettled - the run exhausted its settle nudges without a terminal call.
 	StopUnsettled StopReason = "unsettled"
 
-	// StopAborted - the caller cancelled.
+	// StopAborted - the caller canceled.
 	StopAborted StopReason = "aborted"
 
 	// StopError - an unrecoverable failure.

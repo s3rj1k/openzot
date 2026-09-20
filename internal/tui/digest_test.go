@@ -21,11 +21,13 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	// Every non-empty line must parse as (key, value) by splitting on the first
 	// run of spaces - the whole point of the format.
 	got := map[string]string{}
+
 	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, value, found := strings.Cut(strings.TrimRight(line, " "), " ")
 		if !found {
 			t.Fatalf("line %q is not a key/value pair", line)
 		}
+
 		got[key] = strings.TrimSpace(value)
 	}
 
@@ -63,6 +65,7 @@ func TestRenderDigestFlattensMultilineMessage(t *testing.T) {
 	if strings.Contains(out, "line one\nline two") {
 		t.Error("a multi-line message must be flattened to one line")
 	}
+
 	if !strings.Contains(out, "line one line two") {
 		t.Errorf("the message must survive flattening:\n%s", out)
 	}
@@ -76,7 +79,7 @@ func TestDigestStatus(t *testing.T) {
 	}{
 		{string(loop.StopSettled), 0, "done"},
 		{string(loop.StopFailed), 1, "failed"},
-		{string(loop.StopAborted), 1, "cancelled"},
+		{string(loop.StopAborted), 1, "canceled"},
 		{string(loop.StopIterations), 3, "failed"},
 	}
 

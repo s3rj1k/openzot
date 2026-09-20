@@ -66,7 +66,7 @@ Long instructions the model reads only when it decides the skill is relevant.
 func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
 	root := t.TempDir()
 
-	writeSkill(t, root, "review", "# Review\n\nReview a pull request carefully.\n")
+	writeSkill(t, root, "review", "# Review\n\nLook over a pull request carefully.\n")
 
 	skills, err := Load(root)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
 		t.Fatalf("got %+v, want the directory name as the skill's name", skills)
 	}
 
-	if skills[0].Description != "Review a pull request carefully." {
+	if skills[0].Description != "Look over a pull request carefully." {
 		t.Errorf("description = %q, want the first prose line", skills[0].Description)
 	}
 }

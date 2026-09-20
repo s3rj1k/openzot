@@ -116,7 +116,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 
 // Trimming happens on the wire, not in the history: every message the run
 // started with is still in the conversation afterwards, and nothing has been
-// summarised into its place.
+// summarized into its place.
 func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 

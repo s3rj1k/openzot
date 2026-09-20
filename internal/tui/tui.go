@@ -69,10 +69,12 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 	}
 
 	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
+
 	m.title = meta.Title
 	if meta.MaxScrollback > 0 {
 		m.maxEntries = meta.MaxScrollback
 	}
+
 	m.maxIterations = meta.MaxIterations
 	m.maxDuration = meta.MaxDuration
 
@@ -80,8 +82,8 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 }
 
 // runViewer owns the viewer's lifetime: it starts the run, hands the program to
-// start, and shuts the run down once start returns. start is a seam for tests,
-// which cannot open a terminal - Run passes (*tea.Program).Run. programOptions is
+// start, and shuts the run down once start returns. Start is a seam for tests,
+// which cannot open a terminal - Run passes (*tea.Program).Run. ProgramOptions is
 // a seam for tests, which cannot open a terminal and need a headless program that
 // still consumes messages.
 func runViewer(

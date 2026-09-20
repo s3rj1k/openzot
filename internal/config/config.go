@@ -1,13 +1,14 @@
 // Package config loads zot's configuration, layering built-in defaults, an
 // YAML file (defaults < file).
 //
-// zot ships no provider: the one connection every run uses is declared under
+// Zot ships no provider: the one connection every run uses is declared under
 // `provider:` in the config, with its endpoint, its credential and the models it
 // serves; agent.model picks which of them runs.
 package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"maps"
 	"net/url"
@@ -253,6 +254,7 @@ func Load(path string) (Config, error) {
 	case err == nil:
 		decoder := yaml.NewDecoder(bytes.NewReader(data))
 		decoder.KnownFields(true)
+
 		if err := decoder.Decode(&cfg); err != nil {
 			return cfg, fmt.Errorf("parse %s: %w", path, err)
 		}
@@ -297,6 +299,7 @@ func resolveSecret(v string) string {
 		name := strings.TrimSuffix(strings.TrimPrefix(after, "{"), "}")
 		return strings.TrimSpace(os.Getenv(strings.TrimSpace(name)))
 	}
+
 	return v
 }
 
@@ -320,33 +323,39 @@ func ScrubProviderSecrets(cfg Config) {
 // Validate checks the fully-merged configuration.
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
-		return fmt.Errorf("agent.model must be set in the config: zot has no default model")
+		return errors.New("agent.model must be set in the config: zot has no default model")
 	}
+
 	if c.Agent.MaxIterations <= 0 {
-		return fmt.Errorf("agent.max_iterations must be a positive number")
+		return errors.New("agent.max_iterations must be a positive number")
 	}
+
 	if _, err := c.Agent.MaxDuration(); err != nil {
 		return fmt.Errorf("agent.max_time: %w", err)
 	}
+
 	if err := c.Agent.validateContext(); err != nil {
 		return err
 	}
+
 	if c.Agent.MaxToolOutputPercent < 0 || c.Agent.MaxToolOutputPercent > 100 {
 		return fmt.Errorf("agent.max_tool_output_percent: %d is out of range (1-100, or 0 for the default)", c.Agent.MaxToolOutputPercent)
 	}
+
 	if c.Agent.PlanMinTurns < 0 {
-		return fmt.Errorf("agent.plan_min_turns must not be negative")
+		return errors.New("agent.plan_min_turns must not be negative")
 	}
+
 	if c.UI.Scrollback < 0 {
-		return fmt.Errorf("ui.scrollback must not be negative")
+		return errors.New("ui.scrollback must not be negative")
 	}
+
 	p := c.Provider
 
 	// there is no built-in endpoint to fall back on, and finding out mid-run that
 	// there is nowhere to send the request is worse than at load
 	if p.BaseURL == "" {
-		return fmt.Errorf(
-			"no provider: declare one under provider: in the config, with a base_url, an api_key and its models - zot has no built-in provider")
+		return errors.New("no provider: declare one under provider: in the config, with a base_url, an api_key and its models - zot has no built-in provider")
 	}
 
 	if len(p.Models) == 0 {

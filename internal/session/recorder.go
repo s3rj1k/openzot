@@ -29,7 +29,7 @@ type Recorder struct {
 	failed error
 }
 
-// NewRecorder wraps a writer. onFailure, when set, is called once, with the first
+// NewRecorder wraps a writer. OnFailure, when set, is called once, with the first
 // write that fails.
 func NewRecorder(writer *Writer, onFailure func(error)) *Recorder {
 	return &Recorder{writer: writer, onFailure: onFailure}

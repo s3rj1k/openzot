@@ -16,7 +16,7 @@ import (
 
 // Contract is the half of the prompt no order may leave out. Every other prompt
 // rule is a preference; this one is a fact about the machine the agent is running
-// on. zot has no input channel at all - a run is a work order, a provider and a
+// on. Zot has no input channel at all - a run is a work order, a provider and a
 // read-only viewer - so an agent that asks a question is not answered tersely, it
 // is not answered at all: it waits until a guard kills the run, and everything it
 // had not yet written is lost. That failure is silent and expensive, and it costs
@@ -58,7 +58,7 @@ const promptRules = `Operating rules:
 - Write files with a quoted heredoc (<<'EOF') so the shell does not expand what you wrote, and check the result afterwards with cat, sed -n or git diff.
 - Keep "tasks" current: mark a task in_progress when you begin it and done when it is finished, and mark it blocked, with a note saying why, when it cannot go on.
 - Never run interactive or long-lived commands.
-- Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarise, interpret, or analyse tool output - keep working, and use "tasks" for status.`
+- Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarize, interpret, or analyze tool output - keep working, and use "tasks" for status.`
 
 // promptMemory tells the agent where its long-term memory is. The context window
 // is short-term memory and is forgotten oldest first as it fills; the session log
@@ -128,7 +128,7 @@ objective:
 
 # The objective is not met until every one of these holds.
 # acceptance:
-#   - the new behaviour is covered by a test that fails without the change
+#   - the new behavior is covered by a test that fails without the change
 #   - the full test suite passes
 
 # Rules that hold for the whole run.

@@ -25,14 +25,14 @@ const ShellTool = "shell"
 // New returns the standard tool set, with a ceiling of maxOutput bytes on a
 // single tool result. Zero or negative means no ceiling.
 //
-// The set is two tools. shell is the only one that touches the machine: the
+// The set is two tools. Shell is the only one that touches the machine: the
 // model reads, lists, creates and changes files with ordinary commands, the way
 // anyone does at a terminal, so there is one place a run's effects come from and
-// one place to bound them. tasks changes nothing on disk; it exists so the work
+// one place to bound them. Tasks changes nothing on disk; it exists so the work
 // a run has set itself, and how far along it is, can be followed. A third, skills,
 // is added when there are skills to offer.
 //
-// shell runs with the privileges of the process. That is the point - an agent
+// Shell runs with the privileges of the process. That is the point - an agent
 // that cannot touch the machine is not much use to a CLI - but it means the
 // caller decides what to expose, and a caller running untrusted instructions
 // should hand over a narrower set.
@@ -116,7 +116,7 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 	// to a grandchild, and reading that pipe blocks until every holder of it is
 	// gone. Without a WaitDelay the tool call simply never returns, and nothing
 	// upstream can recover: the run's time budget is only checked between
-	// iterations, and cancelling the run kills the shell, not the process
+	// iterations, and canceling the run kills the shell, not the process
 	// holding the pipe. WaitDelay gives up on the pipe shortly after the process
 	// is killed, so a wedged command costs a timeout instead of the whole run.
 	cmd.WaitDelay = 2 * time.Second

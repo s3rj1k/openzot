@@ -34,7 +34,7 @@ type Skill struct {
 //
 // A skill is a subdirectory containing a SKILL.md whose front matter supplies
 // the name and description. A subdirectory without one is skipped rather than
-// treated as an error - a skills folder routinely contains other things. dir
+// treated as an error - a skills folder routinely contains other things. Dir
 // itself must exist: it was named in the config, so a typo should stop the run
 // at startup rather than quietly leave the model without its skills.
 func Load(dir string) ([]Skill, error) {

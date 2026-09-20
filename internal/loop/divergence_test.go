@@ -41,7 +41,7 @@ var notPortableCases = []notPortable{
 		ID:          "hasRepeatedSuffix/e577bc4f1b53",
 		Replacement: "TestCycleCircularResult",
 		Why: "Asserts the heuristic tolerates a self-referential payload. Go has no equivalent " +
-			"hazard on this path - marshalling a cycle returns an error rather than recursing " +
+			"hazard on this path - marshaling a cycle returns an error rather than recursing " +
 			"forever - but the underlying question still applies: does a malformed tool result " +
 			"abort the run. The replacement builds a result containing itself and asserts the " +
 			"check answers instead of panicking.",

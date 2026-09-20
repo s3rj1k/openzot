@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,7 +176,7 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 		t.Fatal("writes to a closed log were not reported")
 	}
 
-	if len(told) != 1 || told[0] != recorder.Err() {
+	if len(told) != 1 || !errors.Is(told[0], recorder.Err()) {
 		t.Errorf("the caller was told %d times (%v), want once, with the first failure", len(told), told)
 	}
 }

@@ -2,8 +2,8 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The brand colours (accent, secondary) are zot's neutral identity; the rest are
-// fixed semantic and neutral colours for state and log text.
+// The brand colors (accent, secondary) are zot's neutral identity; the rest are
+// fixed semantic and neutral colors for state and log text.
 var (
 	colAccent    = lipgloss.Color("#6B7280") // neutral slate (brand accent)
 	colSecondary = lipgloss.Color("#9CA3AF") // lighter slate  (brand secondary)
@@ -30,8 +30,8 @@ var (
 	metaStyle = lipgloss.NewStyle().Foreground(colDim)
 	metaKey   = lipgloss.NewStyle().Foreground(colFaint)
 
-	// Meta-bar value colours. Fixed functional hues (not the brand accent), so the
-	// header carries colour and stays scannable even under a neutral theme: the
+	// Meta-bar value colors. Fixed functional hues (not the brand accent), so the
+	// header carries color and stays scannable even under a neutral theme: the
 	// model and provider are highlighted, the counters read by kind, and paths and
 	// timing stay muted.
 	metaModel    = lipgloss.NewStyle().Foreground(colCyan)
@@ -42,8 +42,8 @@ var (
 	footerStyle = lipgloss.NewStyle().Foreground(colDim)
 	keyHint     = lipgloss.NewStyle().Foreground(colCyan)
 
-	// Status badges. Bold coloured foreground (no background block) so the spinner
-	// and label read as one solid colour - embedding the spinner's own ANSI inside
+	// Status badges. Bold colored foreground (no background block) so the spinner
+	// and label read as one solid color - embedding the spinner's own ANSI inside
 	// a background style otherwise breaks the fill.
 	statusRunningStyle = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
 	statusDoneStyle    = lipgloss.NewStyle().Bold(true).Foreground(colGreen)

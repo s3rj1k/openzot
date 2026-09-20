@@ -83,7 +83,7 @@ func clusterActivities(messages []Message) []Message {
 			organized = append(organized, message)
 
 		default:
-			// an unrecognised activity kind is not something a provider can be
+			// an unrecognized activity kind is not something a provider can be
 			// asked to interpret
 			continue
 		}

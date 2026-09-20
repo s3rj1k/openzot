@@ -61,7 +61,7 @@ func loadCorpus(t *testing.T) corpusFile {
 }
 
 // Messages and activities the typed model can hold, read out of a record's
-// message maps. ok is false for anything it cannot express.
+// message maps. Ok is false for anything it cannot express.
 
 // argumentForms records how each arguments value was written in a record, as an
 // object or as a string. The typed model holds arguments only as the string the

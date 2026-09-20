@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"strings"
 	"testing"
 
 	"charm.land/fantasy"
@@ -32,11 +33,13 @@ func toolCallOf(message fantasy.Message) (fantasy.ToolCallPart, bool) {
 func textOf(message fantasy.Message) string {
 	var text string
 
+	var textSb35 strings.Builder
 	for _, part := range message.Content {
 		if piece, ok := part.(fantasy.TextPart); ok {
-			text += piece.Text
+			textSb35.WriteString(piece.Text)
 		}
 	}
+	text += textSb35.String()
 
 	return text
 }

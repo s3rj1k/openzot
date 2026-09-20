@@ -7,7 +7,7 @@ import (
 	"charm.land/fantasy"
 )
 
-// Every notice must be recognisable as an injected instruction rather than the
+// Every notice must be recognizable as an injected instruction rather than the
 // model's own words - the cycle detector skips them by that prefix, so a notice
 // without it would break loop detection.
 func TestNoticesCarryThePrefix(t *testing.T) {
@@ -29,12 +29,12 @@ func TestNoticesCarryThePrefix(t *testing.T) {
 }
 
 // A nudge that only says "you seem stuck" produces another lap. Naming the
-// behaviour is what makes the model change approach.
+// behavior is what makes the model change approach.
 func TestCycleNoticeNamesTheBehaviour(t *testing.T) {
 	notice := cycleNotice("you have called the same tool with the same arguments")
 
 	if !strings.Contains(notice, "same tool with the same arguments") {
-		t.Errorf("the specific behaviour must survive into the notice: %q", notice)
+		t.Errorf("the specific behavior must survive into the notice: %q", notice)
 	}
 
 	// an unattributed cycle still produces something actionable

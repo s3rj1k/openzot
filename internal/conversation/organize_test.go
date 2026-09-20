@@ -274,7 +274,7 @@ func TestOrganizeDropsMalformedActivities(t *testing.T) {
 			message: Message{Type: TypeActivity, Activity: &Activity{ID: "x", Name: "shell"}},
 		},
 		{
-			name:    "a kind nobody recognises",
+			name:    "a kind nobody recognizes",
 			message: Message{Type: TypeActivity, Activity: &Activity{Kind: "somethingelse", ID: "x"}},
 		},
 	}

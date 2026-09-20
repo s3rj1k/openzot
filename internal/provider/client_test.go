@@ -192,7 +192,7 @@ func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
 
 // A connection cut at each point of a turn - after a frame, before any response,
 // by a reset - is an outage the run should wait out, not one that ends it. These
-// are the real transport errors, so they prove the rules recognise them by type.
+// are the real transport errors, so they prove the rules recognize them by type.
 func TestACutConnectionIsRetriable(t *testing.T) {
 	tests := map[string]http.HandlerFunc{
 		"cut after a frame": func(w http.ResponseWriter, _ *http.Request) {
@@ -545,7 +545,7 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("cancelling the context did not end the stream")
+		t.Fatal("canceling the context did not end the stream")
 	}
 }
 

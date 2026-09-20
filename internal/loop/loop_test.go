@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -446,7 +447,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 
 func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 	tools := []fantasy.AgentTool{namedTool("boom", func(context.Context) (any, error) {
-		return nil, fmt.Errorf("disk on fire")
+		return nil, errors.New("disk on fire")
 	})}
 
 	result := run(t, Options{
@@ -580,15 +581,15 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 }
 
 // The runaway guard ends a turn while the provider is still streaming, so the
-// stream it walks away from has to be cancelled. It was not: the transport's
+// stream it walks away from has to be canceled. It was not: the transport's
 // producer goroutine stayed parked on a send nobody would ever receive, holding
 // its HTTP response body open for the life of the process, and every trip of the
 // guard - a routine event in a long run, which is why the guard exists - leaked
 // another one.
 func TestAnAbandonedStreamIsCancelled(t *testing.T) {
-	cancelled := make(chan struct{})
+	canceled := make(chan struct{})
 
-	done := sync.OnceFunc(func() { close(cancelled) })
+	done := sync.OnceFunc(func() { close(canceled) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -596,7 +597,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		flusher, _ := w.(http.Flusher)
 
 		// stream a repeating phrase forever: past RunawayGuardMinChars the guard
-		// recognises the repetition and cuts the turn short mid-stream
+		// recognizes the repetition and cuts the turn short mid-stream
 		for {
 			select {
 			case <-r.Context().Done():
@@ -653,9 +654,9 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	}
 
 	select {
-	case <-cancelled:
+	case <-canceled:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the abandoned stream was never cancelled: its transport goroutine and response body leak")
+		t.Fatal("the abandoned stream was never canceled: its transport goroutine and response body leak")
 	}
 }
 
