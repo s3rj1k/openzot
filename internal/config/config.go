@@ -1,13 +1,16 @@
 // Package config loads zot's configuration, layering built-in defaults, an
 // YAML file (defaults < file).
 //
-// zot ships no providers: every connection a run can target is declared under
-// `providers:` in the config, with its own endpoint and credential.
+// zot ships no provider: the one connection every run uses is declared under
+// `provider:` in the config, with its endpoint, its credential and the models it
+// serves; agent.model picks which of them runs.
 package config
 
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -25,30 +28,28 @@ type Config struct {
 	// the skills tool. "~/" is the home directory; a relative path is taken
 	// against --dir. Empty means no skills.
 	SkillsDir string `yaml:"skills_dir"`
-	// DefaultProvider names the entry in Providers used by every run. There is
-	// no built-in default: a run needs one named.
-	DefaultProvider string `yaml:"default_provider"`
-	// Providers are the named model-provider connections a run can target. None
-	// are built in; each is declared here with a base_url and an api_key.
-	Providers map[string]ProviderConfig `yaml:"providers"`
+	// Provider is the one model-provider connection every run uses. There is no
+	// built-in one: it is declared here with a base_url, an api_key and the
+	// models it serves, and agent.model picks which of them runs.
+	Provider ProviderConfig `yaml:"provider"`
 }
 
-// ProviderConfig is a named model-provider connection zot can run against.
-// Every provider authenticates with a Bearer credential.
+// ProviderConfig is the model-provider connection zot runs against. It
+// authenticates with a Bearer credential.
 type ProviderConfig struct {
 	// BaseURL is the API endpoint root. Required, and https unless loopback.
 	BaseURL string `yaml:"base_url"`
 	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
 	// secret need be written to disk. Required unless base_url is loopback.
 	APIKey string `yaml:"api_key"`
-	// Models is the list of models this provider serves. Required: a model that
+	// Models is the list of models the provider serves. Required: a model that
 	// is not listed here cannot be run, because every model must state its own
 	// context window. Its keys are the selectable names, and each entry may
 	// alias or override the real model id.
 	Models map[string]ModelConfig `yaml:"models"`
 }
 
-// ModelConfig is a model definition under a provider. Context is required; any
+// ModelConfig is a model definition under the provider. Context is required; any
 // other field set here overrides the run's defaults when the model is selected.
 type ModelConfig struct {
 	// Model is the underlying model id to send. Lets a custom name alias a real
@@ -56,10 +57,6 @@ type ModelConfig struct {
 	Model string `yaml:"model"`
 	// MaxIterations overrides the global iteration cap for this model.
 	MaxIterations int `yaml:"max_iterations"`
-	// APIKey is this model's own credential, overriding the provider's. Useful
-	// where one gateway fronts several providers, each wanting its own key.
-	// Supports "$ENV_VAR".
-	APIKey string `yaml:"api_key"`
 	// Context is the model's total context window, in tokens. Required, and the
 	// only source of it: zot keeps no table of what models can take, because
 	// the real ceiling belongs to the endpoint being served, which can be
@@ -80,15 +77,20 @@ type ModelConfig struct {
 	ExtraBody map[string]any `yaml:"extra_body"`
 }
 
-// ProviderModels returns the model names a provider was configured with, sorted.
-func ProviderModels(provider ProviderConfig) []string {
-	names := make([]string, 0, len(provider.Models))
-	for name := range provider.Models {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+// ModelNames returns the names of the models the provider serves, sorted.
+func (p ProviderConfig) ModelNames() []string {
+	return slices.Sorted(maps.Keys(p.Models))
+}
 
-	return names
+// Label is what the viewer and the session log call the provider: the host of
+// its base_url, which says where the run is talking without a second name to
+// keep in step with it.
+func (p ProviderConfig) Label() string {
+	if u, err := url.Parse(p.BaseURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+
+	return p.BaseURL
 }
 
 // UI holds presentation options for the read-only viewer.
@@ -260,34 +262,22 @@ func Load(path string) (Config, error) {
 		return cfg, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	resolveProviders(&cfg)
+	resolveProvider(&cfg)
 
 	return cfg, nil
 }
 
-// resolveProviders resolves every credential - the provider-level key and each
-// model's own key - from its "$ENV" reference, when it is one.
+// resolveProvider resolves the credential from its "$ENV" reference, when it is
+// one.
 //
 // The credential is only ever what the config says. There is no fallback to a
 // conventional environment variable: a key is scoped to the host it was issued
 // for, and guessing which one belongs to a URL somebody typed is how a
-// credential ends up in someone else's logs.
-func resolveProviders(cfg *Config) {
-	for name, p := range cfg.Providers {
-		// Every spelling is resolved: a `$VAR` reference left unexpanded would
-		// send the literal string "$MY_KEY" to the provider and come back as a
-		// 401 that reads like a bad key.
-		p.APIKey = resolveSecret(p.APIKey)
-
-		for mName, mc := range p.Models {
-			if mc.APIKey != "" {
-				mc.APIKey = resolveSecret(mc.APIKey)
-				p.Models[mName] = mc
-			}
-		}
-
-		cfg.Providers[name] = p
-	}
+// credential ends up in someone else's logs. Every spelling is resolved: a
+// `$VAR` reference left unexpanded would send the literal string "$MY_KEY" to the
+// provider and come back as a 401 that reads like a bad key.
+func resolveProvider(cfg *Config) {
+	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
 }
 
 // resolveSecret expands a "$ENV_VAR" / "${ENV_VAR}" reference; a literal value
@@ -310,30 +300,18 @@ func resolveSecret(v string) string {
 	return v
 }
 
-// ScrubProviderSecrets removes every resolved provider credential, both
-// provider-level and per-model, from the process environment. Config retains
-// the resolved values used by the SDK client, while shell commands launched by
-// the agent no longer inherit those credentials.
+// ScrubProviderSecrets removes the resolved provider credential from the process
+// environment. Config retains the resolved value used by the SDK client, while
+// shell commands launched by the agent no longer inherit it.
 func ScrubProviderSecrets(cfg Config) {
-	secrets := map[string]bool{}
-	add := func(v string) {
-		if v != "" {
-			secrets[v] = true
-		}
-	}
-	for _, provider := range cfg.Providers {
-		add(provider.APIKey)
-		for _, mc := range provider.Models {
-			add(mc.APIKey)
-		}
-	}
-	if len(secrets) == 0 {
+	secret := cfg.Provider.APIKey
+	if secret == "" {
 		return
 	}
 
 	for _, entry := range os.Environ() {
 		name, value, ok := strings.Cut(entry, "=")
-		if ok && secrets[value] {
+		if ok && value == secret {
 			_ = os.Unsetenv(name)
 		}
 	}
@@ -362,43 +340,38 @@ func (c Config) Validate() error {
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")
 	}
-	if strings.TrimSpace(c.DefaultProvider) == "" {
+	p := c.Provider
+
+	// there is no built-in endpoint to fall back on, and finding out mid-run that
+	// there is nowhere to send the request is worse than at load
+	if p.BaseURL == "" {
 		return fmt.Errorf(
-			"no provider selected: declare one under providers: in the config and name it with default_provider - zot has no built-in providers")
+			"no provider: declare one under provider: in the config, with a base_url, an api_key and its models - zot has no built-in provider")
 	}
-	if _, ok := c.Providers[c.DefaultProvider]; !ok {
-		return fmt.Errorf("provider %q is not configured (declare it under providers: with a base_url and api_key)", c.DefaultProvider)
-	}
-	if endpoint := c.Providers[c.DefaultProvider]; len(endpoint.Models) == 0 {
+
+	if len(p.Models) == 0 {
 		return fmt.Errorf(
-			"provider %q declares no models: list %q under providers.%s.models, with its context window",
-			c.DefaultProvider, c.Agent.Model, c.DefaultProvider)
-	} else if _, ok := endpoint.Models[c.Agent.Model]; !ok {
-		return fmt.Errorf("model %q is not configured for provider %q (available: %s)",
-			c.Agent.Model, c.DefaultProvider, strings.Join(ProviderModels(endpoint), ", "))
+			"provider.models is empty: list %q under provider.models, with its context window", c.Agent.Model)
 	}
-	for name, endpoint := range c.Providers {
-		// there is no built-in endpoint to fall back on, and finding out
-		// mid-run that there is nowhere to send the request is worse than at
-		// load
-		if endpoint.BaseURL == "" {
-			return fmt.Errorf("providers.%s: base_url is not set", name)
+
+	if _, ok := p.Models[c.Agent.Model]; !ok {
+		return fmt.Errorf("agent.model %q is not under provider.models (available: %s)",
+			c.Agent.Model, strings.Join(p.ModelNames(), ", "))
+	}
+
+	// Every model states its own window, in sorted order so the first error is
+	// the same one every time.
+	for _, model := range p.ModelNames() {
+		if p.Models[model].Context <= 0 {
+			return fmt.Errorf(
+				"provider.models.%s: context is required - set the model's context window, in tokens", model)
 		}
 
-		// Every model states its own window, in sorted order so the first
-		// error is the same one every time.
-		for _, model := range ProviderModels(endpoint) {
-			if endpoint.Models[model].Context <= 0 {
-				return fmt.Errorf(
-					"providers.%s.models.%s: context is required - set the model's context window, in tokens",
-					name, model)
-			}
-
-			if effort := strings.ToLower(strings.TrimSpace(endpoint.Models[model].ReasoningEffort)); !slices.Contains(ReasoningEfforts, effort) && effort != "" {
-				return fmt.Errorf("providers.%s.models.%s: reasoning_effort %q is not known (use %s)",
-					name, model, endpoint.Models[model].ReasoningEffort, strings.Join(ReasoningEfforts, ", "))
-			}
+		if effort := strings.ToLower(strings.TrimSpace(p.Models[model].ReasoningEffort)); !slices.Contains(ReasoningEfforts, effort) && effort != "" {
+			return fmt.Errorf("provider.models.%s: reasoning_effort %q is not known (use %s)",
+				model, p.Models[model].ReasoningEffort, strings.Join(ReasoningEfforts, ", "))
 		}
 	}
+
 	return nil
 }

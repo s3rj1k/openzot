@@ -144,10 +144,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	defer server.Close()
 
 	cfg := stubProvider(t)
-	cfg.DefaultProvider = "local"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 	offered, err := LoadSkills(skillsDir)
 	if err != nil {
 		t.Fatal(err)
@@ -207,10 +204,8 @@ func writeCfg(t *testing.T, body string) string {
 //
 // These assert on the Authorization header the provider actually receives,
 // because that is the only thing that proves a credential was resolved rather
-// than merely accepted by the parser. The layering - provider key, per-model
-// override, key inlined into the model name - is what the README documents and
-// what an older config relies on.
-func TestCredentialResolutionLayers(t *testing.T) {
+// than merely accepted by the parser.
+func TestCredentialResolution(t *testing.T) {
 	tests := []struct {
 		name   string
 		env    map[string]string
@@ -220,23 +215,16 @@ func TestCredentialResolutionLayers(t *testing.T) {
 	}{
 		{
 			name:   "a provider api_key",
-			config: "    api_key: sk-provider\n    models:\n      gpt-4:\n        context: 100000\n",
+			config: "  api_key: sk-provider\n  models:\n    gpt-4:\n      context: 100000\n",
 			want:   "Bearer sk-provider",
 			model:  "gpt-4",
 		},
 		{
 			name:   "a $VAR reference, so no secret is on disk",
 			env:    map[string]string{"MY_PROVIDER_KEY": "sk-from-env"},
-			config: "    api_key: $MY_PROVIDER_KEY\n    models:\n      gpt-4:\n        context: 100000\n",
+			config: "  api_key: $MY_PROVIDER_KEY\n  models:\n    gpt-4:\n      context: 100000\n",
 			want:   "Bearer sk-from-env",
 			model:  "gpt-4",
-		},
-		{
-			name: "a per-model key overrides the provider's",
-			config: "    api_key: sk-provider\n" +
-				"    models:\n      gpt-4:\n        api_key: sk-for-gpt4\n        context: 100000\n",
-			want:  "Bearer sk-for-gpt4",
-			model: "gpt-4",
 		},
 	}
 
@@ -267,10 +255,8 @@ func TestCredentialResolutionLayers(t *testing.T) {
 			path := writeCfg(t, fmt.Sprintf(`
 agent:
   model: %q
-default_provider: myprovider
-providers:
-  myprovider:
-    base_url: %s
+provider:
+  base_url: %s
 %s`, test.model, server.URL, test.config))
 
 			cfg, err := config.Load(path)
@@ -313,7 +299,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 		extra string
 		want  string
 	}{
-		{name: "asked for", extra: "        content_array: true\n", want: "["},
+		{name: "asked for", extra: "      content_array: true\n", want: "["},
 		{name: "not asked for", want: `"`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -355,15 +341,13 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 			path := writeCfg(t, fmt.Sprintf(`
 agent:
   model: default
-default_provider: selfhosted
-providers:
-  selfhosted:
-    base_url: %s
-    api_key: x
-    models:
-      default:
-        model: Qwen3.8-27B
-        context: 100000
+provider:
+  base_url: %s
+  api_key: x
+  models:
+    default:
+      model: Qwen3.8-27B
+      context: 100000
 %s`, server.URL, test.extra))
 
 			cfg, err := config.Load(path)
@@ -399,8 +383,7 @@ providers:
 // sending a request to nowhere.
 func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg := testDefaults()
-	cfg.DefaultProvider = "myprovider"
-	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test", Models: declared("glm-5.2")}}
+	cfg.Provider = config.ProviderConfig{APIKey: "sk-test", Models: declared("glm-5.2")}
 
 	_, _, err := Resolve(cfg, nil)
 	if err == nil {
@@ -417,10 +400,7 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 // refused, never mended into one that runs.
 func TestResolveNeverRepairsAShellCall(t *testing.T) {
 	cfg := testDefaults()
-	cfg.DefaultProvider = "p"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"p": {BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")}
 
 	_, opts, err := Resolve(cfg, nil)
 	if err != nil {
@@ -446,17 +426,14 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 	for name, models := range cases {
 		t.Run(name, func(t *testing.T) {
 			cfg := testDefaults()
-			cfg.DefaultProvider = "local"
-			cfg.Providers = map[string]config.ProviderConfig{
-				"local": {BaseURL: "http://127.0.0.1:1", Models: models},
-			}
+			cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", Models: models}
 
 			_, _, err := Resolve(cfg, nil)
 			if err == nil {
 				t.Fatal("a model with no context window resolved")
 			}
 
-			for _, want := range []string{"glm-5.2", "context window", "providers.local.models"} {
+			for _, want := range []string{"glm-5.2", "context window", "provider.models"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q should mention %q", err, want)
 				}
@@ -468,92 +445,94 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 // A declared provider resolves to its own endpoint and credential, with the
 // model name passed through untouched, and its own name is what the client
 // reports.
-func TestResolveDeclaredProviders(t *testing.T) {
+func TestResolveSelectsTheModelFromTheOneProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
 	t.Setenv("ALPHA_KEY", "sk-alpha")
 
 	cfg, err := config.Load(writeCfg(t, `
 agent:
-  model: some-model
-providers:
-  alpha:
-    base_url: https://alpha.example.com/v1
-    api_key: $ALPHA_KEY
-    models:
-      some-model:
-        context: 100000
-  beta:
-    base_url: https://beta.example.com/v1
-    api_key: sk-beta
-    models:
-      some-model:
-        context: 100000
+  model: fast
+provider:
+  base_url: https://alpha.example.com/v1
+  api_key: $ALPHA_KEY
+  models:
+    fast:
+      model: alpha-flash
+      context: 32000
+      max_iterations: 20
+    smart:
+      model: alpha-pro
+      context: 200000
+      reasoning_effort: high
 `))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	for name, wantURL := range map[string]string{
-		"alpha": "https://alpha.example.com/v1",
-		"beta":  "https://beta.example.com/v1",
+	for name, want := range map[string]struct {
+		model      string
+		window     int
+		iterations int
+		effort     string
+	}{
+		"fast":  {"alpha-flash", 32000, 20, ""},
+		"smart": {"alpha-pro", 200000, cfg.Agent.MaxIterations, "high"},
 	} {
-		cfg.DefaultProvider = name
+		cfg.Agent.Model = name
 
-		client, _, err := Resolve(cfg, nil)
+		client, opts, err := Resolve(cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
 
-		if got := client.Config().Model; got != "some-model" {
-			t.Errorf("%s model = %q, want it unchanged", name, got)
+		got := client.Config()
+
+		if got.Model != want.model || got.ReasoningEffort != want.effort || opts.ContextWindow != want.window || opts.MaxIterations != want.iterations {
+			t.Errorf("%s resolved to model %q effort %q window %d iterations %d, want %+v",
+				name, got.Model, got.ReasoningEffort, opts.ContextWindow, opts.MaxIterations, want)
 		}
 
-		if got := client.Config().Provider; got != name {
-			t.Errorf("%s provider = %q, want %q", name, got, name)
+		// one provider, so one endpoint and one credential whatever the model
+		if got.BaseURL != "https://alpha.example.com/v1" || got.APIKey != "sk-alpha" || got.Provider != "alpha.example.com" {
+			t.Errorf("%s talks to %q as %q with key %q", name, got.BaseURL, got.Provider, got.APIKey)
 		}
+	}
 
-		if got := client.Config().BaseURL; got != wantURL {
-			t.Errorf("%s endpoint = %q, want %q", name, got, wantURL)
-		}
+	cfg.Agent.Model = "huge"
+
+	if _, _, err := Resolve(cfg, nil); err == nil || !strings.Contains(err.Error(), "context window") {
+		t.Errorf("a model the provider does not list resolved: %v", err)
 	}
 }
 
-// Nothing is built in: naming a provider that was never declared fails, whatever
-// the name and whatever the environment holds.
+// Nothing is built in: with no provider declared a run does not resolve, whatever
+// the environment holds.
 func TestNoProviderIsBuiltIn(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
+	t.Setenv("ZAI_API_KEY", "sk-zai")
 
-	cfg := testDefaults()
-
-	for _, name := range []string{"openai", "anthropic", "zai", "ollama", "openrouter"} {
-		cfg.DefaultProvider = name
-
-		if _, _, err := Resolve(cfg, nil); err == nil {
-			t.Errorf("%q resolved with nothing declared", name)
-		}
+	if _, _, err := Resolve(testDefaults(), nil); err == nil {
+		t.Error("a run resolved with no provider declared")
 	}
 }
 
-// A custom model entry aliases a real id, caps iterations, and carries its own
-// credential, all of which take priority over the run defaults.
+// A model entry aliases a real id and caps iterations, both of which take
+// priority over the run defaults.
 func TestResolveCustomModelAlias(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	path := writeCfg(t, `
 agent:
   model: fast
-default_provider: mygateway
-providers:
-  mygateway:
-    base_url: https://gw.example.com/v1
-    models:
-      fast:
-        model: gpt-5
-        max_iterations: 50
-        api_key: $OPENAI_API_KEY
-        context: 32000
+provider:
+  base_url: https://gw.example.com/v1
+  api_key: sk-test
+  models:
+    fast:
+      model: gpt-5
+      max_iterations: 50
+      context: 32000
 `)
 	cfg, err := config.Load(path)
 	if err != nil {
@@ -582,16 +561,13 @@ providers:
 // engine ends at 40 - misreports the run to the only person watching it.
 func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg := testDefaults()
-	cfg.DefaultProvider = "openai"
 	cfg.Agent.Model = "capped"
 	cfg.Agent.MaxIterations = 100
-	cfg.Providers = map[string]config.ProviderConfig{
-		"openai": {
-			BaseURL: "https://gw.example.com/v1",
-			APIKey:  "sk-test",
-			Models: map[string]config.ModelConfig{
-				"capped": {Model: "gpt-5", MaxIterations: 40, Context: 100_000},
-			},
+	cfg.Provider = config.ProviderConfig{
+		BaseURL: "https://gw.example.com/v1",
+		APIKey:  "sk-test",
+		Models: map[string]config.ModelConfig{
+			"capped": {Model: "gpt-5", MaxIterations: 40, Context: 100_000},
 		},
 	}
 
@@ -614,7 +590,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	// the default is a 1,000,000 backstop rather than a budget, so there is
 	// nothing worth counting towards and the denominator stays hidden
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
-	cfg.Providers["openai"].Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
+	cfg.Provider.Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
 
 	_, opts, err = Resolve(cfg, nil)
 	if err != nil {
@@ -658,10 +634,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 	defer server.Close()
 
 	cfg := testDefaults()
-	cfg.DefaultProvider = "local"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	original := os.Stdout
 
@@ -712,8 +685,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 // says what to fix.
 func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg := testDefaults()
-	cfg.DefaultProvider = "nowhere"
-	cfg.Providers = map[string]config.ProviderConfig{}
+	cfg.Provider = config.ProviderConfig{}
 
 	err := Run(t.Context(), cfg, testOrder("task"), logged(t))
 
@@ -721,8 +693,8 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 		t.Fatal("an unconfigured provider must fail")
 	}
 
-	if !strings.Contains(err.Error(), "nowhere") {
-		t.Errorf("the error should name the provider: %v", err)
+	if !strings.Contains(err.Error(), "provider:") {
+		t.Errorf("the error should say to declare the provider: %v", err)
 	}
 }
 
@@ -741,10 +713,7 @@ func stubProvider(t *testing.T) config.Config {
 	t.Cleanup(server.Close)
 
 	cfg := testDefaults()
-	cfg.DefaultProvider = "local"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	return cfg
 }
@@ -834,7 +803,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 		t.Fatalf("the log must open with the meta: %+v", first)
 	}
 
-	if first.Meta.Task != "do the thing" || first.Meta.Provider != "local" {
+	if first.Meta.Task != "do the thing" || first.Meta.Provider != cfg.Provider.Label() {
 		t.Errorf("meta = %+v", first.Meta)
 	}
 
@@ -946,7 +915,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cfg := stubProvider(t)
-	cfg.Providers["local"] = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	if output, err := quietly(t, func() error {
 		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
@@ -1017,9 +986,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { asked.Add(1) }))
 	t.Cleanup(server.Close)
 
-	provider := cfg.Providers["local"]
-	provider.BaseURL = server.URL
-	cfg.Providers["local"] = provider
+	cfg.Provider.BaseURL = server.URL
 
 	blocked := filepath.Join(t.TempDir(), "a-file")
 
@@ -1073,13 +1040,13 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	cfg.Agent.Model = "m"
 
 	err = cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "providers:") {
+	if err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Errorf("Validate = %v, want it to say to declare a provider", err)
 	}
 
 	// and the library entry point, which does not validate, says the same
 	err = Run(t.Context(), cfg, testOrder("task"), logged(t))
-	if err == nil || !strings.Contains(err.Error(), "providers:") {
+	if err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
 }
@@ -1113,10 +1080,7 @@ func stubProviderConfig(t *testing.T) config.Config {
 	t.Helper()
 
 	cfg := testDefaults()
-	cfg.DefaultProvider = "local"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {BaseURL: "http://127.0.0.1:1", APIKey: "k", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: "http://127.0.0.1:1", APIKey: "k", Models: declared("glm-5.2")}
 
 	return cfg
 }
@@ -1282,7 +1246,7 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasPrefix(got, "/work/project|glm-5.2|local|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,") {
+	if !strings.HasPrefix(got, "/work/project|glm-5.2|"+cfg.Provider.Label()+"|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,") {
 		t.Errorf("rendered = %q", got)
 	}
 }
@@ -1374,8 +1338,7 @@ func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 // to record an outcome before giving up.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
-	cfg.DefaultProvider = "openai"
-	cfg.Providers = map[string]config.ProviderConfig{"openai": {BaseURL: "https://gw.example.com/v1", APIKey: "sk-test", Models: declared("glm-5.2")}}
+	cfg.Provider = config.ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "sk-test", Models: declared("glm-5.2")}
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
@@ -1423,12 +1386,11 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 	shellOutput := func(window, percent int) int {
 		cfg := testDefaults()
-		cfg.DefaultProvider = "openai"
 		cfg.Agent.MaxToolOutputPercent = percent
-		cfg.Providers = map[string]config.ProviderConfig{"openai": {
+		cfg.Provider = config.ProviderConfig{
 			BaseURL: "https://gw.example.com/v1", APIKey: "sk-test",
 			Models: map[string]config.ModelConfig{"glm-5.2": {Context: window}},
-		}}
+		}
 
 		_, opts, err := Resolve(cfg, nil)
 		if err != nil {
@@ -1497,10 +1459,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cfg := testDefaults()
-	cfg.DefaultProvider = "local"
-	cfg.Providers = map[string]config.ProviderConfig{
-		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
-	}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 

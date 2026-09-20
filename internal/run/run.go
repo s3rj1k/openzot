@@ -122,7 +122,7 @@ func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, wor
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
 		Model:    client.Config().Model,
-		Provider: cfg.DefaultProvider,
+		Provider: cfg.Provider.Label(),
 		Project:  project,
 		Session:  sessionPath,
 	}
@@ -180,7 +180,7 @@ func Run(ctx context.Context, cfg config.Config, o order.Order, options Options)
 	writer, err := session.Open(options.SessionPath, session.Meta{
 		Task:     task,
 		Model:    client.Config().Model,
-		Provider: cfg.DefaultProvider,
+		Provider: cfg.Provider.Label(),
 		Workdir:  workdir,
 	})
 	if err != nil {
@@ -261,7 +261,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 	return tui.Meta{
 		Task:          task,
 		Model:         cfg.Agent.Model,
-		Provider:      cfg.DefaultProvider,
+		Provider:      cfg.Provider.Label(),
 		Workdir:       workdir,
 		MaxScrollback: cfg.UI.Scrollback,
 		MaxIterations: iterLimit,
@@ -274,22 +274,17 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
-	if cfg.DefaultProvider == "" {
+	providerConfig := cfg.Provider
+
+	if providerConfig.BaseURL == "" {
 		return nil, empty, errors.New(
-			"no provider selected: declare one under providers: in the config and name it with default_provider")
+			"no provider: declare one under provider: in the config, with a base_url, an api_key and its models")
 	}
 
-	providerConfig, ok := cfg.Providers[cfg.DefaultProvider]
-	if !ok {
-		return nil, empty, fmt.Errorf(
-			"provider %q is not configured (declare it under providers: with a base_url and api_key)", cfg.DefaultProvider)
-	}
-
-	// Resolve the model against the provider's custom model definitions. A custom
-	// entry's settings take priority over the run defaults.
+	// Resolve the model against the provider's model definitions. An entry's
+	// settings take priority over the run defaults.
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
-	credential := providerConfig.APIKey
 
 	// Every model is declared, with its own context window. Validate says so at
 	// load; the same rule holds here because a run with no window has nothing to
@@ -297,8 +292,7 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 	mc, ok := providerConfig.Models[model]
 	if !ok || mc.Context <= 0 {
 		return nil, empty, fmt.Errorf(
-			"model %q needs a context window: list it under providers.%s.models with context set",
-			model, cfg.DefaultProvider)
+			"model %q needs a context window: list it under provider.models with context set", model)
 	}
 
 	if mc.Model != "" {
@@ -309,17 +303,13 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 		maxIterations = mc.MaxIterations
 	}
 
-	if mc.APIKey != "" {
-		credential = mc.APIKey
-	}
-
 	contextWindow := mc.Context
 	contentArray := mc.ContentArray
 
 	client, err := provider.NewClient(provider.ClientConfig{
-		Provider: cfg.DefaultProvider,
+		Provider: cfg.Provider.Label(),
 		Model:    model,
-		APIKey:   credential,
+		APIKey:   providerConfig.APIKey,
 		BaseURL:  providerConfig.BaseURL,
 
 		ContentArray:    contentArray,
@@ -327,7 +317,7 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 		ExtraBody:       mc.ExtraBody,
 	})
 	if err != nil {
-		return nil, empty, fmt.Errorf("provider %q: %w", cfg.DefaultProvider, err)
+		return nil, empty, fmt.Errorf("provider %s: %w", cfg.Provider.Label(), err)
 	}
 
 	// max_time was validated at load, so a parse error here would be a bug; treat

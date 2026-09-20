@@ -9,7 +9,7 @@
 //
 // Usage:
 //
-//	# declare a provider (base_url, api_key), a default_provider and agent.model
+//	# declare the provider (base_url, api_key, models) and pick agent.model
 //	zot config
 //
 //	# write an order in your editor, then run it

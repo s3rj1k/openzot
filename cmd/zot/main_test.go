@@ -85,14 +85,12 @@ func TestRunNeedsATerminal(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -454,15 +452,13 @@ agent:
   model: test-model
   max_iterations: 5
 
-default_provider: local
 
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)
 
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
@@ -536,14 +532,12 @@ func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 	mustWrite(t, configPath, fmt.Sprintf(`
 agent:
   model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL))
 
 	withArgs(t, "--config", configPath, "--dir", project, written[0])
@@ -633,14 +627,12 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 agent:
   model: test-model
 skills_dir: skills
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -694,14 +686,12 @@ func TestRunAnOrder(t *testing.T) {
 		if err := os.WriteFile(path, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, url)), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -754,13 +744,11 @@ func TestRunRefusesAModelWithNoContextWindow(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`
 agent:
   model: my-model
-default_provider: local
-providers:
-  local:
-    base_url: http://127.0.0.1:1
-    models:
-      my-model:
-        model: some-real-id
+provider:
+  base_url: http://127.0.0.1:1
+  models:
+    my-model:
+      model: some-real-id
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +760,7 @@ providers:
 		t.Fatal("a model with no context window must not run")
 	}
 
-	for _, want := range []string{"providers.local.models.my-model", "context is required"} {
+	for _, want := range []string{"provider.models.my-model", "context is required"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should mention %q", err, want)
 		}
@@ -784,9 +772,7 @@ func TestRunRejectsAnInvalidConfig(t *testing.T) {
 
 	// a provider that has no endpoint
 	if err := os.WriteFile(configPath, []byte(`
-default_provider: nowhere
-providers:
-  nowhere: {}
+provider: {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -888,15 +874,13 @@ agent:
   model: test-model
   max_iterations: 5
 
-default_provider: local
 
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)
 
 	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
@@ -974,14 +958,12 @@ func settleOnce(t *testing.T) string {
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1022,14 +1004,12 @@ func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
-default_provider: local
-providers:
-  local:
-    base_url: %s
-    api_key: test-key
-    models:
-      test-model:
-        context: 100000
+provider:
+  base_url: %s
+  api_key: test-key
+  models:
+    test-model:
+      context: 100000
 `, server.URL)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1152,9 +1132,7 @@ func TestTheExampleConfigLoadsAndValidates(t *testing.T) {
 	}
 
 	// a key so validation is judging the shape rather than the environment
-	provider := cfg.Providers[cfg.DefaultProvider]
-	provider.APIKey = "test-key"
-	cfg.Providers[cfg.DefaultProvider] = provider
+	cfg.Provider.APIKey = "test-key"
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("the example config does not validate: %v", err)

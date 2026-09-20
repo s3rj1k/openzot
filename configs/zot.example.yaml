@@ -1,21 +1,18 @@
 # zot configuration.
 #
-# zot has no built-in providers and no default model: before a run can start,
-# declare a provider under `providers:` (at the bottom), name it with
-# default_provider, set agent.model, and list that model under the provider with
-# its context window. Every other field is optional. Copy this file to
+# zot has no built-in provider and no default model: before a run can start,
+# declare the provider under `provider:` (at the bottom), list the models it
+# serves with their context windows, and set agent.model to the one to run. Every other field is optional. Copy this file to
 # ~/.config/zot/config.yaml (or pass it with --config) and adjust as needed.
 #
-# Credentials: put the key DIRECTLY in a provider's api_key, or reference an
+# Credentials: put the key DIRECTLY in the provider's api_key, or reference an
 # environment variable with $VAR - either works. Nothing is read from a
 # conventional variable on your behalf: a key is scoped to the host it was issued
-# for, so each provider says which one it uses.
+# for, so the provider says which one it uses.
 
 agent:
-  # Model that drives the agent: a key under the selected provider's `models:`.
-  # There is no default. Make sure default_provider below actually serves it: a
-  # model and a provider that cannot talk to each other fail as a provider error
-  # rather than a configuration one, which is much harder to read.
+  # Model that drives the agent: a key under the provider's `models:`. This is
+  # how you switch between the models the provider serves. There is no default.
   model: "my-model"
 
   # The one finite backstop on run length: the maximum number of plan/act/observe
@@ -74,7 +71,7 @@ agent:
   # max_empties: 3
 
   # Short-term memory is the model's context window - the `context` every model
-  # states under providers. Nothing is summarised: once a request reaches
+  # states under provider.models. Nothing is summarised: once a request reaches
   # context_soft percent of the window, the oldest message is forgotten on each
   # request; at context_hard percent as many are forgotten as it takes to stay
   # under it. Forgotten messages stay in the session log. Defaults 50 and 90.
@@ -106,46 +103,45 @@ ui:
 # "~/" is your home directory; a relative path is taken against --dir.
 # skills_dir: ~/.config/zot/skills
 
-# Providers are the named inference connections a run can target: direct model
-# services, local servers, or gateways. None are built in - every one is declared
-# here. default_provider names the one every run uses.
-default_provider: mygateway
-
-providers:
+# The provider: the one inference connection every run uses - a direct model
+# service, a local server, or a gateway. None is built in. The viewer and the
+# session log call it by the host of its base_url.
+provider:
   # Any endpoint that speaks the OpenAI chat-completions API. base_url is
   # required and must be https (unless loopback); the key is required too, since
   # zot will not forward a credential issued for one host to another.
-  mygateway:
-    base_url: 'https://gateway.internal.example.com/v1'
-    api_key: '$GATEWAY_KEY'
+  base_url: 'https://gateway.internal.example.com/v1'
+  api_key: '$GATEWAY_KEY'
 
-    # The models this provider serves. Required: agent.model must name
-    # one of these keys, and every entry must state its context window.
-    # Each entry can alias the provider's real model ID and override its run
-    # settings.
-    models:
-      my-model:
-        # The model's total context window, in tokens. Required. zot keeps no
-        # table of what models can take, so state the real ceiling of the
-        # endpoint being served, which can be smaller than the model's card.
-        # Trimming keeps the conversation within it.
-        context: 128000
-        # the real model ID, when this key is only an alias for it
-        # model: 'gpt-5.4-mini'
-        # max_iterations: 50
-        # send every message's content as an array of parts, for llama.cpp
-        # templates that reject a bare string
-        # content_array: true
-        # reasoning_effort sent with every request: none, minimal, low, medium,
-        # high, xhigh or max. Left out, the model's own default applies.
-        # reasoning_effort: low
-        # extra_body is merged into the request body as written - for whatever
-        # the server takes that has no key here, such as a chat-template switch
-        # that turns thinking off on a local server.
-        # extra_body:
-        #   chat_template_kwargs:
-        #     enable_thinking: false
+  # The models this provider serves. Required: agent.model must name one of
+  # these keys, and every entry must state its context window. Each entry can
+  # alias the provider's real model ID and override its run settings.
+  models:
+    my-model:
+      # The model's total context window, in tokens. Required. zot keeps no
+      # table of what models can take, so state the real ceiling of the
+      # endpoint being served, which can be smaller than the model's card.
+      # Older messages are forgotten to keep the conversation within it.
+      context: 128000
+      # the real model ID, when this key is only an alias for it
+      # model: 'gpt-5.4-mini'
+      # max_iterations: 50
+      # send every message's content as an array of parts, for llama.cpp
+      # templates that reject a bare string
+      # content_array: true
+      # reasoning_effort sent with every request: none, minimal, low, medium,
+      # high, xhigh or max. Left out, the model's own default applies.
+      # reasoning_effort: low
+      # extra_body is merged into the request body as written - for whatever
+      # the server takes that has no key here, such as a chat-template switch
+      # that turns thinking off on a local server.
+      # extra_body:
+      #   chat_template_kwargs:
+      #     enable_thinking: false
 
-  # A local server needs no key.
-  # local:
-  #   base_url: 'http://localhost:11434/v1'
+    # a second model on the same provider: set agent.model to switch to it
+    # my-other-model:
+    #   context: 32000
+
+  # A local server needs no key:
+  # base_url: 'http://localhost:11434/v1'

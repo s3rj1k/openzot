@@ -23,12 +23,11 @@ func writeConfig(t *testing.T, body string) string {
 // validConfig returns a minimal config that passes Validate, optionally tweaked.
 func validConfig(tweak func(*Config)) Config {
 	c := Config{
-		Agent:           Agent{Model: "m", MaxIterations: 1},
-		DefaultProvider: "openai",
-		Providers: map[string]ProviderConfig{"openai": {
+		Agent: Agent{Model: "m", MaxIterations: 1},
+		Provider: ProviderConfig{
 			BaseURL: "https://gw.example.com/v1", APIKey: "x",
 			Models: map[string]ModelConfig{"m": {Context: 100_000}},
-		}},
+		},
 	}
 	if tweak != nil {
 		tweak(&c)
@@ -43,11 +42,8 @@ func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	if c.Agent.Model != "" {
 		t.Errorf("default model = %q, want none", c.Agent.Model)
 	}
-	if c.DefaultProvider != "" {
-		t.Errorf("default provider = %q, want none", c.DefaultProvider)
-	}
-	if len(c.Providers) != 0 {
-		t.Errorf("default providers = %v, want none", c.Providers)
+	if c.Provider.BaseURL != "" || len(c.Provider.Models) != 0 {
+		t.Errorf("default provider = %+v, want none", c.Provider)
 	}
 	if c.Agent.MaxIterations <= 0 {
 		t.Error("expected a positive default max_iterations")
@@ -55,8 +51,8 @@ func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 }
 
 // Nothing is seeded, and no conventional credential variable is read: a config
-// that declares no providers has none, whatever the environment holds.
-func TestLoadSeedsNoProviders(t *testing.T) {
+// that declares no provider has none, whatever the environment holds.
+func TestLoadSeedsNoProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
@@ -67,12 +63,8 @@ func TestLoadSeedsNoProviders(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if len(cfg.Providers) != 0 {
-		t.Errorf("providers = %v, want none", cfg.Providers)
-	}
-
-	if cfg.DefaultProvider != "" {
-		t.Errorf("default provider = %q, want none", cfg.DefaultProvider)
+	if cfg.Provider.BaseURL != "" || cfg.Provider.APIKey != "" {
+		t.Errorf("provider = %+v, want none", cfg.Provider)
 	}
 
 	err = cfg.Validate()
@@ -81,18 +73,16 @@ func TestLoadSeedsNoProviders(t *testing.T) {
 	}
 }
 
-// A provider named after a service that used to be built in is no different
-// from any other name: it gets no endpoint and no ambient key.
-func TestANameThatWasOnceBuiltInGetsNothing(t *testing.T) {
+// A provider that names no endpoint gets none, and no ambient key: nothing is
+// filled in on its behalf.
+func TestAnEmptyProviderGetsNothing(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 
 	path := writeConfig(t, `
 agent:
   model: gpt-5.4
-default_provider: openai
-providers:
-  openai: {}
+provider: {}
 `)
 
 	cfg, err := Load(path)
@@ -100,9 +90,7 @@ providers:
 		t.Fatalf("Load: %v", err)
 	}
 
-	provider := cfg.Providers["openai"]
-
-	if provider.BaseURL != "" || provider.APIKey != "" {
+	if provider := cfg.Provider; provider.BaseURL != "" || provider.APIKey != "" {
 		t.Errorf("provider = %+v, want no endpoint and no key filled in", provider)
 	}
 
@@ -121,11 +109,11 @@ backends:
   openai:
     api_key: sk-test
 	`,
-		"driver selector": `
+		"several named providers": `
 default_provider: corporate
 providers:
   corporate:
-    provider: openai
+    base_url: https://gw.example.com/v1
 	`,
 		"agent instructions (the prompt lives in the order now)": `
 agent:
@@ -136,46 +124,43 @@ attribution:
   name: acme-bot
 	`,
 		"per-model tools override": `
-default_provider: corporate
-providers:
-  corporate:
-    base_url: https://gw.example.com/v1
-    models:
-      fast:
-        tools: false
+provider:
+  base_url: https://gw.example.com/v1
+  models:
+    fast:
+      tools: false
 	`,
 		"per-model reasoning override": `
-default_provider: corporate
-providers:
-  corporate:
-    base_url: https://gw.example.com/v1
-    models:
-      fast:
-        reasoning: true
+provider:
+  base_url: https://gw.example.com/v1
+  models:
+    fast:
+      reasoning: true
 	`,
 		"per-model driver": `
-default_provider: corporate
-providers:
-  corporate:
-    base_url: https://gw.example.com/v1
-    models:
-      fast:
-        driver: openai
+provider:
+  base_url: https://gw.example.com/v1
+  models:
+    fast:
+      driver: openai
+	`,
+		"per-model credential (the key belongs to the provider)": `
+provider:
+  base_url: https://gw.example.com/v1
+  models:
+    fast:
+      api_key: sk-other
 	`,
 		"provider driver": `
-default_provider: corporate
-providers:
-  corporate:
-    driver: openai
-    base_url: https://gw.example.com/v1
+provider:
+  driver: openai
+  base_url: https://gw.example.com/v1
 	`,
 		"provider headers": `
-default_provider: corporate
-providers:
-  corporate:
-    headers:
-      X-Team: core
-    base_url: https://gw.example.com/v1
+provider:
+  headers:
+    X-Team: core
+  base_url: https://gw.example.com/v1
 	`,
 	}
 
@@ -200,44 +185,32 @@ func TestSecretEnvReference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MY_PROVIDER_KEY", "sk-from-env")
 	path := writeConfig(t, `
-default_provider: openai
-providers:
-  openai:
-    api_key: '$MY_PROVIDER_KEY'
+provider:
+  api_key: '$MY_PROVIDER_KEY'
 `)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got := cfg.Providers["openai"].APIKey; got != "sk-from-env" {
+	if got := cfg.Provider.APIKey; got != "sk-from-env" {
 		t.Errorf("resolved secret = %q, want sk-from-env", got)
 	}
 }
 
-// A provider key and a per-model key may each be written as a $VAR, and both are
-// resolved.
+// A braced reference resolves the same as a bare one, through a whole load.
 func TestAuthorizationEnvReference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("GATEWAY_DEFAULT_KEY", "sk-gateway-default")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	path := writeConfig(t, `
-default_provider: mygateway
-providers:
-  mygateway:
-    api_key: '$GATEWAY_DEFAULT_KEY'
-    models:
-      gpt-4:
-        api_key: $OPENAI_API_KEY
+provider:
+  api_key: '${GATEWAY_DEFAULT_KEY}'
 `)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got := cfg.Providers["mygateway"].APIKey; got != "sk-gateway-default" {
+	if got := cfg.Provider.APIKey; got != "sk-gateway-default" {
 		t.Errorf("provider key = %q, want sk-gateway-default", got)
-	}
-	if got := cfg.Providers["mygateway"].Models["gpt-4"].APIKey; got != "sk-openai" {
-		t.Errorf("model key = %q, want sk-openai", got)
 	}
 }
 
@@ -251,35 +224,55 @@ func TestValidate(t *testing.T) {
 	if err := validConfig(func(c *Config) { c.Agent.MaxIterations = 0 }).Validate(); err == nil {
 		t.Error("expected an error for non-positive max_iterations")
 	}
-	if err := validConfig(func(c *Config) { c.DefaultProvider = "nope" }).Validate(); err == nil {
-		t.Error("expected an error for an unknown default provider")
+	if err := validConfig(func(c *Config) { c.Provider = ProviderConfig{} }).Validate(); err == nil {
+		t.Error("expected an error when no provider is declared")
 	}
-	if err := validConfig(func(c *Config) { c.DefaultProvider = "" }).Validate(); err == nil {
-		t.Error("expected an error when no provider is selected")
-	}
-	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{APIKey: "x"}
-	}).Validate(); err == nil {
+	if err := validConfig(func(c *Config) { c.Provider.BaseURL = "" }).Validate(); err == nil {
 		t.Error("expected an error for a provider with no base_url")
 	}
 	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{
-			BaseURL: "https://gw.example.com/v1", APIKey: "x",
-			Models: map[string]ModelConfig{"m": {Context: 100_000}},
-		}
-	}).Validate(); err != nil {
-		t.Errorf("a complete provider was rejected: %v", err)
-	}
-	if err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
+		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
 	}).Validate(); err == nil {
 		t.Error("expected the model list to reject an unlisted model")
 	}
 	if err := validConfig(func(c *Config) {
 		c.Agent.Model = "allowed"
-		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
+		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", Models: map[string]ModelConfig{"allowed": {Model: "gpt-5.4", Context: 100_000}}}
 	}).Validate(); err != nil {
 		t.Errorf("a declared model was rejected: %v", err)
+	}
+}
+
+// Several models on the one provider are the point: agent.model picks which runs,
+// and naming one the provider does not list says what is available.
+func TestAgentModelSelectsAmongTheProvidersModels(t *testing.T) {
+	models := map[string]ModelConfig{
+		"fast":  {Context: 32_000},
+		"smart": {Context: 200_000},
+	}
+
+	for _, name := range []string{"fast", "smart"} {
+		err := validConfig(func(c *Config) {
+			c.Agent.Model = name
+			c.Provider.Models = models
+		}).Validate()
+		if err != nil {
+			t.Errorf("model %q is listed and was refused: %v", name, err)
+		}
+	}
+
+	err := validConfig(func(c *Config) {
+		c.Agent.Model = "huge"
+		c.Provider.Models = models
+	}).Validate()
+	if err == nil {
+		t.Fatal("a model the provider does not list was accepted")
+	}
+
+	for _, want := range []string{`"huge"`, "provider.models", "fast, smart"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
 	}
 }
 
@@ -289,16 +282,13 @@ func TestValidate(t *testing.T) {
 func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 	for _, window := range []int{0, -1} {
 		err := validConfig(func(c *Config) {
-			c.Providers["openai"] = ProviderConfig{
-				BaseURL: "https://gw.example.com/v1", APIKey: "x",
-				Models: map[string]ModelConfig{"m": {Context: window}},
-			}
+			c.Provider.Models = map[string]ModelConfig{"m": {Context: window}}
 		}).Validate()
 		if err == nil {
 			t.Fatalf("a context of %d was accepted", window)
 		}
 
-		for _, want := range []string{"providers.openai.models.m", "context is required"} {
+		for _, want := range []string{"provider.models.m", "context is required"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error %q should mention %q", err, want)
 			}
@@ -308,12 +298,9 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 	// not only the selected model: a listed model with no window is a mistake
 	// whether or not this run uses it
 	err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{
-			BaseURL: "https://gw.example.com/v1", APIKey: "x",
-			Models: map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: "gpt-5.4"}},
-		}
+		c.Provider.Models = map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: "gpt-5.4"}}
 	}).Validate()
-	if err == nil || !strings.Contains(err.Error(), "providers.openai.models.spare") {
+	if err == nil || !strings.Contains(err.Error(), "provider.models.spare") {
 		t.Errorf("an unused model with no context should still be refused, got %v", err)
 	}
 }
@@ -322,48 +309,56 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 // at all. Silently accepting any model name is what a built-in table allowed.
 func TestValidateRefusesAProviderThatDeclaresNoModels(t *testing.T) {
 	err := validConfig(func(c *Config) {
-		c.Providers["openai"] = ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "x"}
+		c.Provider = ProviderConfig{BaseURL: "https://gw.example.com/v1", APIKey: "x"}
 	}).Validate()
 	if err == nil {
 		t.Fatal("a provider with no models was accepted")
 	}
 
-	for _, want := range []string{"declares no models", "context window"} {
+	for _, want := range []string{"models is empty", "context window"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should mention %q", err, want)
 		}
 	}
 }
 
-func TestProviderModelsIsTheCustomListOrNothing(t *testing.T) {
+func TestModelNamesAreSorted(t *testing.T) {
 	custom := ProviderConfig{Models: map[string]ModelConfig{
 		"small": {Model: "gpt-5.4-mini"},
 		"large": {Model: "gpt-5.4"},
 	}}
-	if got, want := ProviderModels(custom), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("custom models = %v, want %v", got, want)
+	if got, want := custom.ModelNames(), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("model names = %v, want %v", got, want)
 	}
-	if got := ProviderModels(ProviderConfig{}); len(got) != 0 {
-		t.Fatalf("no custom list should mean no restriction, got %v", got)
+	if got := (ProviderConfig{}).ModelNames(); len(got) != 0 {
+		t.Fatalf("no models should mean no names, got %v", got)
 	}
 }
 
-// Scrubbing removes every resolved credential - Bearer secrets and provider
-// keys, provider-level and per-model - from the environment, while
-// leaving unrelated variables intact.
+// The viewer and the log call the provider by the host of its base_url.
+func TestTheProviderIsLabelledByItsHost(t *testing.T) {
+	for base, want := range map[string]string{
+		"https://gateway.example.com/v1": "gateway.example.com",
+		"http://127.0.0.1:8080/v1":       "127.0.0.1:8080",
+		"not a url":                      "not a url",
+		"":                               "",
+	} {
+		if got := (ProviderConfig{BaseURL: base}).Label(); got != want {
+			t.Errorf("label of %q = %q, want %q", base, got, want)
+		}
+	}
+}
+
+// Scrubbing removes the resolved credential from the environment, while leaving
+// unrelated variables intact.
 func TestScrubProviderSecrets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ZOT_TEST_UNRELATED", "keep-me")
 	path := writeConfig(t, `
-default_provider: mygateway
-providers:
-  mygateway:
-    api_key: $ZAI_API_KEY
-    models:
-      gpt-4:
-        api_key: $OPENAI_API_KEY
+provider:
+  api_key: $ZAI_API_KEY
 `)
 	cfg, err := Load(path)
 	if err != nil {
@@ -374,8 +369,8 @@ providers:
 	if _, ok := os.LookupEnv("ZAI_API_KEY"); ok {
 		t.Error("ZAI_API_KEY should be removed after scrub")
 	}
-	if _, ok := os.LookupEnv("OPENAI_API_KEY"); ok {
-		t.Error("OPENAI_API_KEY should be removed after scrub")
+	if got := os.Getenv("OPENAI_API_KEY"); got != "sk-openai" {
+		t.Errorf("a variable the config never named was touched: OPENAI_API_KEY = %q", got)
 	}
 	if got := os.Getenv("ZOT_TEST_UNRELATED"); got != "keep-me" {
 		t.Errorf("ZOT_TEST_UNRELATED = %q, want keep-me", got)
@@ -456,23 +451,12 @@ func TestConfigDir(t *testing.T) {
 func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	cfg := Defaults()
 	cfg.Agent.Model = "m"
-	cfg.DefaultProvider = "mygateway"
-
-	cfg.Providers = map[string]ProviderConfig{"mygateway": {}}
 
 	if err := cfg.Validate(); err == nil {
 		t.Error("a provider with no base_url must be rejected")
 	}
 
-	// a name that used to be built in gets no special treatment
-	cfg.DefaultProvider = "groq"
-	cfg.Providers = map[string]ProviderConfig{"groq": {}}
-
-	if err := cfg.Validate(); err == nil {
-		t.Error("a provider named after a former built-in still needs a base_url")
-	}
-
-	cfg.Providers["groq"] = ProviderConfig{
+	cfg.Provider = ProviderConfig{
 		BaseURL: "https://gw.example.com/v1",
 		Models:  map[string]ModelConfig{"m": {Context: 100_000}},
 	}
@@ -500,11 +484,11 @@ func TestAnEnvReferenceIsExpanded(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := Config{Providers: map[string]ProviderConfig{"mine": test.provider}}
+			cfg := Config{Provider: test.provider}
 
-			resolveProviders(&cfg)
+			resolveProvider(&cfg)
 
-			if got := cfg.Providers["mine"].APIKey; got != "sk-resolved" {
+			if got := cfg.Provider.APIKey; got != "sk-resolved" {
 				t.Errorf("credential = %q, want the expanded value", got)
 			}
 		})
@@ -516,13 +500,11 @@ func TestAnEnvReferenceIsExpanded(t *testing.T) {
 func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
 	t.Setenv("ZOT_TEST_UNSET_KEY", "")
 
-	cfg := Config{Providers: map[string]ProviderConfig{
-		"mine": {APIKey: "$ZOT_TEST_UNSET_KEY"},
-	}}
+	cfg := Config{Provider: ProviderConfig{APIKey: "$ZOT_TEST_UNSET_KEY"}}
 
-	resolveProviders(&cfg)
+	resolveProvider(&cfg)
 
-	if got := cfg.Providers["mine"].APIKey; got != "" {
+	if got := cfg.Provider.APIKey; got != "" {
 		t.Errorf("credential = %q, want nothing", got)
 	}
 }
@@ -530,13 +512,11 @@ func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
 // A literal key is left exactly as written - a provider key that happens to
 // contain a dollar sign is not a reference.
 func TestALiteralCredentialIsUntouched(t *testing.T) {
-	cfg := Config{Providers: map[string]ProviderConfig{
-		"mine": {APIKey: "sk-literal-with-$-inside"},
-	}}
+	cfg := Config{Provider: ProviderConfig{APIKey: "sk-literal-with-$-inside"}}
 
-	resolveProviders(&cfg)
+	resolveProvider(&cfg)
 
-	if got := cfg.Providers["mine"].APIKey; got != "sk-literal-with-$-inside" {
+	if got := cfg.Provider.APIKey; got != "sk-literal-with-$-inside" {
 		t.Errorf("credential = %q, want it untouched", got)
 	}
 }
@@ -546,11 +526,11 @@ func TestALiteralCredentialIsUntouched(t *testing.T) {
 func TestNoConventionalVariableIsRead(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-from-env")
 
-	cfg := Config{Providers: map[string]ProviderConfig{"openai": {}}}
+	cfg := Config{}
 
-	resolveProviders(&cfg)
+	resolveProvider(&cfg)
 
-	if got := cfg.Providers["openai"].APIKey; got != "" {
+	if got := cfg.Provider.APIKey; got != "" {
 		t.Errorf("credential = %q, want none: nothing is read on the provider's behalf", got)
 	}
 }
@@ -560,12 +540,11 @@ func TestNoConventionalVariableIsRead(t *testing.T) {
 func TestMaxTimeIsValidated(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Agent:           Agent{Model: "m", MaxIterations: 10},
-			DefaultProvider: "openai",
-			Providers: map[string]ProviderConfig{"openai": {
+			Agent: Agent{Model: "m", MaxIterations: 10},
+			Provider: ProviderConfig{
 				BaseURL: "https://gw.example.com/v1", APIKey: "k",
 				Models: map[string]ModelConfig{"m": {Context: 100_000}},
-			}},
+			},
 		}
 	}
 
@@ -732,23 +711,21 @@ func TestAModelCarriesItsRequestSettings(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
 agent:
   model: local
-default_provider: p
-providers:
-  p:
-    base_url: http://127.0.0.1:8080/v1
-    models:
-      local:
-        context: 8000
-        reasoning_effort: Low
-        extra_body:
-          chat_template_kwargs:
-            enable_thinking: false
+provider:
+  base_url: http://127.0.0.1:8080/v1
+  models:
+    local:
+      context: 8000
+      reasoning_effort: Low
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
 `))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	model := cfg.Providers["p"].Models["local"]
+	model := cfg.Provider.Models["local"]
 
 	if model.ReasoningEffort != "Low" {
 		t.Errorf("reasoning_effort = %q, want it as written", model.ReasoningEffort)
@@ -763,7 +740,7 @@ providers:
 		t.Errorf("a known effort (any case) must validate: %v", err)
 	}
 
-	cfg.Providers["p"] = ProviderConfig{BaseURL: "http://127.0.0.1:8080/v1", Models: map[string]ModelConfig{
+	cfg.Provider = ProviderConfig{BaseURL: "http://127.0.0.1:8080/v1", Models: map[string]ModelConfig{
 		"local": {Context: 8000, ReasoningEffort: "extreme"},
 	}}
 
@@ -808,25 +785,24 @@ ui:
 	}
 }
 
-// A key written for the endpoint is exactly what it uses, and the ambient
-// variable of the same provider name plays no part.
+// A key written for the endpoint is exactly what it uses, and an ambient
+// variable plays no part.
 func TestAConfiguredKeyIsTheOneUsed(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZOT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("PROXY_KEY", "sk-proxy")
 	path := writeConfig(t, `
-providers:
-  openai:
-    base_url: https://proxy.example.com/v1
-    api_key: $PROXY_KEY
+provider:
+  base_url: https://proxy.example.com/v1
+  api_key: $PROXY_KEY
 `)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got := cfg.Providers["openai"].APIKey; got != "sk-proxy" {
-		t.Errorf("openai key = %q, want the explicitly configured one", got)
+	if got := cfg.Provider.APIKey; got != "sk-proxy" {
+		t.Errorf("key = %q, want the explicitly configured one", got)
 	}
 }
 

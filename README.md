@@ -33,22 +33,22 @@ It needs Go 1.27 or newer. `make` on its own lists the other targets: `make test
 
 ## Use
 
-zot ships no providers and no default model: declare a provider and a model in
-the config first (`zot config` opens it from a template), then write an order
+zot ships no provider and no default model: declare the provider and its models
+in the config first (`zot config` opens it from a template), then write an order
 and hand it over:
 
 ```yaml
 # ~/.config/zot/config.yaml
-default_provider: mygateway
 agent:
-  model: my-model
-providers:
-  mygateway:
-    base_url: https://gateway.example.com/v1
-    api_key: '$GATEWAY_KEY'
-    models:
-      my-model:
-        context: 128000   # the model's context window, in tokens - required
+  model: my-model         # which of the provider's models runs
+provider:
+  base_url: https://gateway.example.com/v1
+  api_key: '$GATEWAY_KEY'
+  models:
+    my-model:
+      context: 128000     # the model's context window, in tokens - required
+    my-other-model:
+      context: 32000
 ```
 
 ```bash
@@ -86,8 +86,8 @@ and the functions `file "path"`, `env "NAME"` and `inc N`. Whatever the prompt
 says, zot adds its non-interactive contract back if the rendered text lacks it: a
 run has no way to ask anyone anything. `zot .zot/orders/<name>.md` runs an order
 from zero - one order per invocation. Any OpenAI-compatible endpoint works - a hosted service, a
-gateway, a local server - declare it under `providers:` and name it with
-`default_provider`.
+gateway, a local server - declare it under `provider:`; `agent.model` picks
+which of its models runs.
 
 Skills - folders of `SKILL.md` instructions - live in the directory named by
 `skills_dir` in the config. They are read into memory at startup and offered to
