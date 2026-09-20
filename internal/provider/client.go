@@ -20,6 +20,21 @@ type Client struct {
 	model  fantasy.LanguageModel
 }
 
+// sdkOptions keep the SDK to the operator's credential.
+//
+// The SDK reads OPENAI_API_KEY, OPENAI_ORG_ID and OPENAI_PROJECT_ID from the
+// environment as defaults. The key is the operator's, scoped to the endpoint they
+// named, or there is none: an empty key here overrides the environment's, so no
+// Authorization header goes out, and the organization and project headers the
+// environment would add are removed.
+func sdkOptions(config ClientConfig) []option.RequestOption {
+	return []option.RequestOption{
+		option.WithAPIKey(config.APIKey),
+		option.WithHeaderDel("OpenAI-Organization"),
+		option.WithHeaderDel("OpenAI-Project"),
+	}
+}
+
 // NewClient validates the configuration and connects to the endpoint it names.
 func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 	resolved, err := config.Resolve()
@@ -47,21 +62,6 @@ func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 	}
 
 	return &Client{config: resolved, model: toolCallsModel{model}}, nil
-}
-
-// sdkOptions keep the SDK to the operator's credential.
-//
-// The SDK reads OPENAI_API_KEY, OPENAI_ORG_ID and OPENAI_PROJECT_ID from the
-// environment as defaults. The key is the operator's, scoped to the endpoint they
-// named, or there is none: an empty key here overrides the environment's, so no
-// Authorization header goes out, and the organization and project headers the
-// environment would add are removed.
-func sdkOptions(config ClientConfig) []option.RequestOption {
-	return []option.RequestOption{
-		option.WithAPIKey(config.APIKey),
-		option.WithHeaderDel("OpenAI-Organization"),
-		option.WithHeaderDel("OpenAI-Project"),
-	}
 }
 
 // Config returns the resolved configuration.

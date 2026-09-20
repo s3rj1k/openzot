@@ -54,33 +54,6 @@ func IsInteractive() bool {
 	return isatty.IsTerminal(fd)
 }
 
-// Run renders the read-only TUI while the autonomous agent executes. It owns the
-// Bubble Tea program lifecycle and blocks until the user quits or the program
-// errors. The agent runs in the background and communicates with the UI solely
-// through tea messages.
-//
-// Along with any error it returns the run's Result, so a caller can report how it
-// ended - and what it spent - without scraping the screen. The result is empty
-// when the run never began, or was still going when it was abandoned.
-func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error) {
-	engine, err := loop.New(opts)
-	if err != nil {
-		return loop.Result{}, err
-	}
-
-	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
-
-	m.title = meta.Title
-	if meta.MaxScrollback > 0 {
-		m.maxEntries = meta.MaxScrollback
-	}
-
-	m.maxIterations = meta.MaxIterations
-	m.maxDuration = meta.MaxDuration
-
-	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
-}
-
 // runViewer owns the viewer's lifetime: it starts the run, hands the program to
 // start, and shuts the run down once start returns. Start is a seam for tests,
 // which cannot open a terminal - Run passes (*tea.Program).Run. ProgramOptions is
@@ -135,4 +108,31 @@ func runViewer(
 	default:
 		return result, nil
 	}
+}
+
+// Run renders the read-only TUI while the autonomous agent executes. It owns the
+// Bubble Tea program lifecycle and blocks until the user quits or the program
+// errors. The agent runs in the background and communicates with the UI solely
+// through tea messages.
+//
+// Along with any error it returns the run's Result, so a caller can report how it
+// ended - and what it spent - without scraping the screen. The result is empty
+// when the run never began, or was still going when it was abandoned.
+func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error) {
+	engine, err := loop.New(opts)
+	if err != nil {
+		return loop.Result{}, err
+	}
+
+	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
+
+	m.title = meta.Title
+	if meta.MaxScrollback > 0 {
+		m.maxEntries = meta.MaxScrollback
+	}
+
+	m.maxIterations = meta.MaxIterations
+	m.maxDuration = meta.MaxDuration
+
+	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
 }

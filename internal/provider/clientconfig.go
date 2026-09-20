@@ -41,6 +41,26 @@ type ClientConfig struct {
 // ErrMissingCredential is returned when a provider that needs a key has none.
 var ErrMissingCredential = errors.New("provider: no API key configured")
 
+// isLoopbackHost reports whether a hostname is local, which is the one case
+// where a plaintext endpoint is reasonable.
+//
+// It takes a hostname rather than a host: url.URL.Hostname() is what strips both
+// the port and the brackets an IPv6 address is written in. Splitting the raw host
+// on its last colon cannot do that - "[::1]" has no port and every colon in it
+// belongs to the address - and got the bracketed form wrong in both directions.
+func isLoopbackHost(hostname string) bool {
+	if strings.EqualFold(hostname, "localhost") {
+		return true
+	}
+
+	// an address rather than a name: 127.0.0.0/8 and ::1 are all local
+	if ip := net.ParseIP(hostname); ip != nil {
+		return ip.IsLoopback()
+	}
+
+	return false
+}
+
 // Resolve validates the configuration and fills in its defaults.
 //
 // The endpoint is always the operator's, so the credential is too: a key is
@@ -84,24 +104,4 @@ func (c ClientConfig) Resolve() (ClientConfig, error) {
 	}
 
 	return resolved, nil
-}
-
-// isLoopbackHost reports whether a hostname is local, which is the one case
-// where a plaintext endpoint is reasonable.
-//
-// It takes a hostname rather than a host: url.URL.Hostname() is what strips both
-// the port and the brackets an IPv6 address is written in. Splitting the raw host
-// on its last colon cannot do that - "[::1]" has no port and every colon in it
-// belongs to the address - and got the bracketed form wrong in both directions.
-func isLoopbackHost(hostname string) bool {
-	if strings.EqualFold(hostname, "localhost") {
-		return true
-	}
-
-	// an address rather than a name: 127.0.0.0/8 and ::1 are all local
-	if ip := net.ParseIP(hostname); ip != nil {
-		return ip.IsLoopback()
-	}
-
-	return false
 }

@@ -393,6 +393,44 @@ func normalizeWord(raw string) string {
 	return builder.String()
 }
 
+// splitKeepingSeparators splits on whitespace runs, keeping them, so the result
+// alternates word, separator, word, separator, ... Exactly as the JavaScript
+// `split(/(\s+)/)` it mirrors.
+func splitKeepingSeparators(text string) []string {
+	var (
+		parts   []string
+		current strings.Builder
+		inSpace bool
+	)
+
+	for index, r := range text {
+		space := unicode.IsSpace(r)
+
+		if index > 0 && space != inSpace {
+			parts = append(parts, current.String())
+
+			current.Reset()
+		}
+
+		current.WriteRune(r)
+
+		inSpace = space
+	}
+
+	if text != "" {
+		parts = append(parts, current.String())
+	}
+
+	// @note JavaScript's split with a capturing group yields a leading empty
+	// string when the input starts with a separator, which keeps the
+	// word/separator alternation aligned. Reproduce it.
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) == "" && parts[0] != "" {
+		parts = append([]string{""}, parts...)
+	}
+
+	return parts
+}
+
 // Push feeds streamed text into the guard and reports whether a runaway has been
 // detected. Once tripped it stays tripped.
 func (g *runawayGuard) Push(text string) bool {
@@ -456,42 +494,4 @@ func (g *runawayGuard) Reason() *guardReason {
 	}
 
 	return &reason
-}
-
-// splitKeepingSeparators splits on whitespace runs, keeping them, so the result
-// alternates word, separator, word, separator, ... Exactly as the JavaScript
-// `split(/(\s+)/)` it mirrors.
-func splitKeepingSeparators(text string) []string {
-	var (
-		parts   []string
-		current strings.Builder
-		inSpace bool
-	)
-
-	for index, r := range text {
-		space := unicode.IsSpace(r)
-
-		if index > 0 && space != inSpace {
-			parts = append(parts, current.String())
-
-			current.Reset()
-		}
-
-		current.WriteRune(r)
-
-		inSpace = space
-	}
-
-	if text != "" {
-		parts = append(parts, current.String())
-	}
-
-	// @note JavaScript's split with a capturing group yields a leading empty
-	// string when the input starts with a separator, which keeps the
-	// word/separator alternation aligned. Reproduce it.
-	if len(parts) > 0 && strings.TrimSpace(parts[0]) == "" && parts[0] != "" {
-		parts = append([]string{""}, parts...)
-	}
-
-	return parts
 }

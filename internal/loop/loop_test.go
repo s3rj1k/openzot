@@ -80,16 +80,16 @@ func usageFrame(prompt, completion int) string {
 	)
 }
 
-// settle is a turn that ends the run: the model calls the success tool.
-func settle(summary string) string {
-	return tool("done", SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
-}
-
 func tool(id, name, arguments string) string {
 	return fmt.Sprintf(
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}]}`,
 		id, name, arguments,
 	)
+}
+
+// settle is a turn that ends the run: the model calls the success tool.
+func settle(summary string) string {
+	return tool("done", SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
 }
 
 func run(t *testing.T, options *Options) Result {

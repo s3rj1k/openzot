@@ -39,17 +39,13 @@ func prepareCall(
 	return warnings, nil
 }
 
-// contentArrayPrompt is the conversation as messages with every content sent as an
-// array of parts, and an empty one as []: what some servers' chat templates want,
-// llama.cpp's among them, and reject a bare string without.
-func contentArrayPrompt(prompt fantasy.Prompt, provider, model string) ([]openaisdk.ChatCompletionMessageParamUnion, []fantasy.CallWarning) {
-	messages, warnings := openaicompat.ToPromptFunc(prompt, provider, model)
-
-	for i := range messages {
-		asParts(&messages[i])
+// textParts is one text part holding text, or none when there is no text.
+func textParts(text param.Opt[string]) []openaisdk.ChatCompletionContentPartTextParam {
+	if !text.Valid() || text.Value == "" {
+		return []openaisdk.ChatCompletionContentPartTextParam{}
 	}
 
-	return messages, warnings
+	return []openaisdk.ChatCompletionContentPartTextParam{{Text: text.Value}}
 }
 
 // asParts turns a message's content into an array of parts.
@@ -109,13 +105,17 @@ func asParts(message *openaisdk.ChatCompletionMessageParamUnion) {
 	}
 }
 
-// textParts is one text part holding text, or none when there is no text.
-func textParts(text param.Opt[string]) []openaisdk.ChatCompletionContentPartTextParam {
-	if !text.Valid() || text.Value == "" {
-		return []openaisdk.ChatCompletionContentPartTextParam{}
+// contentArrayPrompt is the conversation as messages with every content sent as an
+// array of parts, and an empty one as []: what some servers' chat templates want,
+// llama.cpp's among them, and reject a bare string without.
+func contentArrayPrompt(prompt fantasy.Prompt, provider, model string) ([]openaisdk.ChatCompletionMessageParamUnion, []fantasy.CallWarning) {
+	messages, warnings := openaicompat.ToPromptFunc(prompt, provider, model)
+
+	for i := range messages {
+		asParts(&messages[i])
 	}
 
-	return []openaisdk.ChatCompletionContentPartTextParam{{Text: text.Value}}
+	return messages, warnings
 }
 
 // languageModelOptions are the hooks a client passes fantasy's provider.

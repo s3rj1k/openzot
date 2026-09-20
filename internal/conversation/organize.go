@@ -2,37 +2,19 @@ package conversation
 
 import "slices"
 
-// Message hygiene applied before a conversation goes on the wire.
+// lastPairedIndex finds the most recent partner for a message.
 //
-// A run's history does not stay tidy on its own. Trimming to the window can cut
-// it in the middle and drop half of a tool-call pair, a provider can return the
-// same call twice, and a turn can come back empty. Every one of those leaves a conversation that is individually plausible and collectively
-// invalid - and providers reject the whole request rather than the bad part, so
-// the failure arrives as an opaque 400 in the middle of a long unattended run.
-//
-// The rules here are the ones the TypeScript engine learned the hard way:
-//
-//   - a tool call and its result must be adjacent, in that order
-//   - a call with no result, or a result with no call, must not be sent
-//   - a trigger only makes sense as the last message
-//   - empty and repeated messages waste context and confuse the model
-//
-// Organize is deliberately a pure function over the message list rather than
-// something the loop does to its own state. The engine's history is the record
-// of what happened; this is how that record is presented to a provider.
+// Searching backwards matters when the same call is made more than once: the
+// result belongs to the call that just happened, not the identical one earlier
+// in the conversation.
+func lastPairedIndex(messages []Message, message Message) int {
+	for index, candidate := range slices.Backward(messages) {
+		if candidate.Activity.IsPair(message.Activity) {
+			return index
+		}
+	}
 
-// Organize repairs a conversation so a provider will accept it.
-//
-// The order of operations matters: pairs are clustered first, because the
-// orphan checks that follow ask whether a partner exists anywhere, and a
-// response that has been moved next to its call is no longer an orphan.
-func Organize(messages []Message) []Message {
-	organized := clusterActivities(messages)
-	organized = dropOrphanedActivities(organized)
-	organized = dropEmpty(organized)
-	organized = dropConsecutiveDuplicates(organized)
-
-	return organized
+	return -1
 }
 
 // clusterActivities moves each tool result to sit directly after its call.
@@ -137,6 +119,22 @@ func dropEmpty(messages []Message) []Message {
 	return kept
 }
 
+// sameMessage compares two messages for the duplicate check.
+func sameMessage(a, b Message) bool {
+	if a.Type != b.Type || a.Text != b.Text {
+		return false
+	}
+
+	// activities are never duplicates of one another: two calls with the same
+	// arguments are two real calls the model made, and collapsing them would
+	// hide exactly the repetition the cycle guards look for
+	if a.Type == TypeActivity {
+		return false
+	}
+
+	return a.Activity == nil && b.Activity == nil
+}
+
 // dropConsecutiveDuplicates collapses a message repeated back to back.
 //
 // A retried turn or a re-injected notice can land twice. Repetition is also
@@ -156,33 +154,35 @@ func dropConsecutiveDuplicates(messages []Message) []Message {
 	return kept
 }
 
-// lastPairedIndex finds the most recent partner for a message.
+// Message hygiene applied before a conversation goes on the wire.
 //
-// Searching backwards matters when the same call is made more than once: the
-// result belongs to the call that just happened, not the identical one earlier
-// in the conversation.
-func lastPairedIndex(messages []Message, message Message) int {
-	for index, candidate := range slices.Backward(messages) {
-		if candidate.Activity.IsPair(message.Activity) {
-			return index
-		}
-	}
+// A run's history does not stay tidy on its own. Trimming to the window can cut
+// it in the middle and drop half of a tool-call pair, a provider can return the
+// same call twice, and a turn can come back empty. Every one of those leaves a conversation that is individually plausible and collectively
+// invalid - and providers reject the whole request rather than the bad part, so
+// the failure arrives as an opaque 400 in the middle of a long unattended run.
+//
+// The rules here are the ones the TypeScript engine learned the hard way:
+//
+//   - a tool call and its result must be adjacent, in that order
+//   - a call with no result, or a result with no call, must not be sent
+//   - a trigger only makes sense as the last message
+//   - empty and repeated messages waste context and confuse the model
+//
+// Organize is deliberately a pure function over the message list rather than
+// something the loop does to its own state. The engine's history is the record
+// of what happened; this is how that record is presented to a provider.
 
-	return -1
-}
+// Organize repairs a conversation so a provider will accept it.
+//
+// The order of operations matters: pairs are clustered first, because the
+// orphan checks that follow ask whether a partner exists anywhere, and a
+// response that has been moved next to its call is no longer an orphan.
+func Organize(messages []Message) []Message {
+	organized := clusterActivities(messages)
+	organized = dropOrphanedActivities(organized)
+	organized = dropEmpty(organized)
+	organized = dropConsecutiveDuplicates(organized)
 
-// sameMessage compares two messages for the duplicate check.
-func sameMessage(a, b Message) bool {
-	if a.Type != b.Type || a.Text != b.Text {
-		return false
-	}
-
-	// activities are never duplicates of one another: two calls with the same
-	// arguments are two real calls the model made, and collapsing them would
-	// hide exactly the repetition the cycle guards look for
-	if a.Type == TypeActivity {
-		return false
-	}
-
-	return a.Activity == nil && b.Activity == nil
+	return organized
 }

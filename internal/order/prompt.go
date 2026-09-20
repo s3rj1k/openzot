@@ -200,24 +200,6 @@ type data struct {
 	Contract string
 }
 
-// Render runs the order's prompt for a run in env. The result always carries the
-// non-interactive contract: whatever the order's own text says, it cannot opt a
-// run into an interactivity zot does not have.
-func (o Order) Render(env Env) (string, error) {
-	rendered, err := o.execute(env, functions(env.Workdir))
-	if err != nil {
-		return "", err
-	}
-
-	// a prompt that already carries the contract - the default one does - is left
-	// untouched, so the text is never repeated
-	if strings.Contains(rendered, Contract) {
-		return rendered, nil
-	}
-
-	return strings.TrimRight(rendered, "\n") + "\n\n" + Contract, nil
-}
-
 // execute renders the body with the given functions.
 func (o Order) execute(env Env, funcs template.FuncMap) (string, error) {
 	prompt, err := template.New("order").Option("missingkey=error").Funcs(funcs).Parse(o.Body)
@@ -246,6 +228,63 @@ func (o Order) execute(env Env, funcs template.FuncMap) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+func inc(n int) int { return n + 1 }
+
+// functions are what a prompt may call.
+//
+//   - file "path" inlines a file: relative to the working directory, or absolute,
+//     or under ~. A house style guide or a checklist stays a file of its own.
+//   - env "NAME" reads an environment variable.
+//   - inc N is N+1, for numbering a list: templates have no arithmetic of their own.
+//
+// An order is trusted the way a script is: it can already tell the agent to run
+// anything, so what it can read into its own prompt is no larger a power.
+func functions(workdir string) template.FuncMap {
+	return template.FuncMap{
+		"file": func(path string) (string, error) {
+			if path == "~" || strings.HasPrefix(path, "~/") {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return "", err
+				}
+
+				path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+			}
+
+			if !filepath.IsAbs(path) && workdir != "" {
+				path = filepath.Join(workdir, path)
+			}
+
+			content, err := os.ReadFile(path) //nolint:gosec // G304: the order template asked for this file by name
+			if err != nil {
+				return "", err
+			}
+
+			return strings.TrimRight(string(content), "\n"), nil
+		},
+		"env": os.Getenv,
+		"inc": inc,
+	}
+}
+
+// Render runs the order's prompt for a run in env. The result always carries the
+// non-interactive contract: whatever the order's own text says, it cannot opt a
+// run into an interactivity zot does not have.
+func (o Order) Render(env Env) (string, error) {
+	rendered, err := o.execute(env, functions(env.Workdir))
+	if err != nil {
+		return "", err
+	}
+
+	// a prompt that already carries the contract - the default one does - is left
+	// untouched, so the text is never repeated
+	if strings.Contains(rendered, Contract) {
+		return rendered, nil
+	}
+
+	return strings.TrimRight(rendered, "\n") + "\n\n" + Contract, nil
 }
 
 // check runs the prompt once against stand-in data, so that a template that
@@ -288,42 +327,3 @@ func (o Order) check() error {
 
 	return err
 }
-
-// functions are what a prompt may call.
-//
-//   - file "path" inlines a file: relative to the working directory, or absolute,
-//     or under ~. A house style guide or a checklist stays a file of its own.
-//   - env "NAME" reads an environment variable.
-//   - inc N is N+1, for numbering a list: templates have no arithmetic of their own.
-//
-// An order is trusted the way a script is: it can already tell the agent to run
-// anything, so what it can read into its own prompt is no larger a power.
-func functions(workdir string) template.FuncMap {
-	return template.FuncMap{
-		"file": func(path string) (string, error) {
-			if path == "~" || strings.HasPrefix(path, "~/") {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return "", err
-				}
-
-				path = filepath.Join(home, strings.TrimPrefix(path, "~"))
-			}
-
-			if !filepath.IsAbs(path) && workdir != "" {
-				path = filepath.Join(workdir, path)
-			}
-
-			content, err := os.ReadFile(path) //nolint:gosec // G304: the order template asked for this file by name
-			if err != nil {
-				return "", err
-			}
-
-			return strings.TrimRight(string(content), "\n"), nil
-		},
-		"env": os.Getenv,
-		"inc": inc,
-	}
-}
-
-func inc(n int) int { return n + 1 }

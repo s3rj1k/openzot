@@ -67,6 +67,12 @@ func truncationNotice() string {
 		"Continue from exactly where it stopped, without repeating what you already wrote."
 }
 
+// terminalHandler is never what ends a run: the loop reads the call itself. It
+// exists so the tool is an ordinary one to the model.
+func terminalHandler[T any](context.Context, T, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return fantasy.NewTextResponse("recorded"), nil
+}
+
 // terminalTools are the tool definitions injected into every run.
 //
 // They are given to the model as ordinary tools because that is the mechanism it
@@ -90,10 +96,4 @@ type successInput struct {
 
 type failureInput struct {
 	Reason string `json:"reason" description:"What is blocking completion."`
-}
-
-// terminalHandler is never what ends a run: the loop reads the call itself. It
-// exists so the tool is an ordinary one to the model.
-func terminalHandler[T any](context.Context, T, fantasy.ToolCall) (fantasy.ToolResponse, error) {
-	return fantasy.NewTextResponse("recorded"), nil
 }

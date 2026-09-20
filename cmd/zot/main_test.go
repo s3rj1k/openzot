@@ -24,16 +24,6 @@ import (
 	"github.com/openzot/openzot/internal/tui"
 )
 
-// TestMain gives every test a stand-in for the terminal and the full-screen
-// viewer, which need a real TTY: the stand-in runs the agent to its ending and
-// prints what it said, so a test can assert on the run without a screen.
-func TestMain(m *testing.M) {
-	isTerminal = func() bool { return true }
-	runViewer = headlessViewer
-
-	os.Exit(m.Run())
-}
-
 // headlessViewer is tui.Run without the screen. It reports endings the way the
 // viewer does: an error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
@@ -61,6 +51,64 @@ func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loo
 	}
 
 	return result, nil
+}
+
+// TestMain gives every test a stand-in for the terminal and the full-screen
+// viewer, which need a real TTY: the stand-in runs the agent to its ending and
+// prints what it said, so a test can assert on the run without a screen.
+func TestMain(m *testing.M) {
+	isTerminal = func() bool { return true }
+	runViewer = headlessViewer
+
+	os.Exit(m.Run())
+}
+
+// orderText is an order file with the given objective and the smallest prompt
+// that uses it: the contract is not in it, because the run supplies that.
+func orderText(objective string) string {
+	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n{{ .Objective }}\n"
+}
+
+// orderFileIn writes an order with the given objective to dir/name.
+func orderFileIn(t *testing.T, dir, name, objective string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+
+	if err := os.WriteFile(path, []byte(orderText(objective)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return path
+}
+
+func orderFile(t *testing.T, objective string) string {
+	t.Helper()
+
+	return orderFileIn(t, t.TempDir(), "order.md", objective)
+}
+
+// withArgs runs a function with a fresh flag set and the given argv, so command()
+// can be exercised the way the shell invokes it. It chdirs into --dir, so the
+// working directory is put back afterwards: a later test must not inherit a
+// temp directory that is already gone.
+func withArgs(t *testing.T, args ...string) {
+	t.Helper()
+
+	originalArgs := os.Args
+	originalFlags := pflag.CommandLine
+
+	// command chdirs into --dir; this registers the return to where the test began
+	t.Chdir(".")
+
+	os.Args = append([]string{"zot"}, args...)
+	pflag.CommandLine = pflag.NewFlagSet("zot", pflag.ContinueOnError)
+	pflag.CommandLine.SetOutput(io.Discard)
+
+	t.Cleanup(func() {
+		os.Args = originalArgs
+		pflag.CommandLine = originalFlags
+	})
 }
 
 // With no terminal there is nothing to show a run in, so zot refuses before it
@@ -119,6 +167,18 @@ func TestLoadOrderLoadsTheFile(t *testing.T) {
 	}
 }
 
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A broken order fails the run before a provider is touched.
 func TestLoadOrderFailsUpFront(t *testing.T) {
 	if _, err := loadOrder([]string{filepath.Join(t.TempDir(), "nope.md")}); err == nil {
@@ -145,6 +205,27 @@ func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	if !strings.Contains(err.Error(), "zot new") {
 		t.Errorf("the error should point at `zot new`: %v", err)
 	}
+}
+
+// quietStderr silences stderr for a test that deliberately triggers the usage
+// block.
+func quietStderr(t *testing.T) {
+	t.Helper()
+
+	original := os.Stderr
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	os.Stderr = devNull
+
+	t.Cleanup(func() {
+		os.Stderr = original
+
+		devNull.Close()
+	})
 }
 
 // One order per invocation: none is told how to make one, several are told to
@@ -178,31 +259,6 @@ func withEditor(t *testing.T, body string) {
 	t.Setenv("EDITOR", "")
 }
 
-func orderFile(t *testing.T, objective string) string {
-	t.Helper()
-
-	return orderFileIn(t, t.TempDir(), "order.md", objective)
-}
-
-// orderText is an order file with the given objective and the smallest prompt
-// that uses it: the contract is not in it, because the run supplies that.
-func orderText(objective string) string {
-	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n{{ .Objective }}\n"
-}
-
-// orderFileIn writes an order with the given objective to dir/name.
-func orderFileIn(t *testing.T, dir, name, objective string) string {
-	t.Helper()
-
-	path := filepath.Join(dir, name)
-
-	if err := os.WriteFile(path, []byte(orderText(objective)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	return path
-}
-
 // readLog decodes every line of a session log, failing on any line that is not
 // a JSON record.
 func readLog(t *testing.T, path string) []session.Record {
@@ -227,27 +283,6 @@ func readLog(t *testing.T, path string) []session.Record {
 	}
 
 	return records
-}
-
-// quietStderr silences stderr for a test that deliberately triggers the usage
-// block.
-func quietStderr(t *testing.T) {
-	t.Helper()
-
-	original := os.Stderr
-
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	os.Stderr = devNull
-
-	t.Cleanup(func() {
-		os.Stderr = original
-
-		devNull.Close()
-	})
 }
 
 // The usage text is what a user sees when they get it wrong, so it has to name
@@ -342,6 +377,58 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	}
 }
 
+// capture redirects one of the process's standard streams for the duration of a
+// call and returns what was written to it.
+func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
+	t.Helper()
+
+	original := *stream
+
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	*stream = write
+
+	done := make(chan string)
+
+	go func() {
+		var builder strings.Builder
+
+		buffer := make([]byte, 4096)
+
+		for {
+			n, err := read.Read(buffer)
+
+			builder.Write(buffer[:n])
+
+			if err != nil {
+				break
+			}
+		}
+
+		done <- builder.String()
+	}()
+
+	runErr := fn()
+
+	write.Close()
+
+	*stream = original
+
+	return <-done, runErr
+}
+
+// captureStderr collects what a function prints to stderr. Stdout and stderr are
+// worth telling apart: stdout is the transcript, stderr is where zot talks about
+// itself, and something that belongs on one must not leak onto the other.
+func captureStderr(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	return capture(t, &os.Stderr, fn)
+}
+
 // Everything the config can say, the config alone says: a flag that duplicated a
 // key would be a second place to look for what a run was told.
 func TestConfigKeysAreNotFlags(t *testing.T) {
@@ -362,27 +449,11 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 	}
 }
 
-// withArgs runs a function with a fresh flag set and the given argv, so command()
-// can be exercised the way the shell invokes it. It chdirs into --dir, so the
-// working directory is put back afterwards: a later test must not inherit a
-// temp directory that is already gone.
-func withArgs(t *testing.T, args ...string) {
+// captureStdout collects what a function prints to stdout.
+func captureStdout(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
 
-	originalArgs := os.Args
-	originalFlags := pflag.CommandLine
-
-	// command chdirs into --dir; this registers the return to where the test began
-	t.Chdir(".")
-
-	os.Args = append([]string{"zot"}, args...)
-	pflag.CommandLine = pflag.NewFlagSet("zot", pflag.ContinueOnError)
-	pflag.CommandLine.SetOutput(io.Discard)
-
-	t.Cleanup(func() {
-		os.Args = originalArgs
-		pflag.CommandLine = originalFlags
-	})
+	return capture(t, &os.Stdout, fn)
 }
 
 func TestRunConfigPath(t *testing.T) {
@@ -478,6 +549,9 @@ provider:
 		}
 	}
 }
+
+// contractHeading is how the contract is spotted in an assembled prompt.
+const contractHeading = "## Non-interactive contract"
 
 // The whole loop of the new order: zot new scaffolds the file with the full
 // prompt in it, the operator writes the objective, and what the model is sent is
@@ -794,65 +868,6 @@ func TestRunRejectsAMissingConfigFile(t *testing.T) {
 	}
 }
 
-// captureStdout collects what a function prints to stdout.
-func captureStdout(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	return capture(t, &os.Stdout, fn)
-}
-
-// captureStderr collects what a function prints to stderr. Stdout and stderr are
-// worth telling apart: stdout is the transcript, stderr is where zot talks about
-// itself, and something that belongs on one must not leak onto the other.
-func captureStderr(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	return capture(t, &os.Stderr, fn)
-}
-
-// capture redirects one of the process's standard streams for the duration of a
-// call and returns what was written to it.
-func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
-	t.Helper()
-
-	original := *stream
-
-	read, write, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	*stream = write
-
-	done := make(chan string)
-
-	go func() {
-		var builder strings.Builder
-
-		buffer := make([]byte, 4096)
-
-		for {
-			n, err := read.Read(buffer)
-
-			builder.Write(buffer[:n])
-
-			if err != nil {
-				break
-			}
-		}
-
-		done <- builder.String()
-	}()
-
-	runErr := fn()
-
-	write.Close()
-
-	*stream = original
-
-	return <-done, runErr
-}
-
 // A run leaves a record: one log per order, in .zot/orders of the project,
 // with the task and the outcome. Running the order again appends a new run to
 // the same log rather than starting another file.
@@ -1035,18 +1050,6 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 	}
 }
 
-func mustWrite(t *testing.T, path, content string) {
-	t.Helper()
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // The example config is what `zot config` writes on first run, so it is the
 // first thing most people ever edit. Its knobs drifting from the code's own
 // defaults is not cosmetic: someone copies it, changes nothing, and gets
@@ -1089,6 +1092,3 @@ func TestTheExampleConfigLoadsAndValidates(t *testing.T) {
 		t.Fatalf("the example config does not validate: %v", err)
 	}
 }
-
-// contractHeading is how the contract is spotted in an assembled prompt.
-const contractHeading = "## Non-interactive contract"

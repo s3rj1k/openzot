@@ -2,6 +2,32 @@ package conversation
 
 import "charm.land/fantasy"
 
+// singleToolCall returns the call an assistant message consists of, if it is one.
+func singleToolCall(message fantasy.Message) (fantasy.ToolCallPart, bool) {
+	if message.Role != fantasy.MessageRoleAssistant || len(message.Content) != 1 {
+		return fantasy.ToolCallPart{}, false
+	}
+
+	call, ok := message.Content[0].(fantasy.ToolCallPart)
+
+	return call, ok
+}
+
+// dropDangling removes assistant tool-call turns whose results are missing.
+func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt {
+	kept := make(fantasy.Prompt, 0, len(prompt))
+
+	for _, message := range prompt {
+		if call, ok := singleToolCall(message); ok && pending[call.ToolCallID] {
+			continue
+		}
+
+		kept = append(kept, message)
+	}
+
+	return kept
+}
+
 // toPrompt renders the conversation into the prompt a model call carries.
 //
 // Activity messages are the interesting case: a request half becomes an
@@ -85,30 +111,4 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 	}
 
 	return prompt
-}
-
-// dropDangling removes assistant tool-call turns whose results are missing.
-func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt {
-	kept := make(fantasy.Prompt, 0, len(prompt))
-
-	for _, message := range prompt {
-		if call, ok := singleToolCall(message); ok && pending[call.ToolCallID] {
-			continue
-		}
-
-		kept = append(kept, message)
-	}
-
-	return kept
-}
-
-// singleToolCall returns the call an assistant message consists of, if it is one.
-func singleToolCall(message fantasy.Message) (fantasy.ToolCallPart, bool) {
-	if message.Role != fantasy.MessageRoleAssistant || len(message.Content) != 1 {
-		return fantasy.ToolCallPart{}, false
-	}
-
-	call, ok := message.Content[0].(fantasy.ToolCallPart)
-
-	return call, ok
 }

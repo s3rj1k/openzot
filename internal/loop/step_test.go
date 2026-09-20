@@ -296,6 +296,16 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 	}
 }
 
+func kindsOf(kinds []EventKind) []string {
+	names := make([]string, len(kinds))
+
+	for i, kind := range kinds {
+		names[i] = string(kind)
+	}
+
+	return names
+}
+
 // OnEvent sees every event of a run, alongside whoever is watching it.
 func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	var sunk, watched []EventKind
@@ -315,16 +325,6 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	if len(sunk) == 0 || strings.Join(kindsOf(sunk), ",") != strings.Join(kindsOf(watched), ",") {
 		t.Errorf("sink saw %v, watcher saw %v, want the same events", sunk, watched)
 	}
-}
-
-func kindsOf(kinds []EventKind) []string {
-	names := make([]string, len(kinds))
-
-	for i, kind := range kinds {
-		names[i] = string(kind)
-	}
-
-	return names
 }
 
 // A model calling a tool with no parameters often sends "" for the arguments;

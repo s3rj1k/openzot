@@ -16,30 +16,21 @@ import (
 // cut; the skill itself, read by name, is always whole.
 const maxListedDescription = 200
 
-// skillsTool is the model's way to the skills: called with no name it lists them
-// with their short descriptions, called with one it returns that skill's full
-// instructions. Everything is already in memory, so a call reads no file.
-func (s toolSet) skillsTool(offered []skills.Skill) fantasy.AgentTool {
-	return fantasy.NewAgentTool("skills",
-		"Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
-		func(_ context.Context, in skillsInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
-			if strings.TrimSpace(in.Name) == "" {
-				return fantasy.NewTextResponse(listSkills(offered)), nil
-			}
-
-			for _, skill := range offered {
-				if skill.Name == in.Name {
-					return fantasy.NewTextResponse(s.truncate(fmt.Sprintf("Skill directory: %s\n\n%s", skill.Dir, skill.Content))), nil
-				}
-			}
-
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("no skill named %q (available: %s)", in.Name, skillNames(offered))), nil
-		})
-}
-
 // skillsInput is what the skills tool is called with; the struct is the schema.
 type skillsInput struct {
 	Name string `json:"name,omitempty" description:"The skill to read in full. Omit to list the available skills."`
+}
+
+// shorten flattens text to one line and caps it at limit characters, by rune so a
+// multi-byte character is never cut in half.
+func shorten(text string, limit int) string {
+	text = strings.Join(strings.Fields(text), " ")
+
+	if utf8.RuneCountInString(text) <= limit {
+		return text
+	}
+
+	return string([]rune(text)[:limit-1]) + "…"
 }
 
 // listSkills renders the listing: one line per skill, name then description.
@@ -69,14 +60,23 @@ func skillNames(offered []skills.Skill) string {
 	return strings.Join(names, ", ")
 }
 
-// shorten flattens text to one line and caps it at limit characters, by rune so a
-// multi-byte character is never cut in half.
-func shorten(text string, limit int) string {
-	text = strings.Join(strings.Fields(text), " ")
+// skillsTool is the model's way to the skills: called with no name it lists them
+// with their short descriptions, called with one it returns that skill's full
+// instructions. Everything is already in memory, so a call reads no file.
+func (s toolSet) skillsTool(offered []skills.Skill) fantasy.AgentTool {
+	return fantasy.NewAgentTool("skills",
+		"Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
+		func(_ context.Context, in skillsInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if strings.TrimSpace(in.Name) == "" {
+				return fantasy.NewTextResponse(listSkills(offered)), nil
+			}
 
-	if utf8.RuneCountInString(text) <= limit {
-		return text
-	}
+			for _, skill := range offered {
+				if skill.Name == in.Name {
+					return fantasy.NewTextResponse(s.truncate(fmt.Sprintf("Skill directory: %s\n\n%s", skill.Dir, skill.Content))), nil
+				}
+			}
 
-	return string([]rune(text)[:limit-1]) + "…"
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("no skill named %q (available: %s)", in.Name, skillNames(offered))), nil
+		})
 }

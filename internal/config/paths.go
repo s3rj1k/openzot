@@ -7,6 +7,23 @@ import (
 	"strings"
 )
 
+func homeDir() string {
+	if home := os.Getenv("HOME"); home != "" {
+		return home
+	}
+
+	// Fallback for unusual environments.
+	return "/tmp/zot-" + strconv.Itoa(os.Getuid())
+}
+
+func xdgConfigHome() string {
+	if dir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); dir != "" {
+		return dir
+	}
+
+	return filepath.Join(homeDir(), ".config")
+}
+
 // DefaultConfigPath returns the resolved config file path using a fallback
 // chain:
 //
@@ -29,21 +46,4 @@ func ConfigDir(path string) string {
 	}
 
 	return filepath.Dir(path)
-}
-
-func xdgConfigHome() string {
-	if dir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); dir != "" {
-		return dir
-	}
-
-	return filepath.Join(homeDir(), ".config")
-}
-
-func homeDir() string {
-	if home := os.Getenv("HOME"); home != "" {
-		return home
-	}
-
-	// Fallback for unusual environments.
-	return "/tmp/zot-" + strconv.Itoa(os.Getuid())
 }

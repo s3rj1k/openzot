@@ -51,11 +51,97 @@ var (
 	execute = run.Run
 )
 
-func main() {
-	if err := command(); err != nil {
-		fmt.Fprintln(os.Stderr, "zot: "+err.Error())
-		os.Exit(1)
+// orderOptions is how an order is run: its log goes in logs, named after it, and
+// the viewer calls it by its title, or by its file name.
+func orderOptions(logs string, o order.Order) run.Options {
+	// the log is the order's own name with .jsonl for its extension, so the record
+	// of a task is the file beside the task: one file per task, whatever the number
+	// of runs - each appends to it
+	base := filepath.Base(o.Path)
+
+	return run.Options{
+		SessionPath: filepath.Join(logs, strings.TrimSuffix(base, filepath.Ext(base))+".jsonl"),
+		Title:       o.DisplayTitle(),
 	}
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `zot - an automated software factory powered by an autonomous coding harness
+
+zot takes work orders, not prompts. A work order is one file: a front matter
+block with the durable objective, the acceptance criteria that define "done",
+and the constraints the work must hold to, then the system prompt itself - a Go
+template that reads that block, so the order says what to do and how the agent
+works. Each order is one autonomous run.
+
+Usage:
+  zot [flags] <order.md>
+  zot new [--dir <dir>]
+  zot config
+
+Examples:
+  zot new
+  zot .zot/orders/1758300000.md
+  zot --dir ./scratch .zot/orders/1758300000.md
+
+zot new files an order under .zot/orders in the project, named for the moment it
+was made, and opens it in your editor; you then run it by naming it. An order
+can live anywhere - running one needs no .zot directory at all - and zot runs
+one order per invocation: to run several, run zot once for each.
+
+Every run starts from zero. Nothing of an earlier run of the same order is
+continued or skipped, so running an order again is running it fresh.
+
+Every run is recorded. The log is one file per order, .zot/orders/<name>.jsonl
+in the project being worked on (--dir), appended to line by line as the run
+goes: a meta line, a line for each message and event, and the outcome. Running
+the order again adds a new run to the same file. Nothing in zot reads it back;
+it is a record for you, with cat and jq.
+
+Commands:
+  new        create a work order under ./.zot/orders - under <dir>/.zot/orders
+             with --dir - and open it in $EDITOR, the way zot config does. The file holds the full default prompt
+             and a blank objective: write the objective, and change the prompt
+             if you want the agent to work differently. It takes no prose
+  config     edit the config file in $EDITOR (creates it on first run)
+
+Flags:`)
+	pflag.PrintDefaults()
+}
+
+// loadOrder loads the one order this invocation is about. It explains itself
+// rather than failing silently when there is none or more than one: zot runs a
+// single order per invocation, and running several is a shell loop away.
+func loadOrder(args []string) (order.Order, error) {
+	switch len(args) {
+	case 0:
+		usage()
+
+		return order.Order{}, errors.New("no order given (write one with `zot new`)")
+	case 1:
+	default:
+		return order.Order{}, fmt.Errorf("zot runs one order per invocation; %d were named - run them one at a time", len(args))
+	}
+
+	path := args[0]
+
+	loaded, err := order.Load(path)
+	if err != nil {
+		// The retraining moment: someone typed prose where an order file goes. The
+		// error has to teach the new shape, not just report a missing file.
+		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
+			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  zot new")
+		}
+
+		return order.Order{}, err
+	}
+
+	// the run chdirs into --dir, so the order's path must survive the move
+	if abs, absErr := filepath.Abs(loaded.Path); absErr == nil {
+		loaded.Path = abs
+	}
+
+	return loaded, nil
 }
 
 func command() error {
@@ -165,95 +251,9 @@ func command() error {
 	return execute(ctx, &cfg, o, options)
 }
 
-// orderOptions is how an order is run: its log goes in logs, named after it, and
-// the viewer calls it by its title, or by its file name.
-func orderOptions(logs string, o order.Order) run.Options {
-	// the log is the order's own name with .jsonl for its extension, so the record
-	// of a task is the file beside the task: one file per task, whatever the number
-	// of runs - each appends to it
-	base := filepath.Base(o.Path)
-
-	return run.Options{
-		SessionPath: filepath.Join(logs, strings.TrimSuffix(base, filepath.Ext(base))+".jsonl"),
-		Title:       o.DisplayTitle(),
+func main() {
+	if err := command(); err != nil {
+		fmt.Fprintln(os.Stderr, "zot: "+err.Error())
+		os.Exit(1)
 	}
-}
-
-// loadOrder loads the one order this invocation is about. It explains itself
-// rather than failing silently when there is none or more than one: zot runs a
-// single order per invocation, and running several is a shell loop away.
-func loadOrder(args []string) (order.Order, error) {
-	switch len(args) {
-	case 0:
-		usage()
-
-		return order.Order{}, errors.New("no order given (write one with `zot new`)")
-	case 1:
-	default:
-		return order.Order{}, fmt.Errorf("zot runs one order per invocation; %d were named - run them one at a time", len(args))
-	}
-
-	path := args[0]
-
-	loaded, err := order.Load(path)
-	if err != nil {
-		// The retraining moment: someone typed prose where an order file goes. The
-		// error has to teach the new shape, not just report a missing file.
-		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
-			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  zot new")
-		}
-
-		return order.Order{}, err
-	}
-
-	// the run chdirs into --dir, so the order's path must survive the move
-	if abs, absErr := filepath.Abs(loaded.Path); absErr == nil {
-		loaded.Path = abs
-	}
-
-	return loaded, nil
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, `zot - an automated software factory powered by an autonomous coding harness
-
-zot takes work orders, not prompts. A work order is one file: a front matter
-block with the durable objective, the acceptance criteria that define "done",
-and the constraints the work must hold to, then the system prompt itself - a Go
-template that reads that block, so the order says what to do and how the agent
-works. Each order is one autonomous run.
-
-Usage:
-  zot [flags] <order.md>
-  zot new [--dir <dir>]
-  zot config
-
-Examples:
-  zot new
-  zot .zot/orders/1758300000.md
-  zot --dir ./scratch .zot/orders/1758300000.md
-
-zot new files an order under .zot/orders in the project, named for the moment it
-was made, and opens it in your editor; you then run it by naming it. An order
-can live anywhere - running one needs no .zot directory at all - and zot runs
-one order per invocation: to run several, run zot once for each.
-
-Every run starts from zero. Nothing of an earlier run of the same order is
-continued or skipped, so running an order again is running it fresh.
-
-Every run is recorded. The log is one file per order, .zot/orders/<name>.jsonl
-in the project being worked on (--dir), appended to line by line as the run
-goes: a meta line, a line for each message and event, and the outcome. Running
-the order again adds a new run to the same file. Nothing in zot reads it back;
-it is a record for you, with cat and jq.
-
-Commands:
-  new        create a work order under ./.zot/orders - under <dir>/.zot/orders
-             with --dir - and open it in $EDITOR, the way zot config does. The file holds the full default prompt
-             and a blank objective: write the objective, and change the prompt
-             if you want the agent to work differently. It takes no prose
-  config     edit the config file in $EDITOR (creates it on first run)
-
-Flags:`)
-	pflag.PrintDefaults()
 }

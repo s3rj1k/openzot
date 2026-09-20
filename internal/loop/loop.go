@@ -345,6 +345,328 @@ func firstNonNil(a, b error) error {
 	return b
 }
 
+// terminalDetail pulls the explanation out of a terminal call's arguments.
+func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
+	if value, ok := decodeInput(call.Input)[key].(string); ok && value != "" {
+		return value
+	}
+
+	return fallback
+}
+
+// terminalCall reports whether the model ended the run with a terminal tool.
+func terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
+	for _, call := range calls {
+		switch call.ToolName {
+		case SuccessTool:
+			return StopSettled, terminalDetail(call, "summary", "task complete"), true
+		case FailureTool:
+			return StopFailed, terminalDetail(call, "reason", "task failed"), true
+		}
+	}
+
+	return "", "", false
+}
+
+// handOver gives the conversation as it stands to the OnConversation hook.
+func (e *Engine) handOver(messages []conversation.Message) {
+	if e.options.OnConversation != nil {
+		e.options.OnConversation(messages)
+	}
+}
+
+// cycleDetail turns a heuristic name into something the model can act on.
+func cycleDetail(heuristic string) string {
+	switch heuristic {
+	case "repeated_result_run":
+		return "you have called the same tool with the same arguments and received the same result several times"
+	case "repeated_activity_tail":
+		return "your recent tool calls keep cycling through the same small set of actions"
+	case "repeated_suffix":
+		return "the last few turns of this conversation are an exact repeat of the ones before them"
+	case "repeated_message_text_run":
+		return "your last answer repeated the same sentences over and over"
+	default:
+		return ""
+	}
+}
+
+func finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
+	return Result{
+		Reason:   reason,
+		Message:  detail,
+		Messages: messages,
+		Budget:   budget,
+		Err:      err,
+	}
+}
+
+// checkCycle looks for repetition and nudges the model, or stops the run once
+// nudging has failed enough times.
+func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
+	detected := describeCycle(messages)
+
+	if detected == "" {
+		// a round that is not cyclic breaks the run of repetitions: the budget
+		// counts *consecutive* cycles, so two unrelated repetitions far apart in a
+		// long run must not add up to a stop. This mirrors the source, which zeroes
+		// its cycle counter the moment a round comes back clean.
+		budget.Cycles = 0
+
+		return nil, nil
+	}
+
+	if budget.Cycles >= e.maxCycles {
+		result := finish(messages, *budget, StopCycle,
+			fmt.Sprintf("the model kept repeating itself (%s)", detected), nil)
+
+		return nil, &result
+	}
+
+	budget.Cycles++
+
+	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
+}
+
+// narrowWindow lowers the context window requests are held under, after a
+// provider rejected a request as too long. It reports whether the window went
+// down - if not there is nothing left to try, and the rejection is a real
+// failure.
+//
+// The provider's stated window beats the configured one. A rejection is
+// precisely the case where the configured window was wrong - a serving endpoint
+// with a smaller ceiling than the operator stated - so believing the error is
+// what makes the retry fit instead of guessing again. A rejection that states no
+// window, or one no lower than the window already in force, still has to shrink
+// something or the retry would send the identical request: the window steps down
+// by a quarter instead, until it reaches a fraction of the configured one.
+//
+// Only the window changes. The conversation itself is untouched; the oldest
+// messages are forgotten to fit it on the next request.
+func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
+	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
+		e.window = limit.SuggestedLimit
+
+		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
+			"provider reported a %d token window; retrying under %d",
+			limit.MaxTokens, limit.SuggestedLimit)})
+
+		return true
+	}
+
+	narrowed := e.window * 3 / 4
+
+	if narrowed < e.options.ContextWindow/narrowFloor {
+		return false
+	}
+
+	e.window = narrowed
+
+	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
+		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
+
+	return true
+}
+
+// turnsHeld is how many whole turns the window still holds. The turn about to be
+// asked for is the last of turnStarts and has not happened yet, so it is not one.
+func turnsHeld(turnStarts []int, forgotten int) int {
+	turns := 0
+
+	for _, start := range turnStarts[:len(turnStarts)-1] {
+		if start >= forgotten {
+			turns++
+		}
+	}
+
+	return turns
+}
+
+// instructions renders the system prompt.
+func (e *Engine) instructions() string {
+	var builder strings.Builder
+
+	builder.WriteString(e.options.Instructions)
+
+	fmt.Fprintf(&builder,
+		"\n\nWhen the objective is met, call %s. If it cannot be met, call %s. "+
+			"The run is not finished until you call one of them.",
+		SuccessTool, FailureTool,
+	)
+
+	return builder.String()
+}
+
+// forgetOldest moves the offset forward as far as the window calls for, and
+// reports whether it moved.
+func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
+	// the system prompt and the tool schemas are sent on every request and are
+	// part of what fills the window
+	used := conversation.EstimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
+
+	for _, message := range messages[*forgotten:] {
+		used += conversation.Cost(message)
+	}
+
+	next := conversation.Forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, conversation.Cost)
+	if next == *forgotten {
+		return false
+	}
+
+	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+		"forgot %d older messages to stay within the context window", next-*forgotten)})
+
+	*forgotten = next
+
+	return true
+}
+
+// repostedPlan is the model's latest plan - its last successful call of the plan
+// tool - as a fresh call and result to append to the conversation. It reports
+// false when there is no plan, or when the plan is still in the window and so
+// needs no help.
+func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
+	if e.options.PlanTool == "" {
+		return nil, false
+	}
+
+	for index, message := range slices.Backward(messages) {
+		activity := message.Activity
+
+		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
+			continue
+		}
+
+		if index >= forgotten {
+			return nil, false
+		}
+
+		id := fmt.Sprintf("plan-%d", len(messages))
+
+		call := conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
+		answer := conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
+
+		return []conversation.Message{
+			{Type: conversation.TypeActivity, Activity: &call},
+			{Type: conversation.TypeActivity, Text: answer.ResultText(), Activity: &answer},
+		}, true
+	}
+
+	return nil, false
+}
+
+// fitToWindow forgets the oldest messages as the window fills, and puts the plan
+// back in front of the model when forgetting has left it with too little to go
+// on. It returns the conversation, which has grown by the plan when that was
+// posted. Forgotten is the run's offset into messages and only moves forward.
+func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
+	if !e.forgetOldest(messages, forgotten, tools, emit) {
+		return messages
+	}
+
+	turns := turnsHeld(turnStarts, *forgotten)
+
+	if turns >= e.planTurns {
+		return messages
+	}
+
+	posted, ok := e.repostedPlan(messages, *forgotten)
+	if !ok {
+		return messages
+	}
+
+	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+		"only %d turns are left in the context window; posting the plan again", turns)})
+
+	messages = append(messages, posted...)
+
+	// the plan costs something too
+	e.forgetOldest(messages, forgotten, tools, emit)
+
+	return messages
+}
+
+// trimmedKickoff stands in for the opening user message once trimming has
+// dropped it. The objective lives in the instructions, so this only has to
+// exist and point there.
+const trimmedKickoff = "Continue working on your task as stated in the instructions."
+
+// buildRequest assembles the provider request from what the window still holds:
+// the conversation from the forgotten offset on.
+func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) turnRequest {
+	chat := conversation.ToPrompt(messages[forgotten:])
+
+	// Forgetting takes the oldest first, which is the run's opening user message.
+	// A conversation with no user turn at all is invalid to strict providers:
+	// they reject the whole request, deterministically, from that iteration on
+	// (bisected live against one that answered only an opaque 400). The
+	// objective itself is safe in the instructions; what must be restored is a
+	// user turn's existence.
+	hasUser := false
+
+	for _, message := range chat {
+		if message.Role == fantasy.MessageRoleUser {
+			hasUser = true
+
+			break
+		}
+	}
+
+	if !hasUser {
+		chat = append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat...)
+	}
+
+	// fantasy will not start a step from a conversation that ends on the model's
+	// own words. The engine never leaves one - every turn is followed by a tool
+	// result or a nudge - but a conversation it was handed might, and one more
+	// line to continue costs less than a run that cannot start.
+	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
+		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
+	}
+
+	call := turnRequest{messages: chat}
+
+	if e.options.MaxTokens != nil {
+		call.maxOutput = new(int64(*e.options.MaxTokens))
+	}
+
+	return call
+}
+
+// toolDefinitions renders the tool schemas, with the terminal tools.
+func (e *Engine) toolDefinitions() []fantasy.Tool {
+	offered := slices.Concat(e.options.Tools, terminalTools())
+
+	// map order was random once and a tool list that reshuffles between requests
+	// defeats any server-side prompt cache keyed on the prefix, so the order is
+	// fixed: by name
+	slices.SortFunc(offered, func(a, b fantasy.AgentTool) int {
+		return strings.Compare(a.Info().Name, b.Info().Name)
+	})
+
+	tools := make([]fantasy.Tool, 0, len(offered))
+
+	for _, tool := range offered {
+		info := tool.Info()
+
+		inputSchema := map[string]any{
+			"type":       "object",
+			"properties": info.Parameters,
+			"required":   info.Required,
+		}
+
+		schema.Normalize(inputSchema)
+
+		tools = append(tools, fantasy.FunctionTool{
+			Name:        info.Name,
+			Description: info.Description,
+			InputSchema: inputSchema,
+		})
+	}
+
+	return tools
+}
+
 // Run drives the conversation to a conclusion, emitting events as it goes.
 //
 // Run returns the Result; watch sees each event as it happens, and a nil watch is
@@ -641,36 +963,6 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 	}
 }
 
-// terminalCall reports whether the model ended the run with a terminal tool.
-func terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
-	for _, call := range calls {
-		switch call.ToolName {
-		case SuccessTool:
-			return StopSettled, terminalDetail(call, "summary", "task complete"), true
-		case FailureTool:
-			return StopFailed, terminalDetail(call, "reason", "task failed"), true
-		}
-	}
-
-	return "", "", false
-}
-
-// terminalDetail pulls the explanation out of a terminal call's arguments.
-func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
-	if value, ok := decodeInput(call.Input)[key].(string); ok && value != "" {
-		return value
-	}
-
-	return fallback
-}
-
-// handOver gives the conversation as it stands to the OnConversation hook.
-func (e *Engine) handOver(messages []conversation.Message) {
-	if e.options.OnConversation != nil {
-		e.options.OnConversation(messages)
-	}
-}
-
 // activityMessage renders one half of a tool-call pair.
 func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallContent, result any, failure string) conversation.Message {
 	activity := &conversation.Activity{
@@ -691,297 +983,5 @@ func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallConten
 		Type:     conversation.TypeActivity,
 		Text:     activity.ResultText(),
 		Activity: activity,
-	}
-}
-
-// checkCycle looks for repetition and nudges the model, or stops the run once
-// nudging has failed enough times.
-func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
-	detected := describeCycle(messages)
-
-	if detected == "" {
-		// a round that is not cyclic breaks the run of repetitions: the budget
-		// counts *consecutive* cycles, so two unrelated repetitions far apart in a
-		// long run must not add up to a stop. This mirrors the source, which zeroes
-		// its cycle counter the moment a round comes back clean.
-		budget.Cycles = 0
-
-		return nil, nil
-	}
-
-	if budget.Cycles >= e.maxCycles {
-		result := finish(messages, *budget, StopCycle,
-			fmt.Sprintf("the model kept repeating itself (%s)", detected), nil)
-
-		return nil, &result
-	}
-
-	budget.Cycles++
-
-	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
-}
-
-// cycleDetail turns a heuristic name into something the model can act on.
-func cycleDetail(heuristic string) string {
-	switch heuristic {
-	case "repeated_result_run":
-		return "you have called the same tool with the same arguments and received the same result several times"
-	case "repeated_activity_tail":
-		return "your recent tool calls keep cycling through the same small set of actions"
-	case "repeated_suffix":
-		return "the last few turns of this conversation are an exact repeat of the ones before them"
-	case "repeated_message_text_run":
-		return "your last answer repeated the same sentences over and over"
-	default:
-		return ""
-	}
-}
-
-// narrowWindow lowers the context window requests are held under, after a
-// provider rejected a request as too long. It reports whether the window went
-// down - if not there is nothing left to try, and the rejection is a real
-// failure.
-//
-// The provider's stated window beats the configured one. A rejection is
-// precisely the case where the configured window was wrong - a serving endpoint
-// with a smaller ceiling than the operator stated - so believing the error is
-// what makes the retry fit instead of guessing again. A rejection that states no
-// window, or one no lower than the window already in force, still has to shrink
-// something or the retry would send the identical request: the window steps down
-// by a quarter instead, until it reaches a fraction of the configured one.
-//
-// Only the window changes. The conversation itself is untouched; the oldest
-// messages are forgotten to fit it on the next request.
-func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
-	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
-		e.window = limit.SuggestedLimit
-
-		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
-			"provider reported a %d token window; retrying under %d",
-			limit.MaxTokens, limit.SuggestedLimit)})
-
-		return true
-	}
-
-	narrowed := e.window * 3 / 4
-
-	if narrowed < e.options.ContextWindow/narrowFloor {
-		return false
-	}
-
-	e.window = narrowed
-
-	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
-		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
-
-	return true
-}
-
-// fitToWindow forgets the oldest messages as the window fills, and puts the plan
-// back in front of the model when forgetting has left it with too little to go
-// on. It returns the conversation, which has grown by the plan when that was
-// posted. Forgotten is the run's offset into messages and only moves forward.
-func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
-	if !e.forgetOldest(messages, forgotten, tools, emit) {
-		return messages
-	}
-
-	turns := turnsHeld(turnStarts, *forgotten)
-
-	if turns >= e.planTurns {
-		return messages
-	}
-
-	posted, ok := e.repostedPlan(messages, *forgotten)
-	if !ok {
-		return messages
-	}
-
-	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-		"only %d turns are left in the context window; posting the plan again", turns)})
-
-	messages = append(messages, posted...)
-
-	// the plan costs something too
-	e.forgetOldest(messages, forgotten, tools, emit)
-
-	return messages
-}
-
-// turnsHeld is how many whole turns the window still holds. The turn about to be
-// asked for is the last of turnStarts and has not happened yet, so it is not one.
-func turnsHeld(turnStarts []int, forgotten int) int {
-	turns := 0
-
-	for _, start := range turnStarts[:len(turnStarts)-1] {
-		if start >= forgotten {
-			turns++
-		}
-	}
-
-	return turns
-}
-
-// forgetOldest moves the offset forward as far as the window calls for, and
-// reports whether it moved.
-func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
-	// the system prompt and the tool schemas are sent on every request and are
-	// part of what fills the window
-	used := conversation.EstimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
-
-	for _, message := range messages[*forgotten:] {
-		used += conversation.Cost(message)
-	}
-
-	next := conversation.Forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, conversation.Cost)
-	if next == *forgotten {
-		return false
-	}
-
-	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-		"forgot %d older messages to stay within the context window", next-*forgotten)})
-
-	*forgotten = next
-
-	return true
-}
-
-// repostedPlan is the model's latest plan - its last successful call of the plan
-// tool - as a fresh call and result to append to the conversation. It reports
-// false when there is no plan, or when the plan is still in the window and so
-// needs no help.
-func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
-	if e.options.PlanTool == "" {
-		return nil, false
-	}
-
-	for index, message := range slices.Backward(messages) {
-		activity := message.Activity
-
-		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
-			continue
-		}
-
-		if index >= forgotten {
-			return nil, false
-		}
-
-		id := fmt.Sprintf("plan-%d", len(messages))
-
-		call := conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
-		answer := conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
-
-		return []conversation.Message{
-			{Type: conversation.TypeActivity, Activity: &call},
-			{Type: conversation.TypeActivity, Text: answer.ResultText(), Activity: &answer},
-		}, true
-	}
-
-	return nil, false
-}
-
-// buildRequest assembles the provider request from what the window still holds:
-// the conversation from the forgotten offset on.
-func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) turnRequest {
-	chat := conversation.ToPrompt(messages[forgotten:])
-
-	// Forgetting takes the oldest first, which is the run's opening user message.
-	// A conversation with no user turn at all is invalid to strict providers:
-	// they reject the whole request, deterministically, from that iteration on
-	// (bisected live against one that answered only an opaque 400). The
-	// objective itself is safe in the instructions; what must be restored is a
-	// user turn's existence.
-	hasUser := false
-
-	for _, message := range chat {
-		if message.Role == fantasy.MessageRoleUser {
-			hasUser = true
-
-			break
-		}
-	}
-
-	if !hasUser {
-		chat = append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat...)
-	}
-
-	// fantasy will not start a step from a conversation that ends on the model's
-	// own words. The engine never leaves one - every turn is followed by a tool
-	// result or a nudge - but a conversation it was handed might, and one more
-	// line to continue costs less than a run that cannot start.
-	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
-		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
-	}
-
-	call := turnRequest{messages: chat}
-
-	if e.options.MaxTokens != nil {
-		call.maxOutput = new(int64(*e.options.MaxTokens))
-	}
-
-	return call
-}
-
-// trimmedKickoff stands in for the opening user message once trimming has
-// dropped it. The objective lives in the instructions, so this only has to
-// exist and point there.
-const trimmedKickoff = "Continue working on your task as stated in the instructions."
-
-// instructions renders the system prompt.
-func (e *Engine) instructions() string {
-	var builder strings.Builder
-
-	builder.WriteString(e.options.Instructions)
-
-	fmt.Fprintf(&builder,
-		"\n\nWhen the objective is met, call %s. If it cannot be met, call %s. "+
-			"The run is not finished until you call one of them.",
-		SuccessTool, FailureTool,
-	)
-
-	return builder.String()
-}
-
-// toolDefinitions renders the tool schemas, with the terminal tools.
-func (e *Engine) toolDefinitions() []fantasy.Tool {
-	offered := slices.Concat(e.options.Tools, terminalTools())
-
-	// map order was random once and a tool list that reshuffles between requests
-	// defeats any server-side prompt cache keyed on the prefix, so the order is
-	// fixed: by name
-	slices.SortFunc(offered, func(a, b fantasy.AgentTool) int {
-		return strings.Compare(a.Info().Name, b.Info().Name)
-	})
-
-	tools := make([]fantasy.Tool, 0, len(offered))
-
-	for _, tool := range offered {
-		info := tool.Info()
-
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": info.Parameters,
-			"required":   info.Required,
-		}
-
-		schema.Normalize(inputSchema)
-
-		tools = append(tools, fantasy.FunctionTool{
-			Name:        info.Name,
-			Description: info.Description,
-			InputSchema: inputSchema,
-		})
-	}
-
-	return tools
-}
-
-func finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
-	return Result{
-		Reason:   reason,
-		Message:  detail,
-		Messages: messages,
-		Budget:   budget,
-		Err:      err,
 	}
 }

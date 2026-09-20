@@ -22,54 +22,12 @@ const DefaultOutputPercent = 25
 // ShellTool is the name of the tool that acts on the machine.
 const ShellTool = "shell"
 
-// New returns the standard tool set, with a ceiling of maxOutput bytes on a
-// single tool result. Zero or negative means no ceiling.
-//
-// The set is two tools. Shell is the only one that touches the machine: the
-// model reads, lists, creates and changes files with ordinary commands, the way
-// anyone does at a terminal, so there is one place a run's effects come from and
-// one place to bound them. Tasks changes nothing on disk; it exists so the work
-// a run has set itself, and how far along it is, can be followed. A third, skills,
-// is added when there are skills to offer.
-//
-// Shell runs with the privileges of the process. That is the point - an agent
-// that cannot touch the machine is not much use to a CLI - but it means the
-// caller decides what to expose, and a caller running untrusted instructions
-// should hand over a narrower set.
-//
-// The ceiling is the caller's to derive from the model's context window: a
-// single result that overflows the window is rejected wholesale, and the run
-// cannot recover from a message it cannot even send.
-func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {
-	s := toolSet{maxOutput: maxOutput}
-
-	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
-
-	if len(offered) > 0 {
-		tools = append(tools, s.skillsTool(offered))
-	}
-
-	return tools
-}
-
 // shellInput is what the shell tool is called with. The struct is the schema:
 // fantasy generates the tool's parameters from its tags, and a field is required
 // unless it is omitempty.
 type shellInput struct {
 	Command string `json:"command" description:"The command to run"`
 	Timeout int    `json:"timeout,omitempty" description:"Timeout in seconds, default 120"`
-}
-
-func (s toolSet) shellTool() fantasy.AgentTool {
-	return fantasy.NewAgentTool(ShellTool,
-		"Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
-		func(ctx context.Context, in shellInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
-			if in.Command == "" {
-				return fantasy.NewTextErrorResponse(`missing required argument "command"`), nil
-			}
-
-			return fantasy.NewTextResponse(s.shell(ctx, in.Command, in.Timeout)), nil
-		})
 }
 
 // toolSet carries the configuration the tools share - currently just the output
@@ -137,4 +95,46 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 	}
 
 	return s.truncate(string(output))
+}
+
+func (s toolSet) shellTool() fantasy.AgentTool {
+	return fantasy.NewAgentTool(ShellTool,
+		"Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
+		func(ctx context.Context, in shellInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if in.Command == "" {
+				return fantasy.NewTextErrorResponse(`missing required argument "command"`), nil
+			}
+
+			return fantasy.NewTextResponse(s.shell(ctx, in.Command, in.Timeout)), nil
+		})
+}
+
+// New returns the standard tool set, with a ceiling of maxOutput bytes on a
+// single tool result. Zero or negative means no ceiling.
+//
+// The set is two tools. Shell is the only one that touches the machine: the
+// model reads, lists, creates and changes files with ordinary commands, the way
+// anyone does at a terminal, so there is one place a run's effects come from and
+// one place to bound them. Tasks changes nothing on disk; it exists so the work
+// a run has set itself, and how far along it is, can be followed. A third, skills,
+// is added when there are skills to offer.
+//
+// Shell runs with the privileges of the process. That is the point - an agent
+// that cannot touch the machine is not much use to a CLI - but it means the
+// caller decides what to expose, and a caller running untrusted instructions
+// should hand over a narrower set.
+//
+// The ceiling is the caller's to derive from the model's context window: a
+// single result that overflows the window is rejected wholesale, and the run
+// cannot recover from a message it cannot even send.
+func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {
+	s := toolSet{maxOutput: maxOutput}
+
+	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
+
+	if len(offered) > 0 {
+		tools = append(tools, s.skillsTool(offered))
+	}
+
+	return tools
 }

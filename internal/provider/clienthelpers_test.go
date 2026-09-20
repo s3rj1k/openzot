@@ -33,17 +33,6 @@ func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*ClientConfig))
 	return client
 }
 
-// frames serves a fixed SSE body, closed the way a real server closes it.
-func frames(t *testing.T, lines ...string) *Client {
-	t.Helper()
-
-	return serve(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		_, _ = w.Write([]byte(sse(lines...)))
-	})
-}
-
 // sse renders frames as an event stream, one blank line between events.
 func sse(lines ...string) string {
 	var body strings.Builder
@@ -57,6 +46,17 @@ func sse(lines ...string) string {
 	return body.String()
 }
 
+// frames serves a fixed SSE body, closed the way a real server closes it.
+func frames(t *testing.T, lines ...string) *Client {
+	t.Helper()
+
+	return serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		_, _ = w.Write([]byte(sse(lines...)))
+	})
+}
+
 // turn is what one model call produced.
 type turn struct {
 	text      string
@@ -65,6 +65,25 @@ type turn struct {
 	finish    fantasy.FinishReason
 	usage     fantasy.Usage
 	err       error
+}
+
+// Stream runs one model call. A failure to start it arrives as an error part,
+// the same way a failure mid-stream does, so a caller has one place to look.
+func (c *Client) Stream(ctx context.Context, call *fantasy.Call) fantasy.StreamResponse {
+	return func(yield func(fantasy.StreamPart) bool) {
+		stream, err := c.model.Stream(ctx, *call)
+		if err != nil {
+			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
+
+			return
+		}
+
+		for part := range stream {
+			if !yield(part) {
+				return
+			}
+		}
+	}
 }
 
 // collect runs one call to the end.
@@ -92,25 +111,6 @@ func collect(client *Client, call *fantasy.Call) turn {
 	}
 
 	return result
-}
-
-// Stream runs one model call. A failure to start it arrives as an error part,
-// the same way a failure mid-stream does, so a caller has one place to look.
-func (c *Client) Stream(ctx context.Context, call *fantasy.Call) fantasy.StreamResponse {
-	return func(yield func(fantasy.StreamPart) bool) {
-		stream, err := c.model.Stream(ctx, *call)
-		if err != nil {
-			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
-
-			return
-		}
-
-		for part := range stream {
-			if !yield(part) {
-				return
-			}
-		}
-	}
 }
 
 // hello is the smallest valid call.

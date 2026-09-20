@@ -49,21 +49,6 @@ type stallTransport struct {
 	base http.RoundTripper
 }
 
-func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	response, err := t.base.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-
-	response.Body = newStallReader(response.Body, streamStallTimeout)
-
-	return response, nil
-}
-
-// errStreamStalled is what a stream that went silent fails with. A sentinel, so
-// the retry rules can recognize it by type rather than by its wording.
-var errStreamStalled = errors.New("the stream stalled")
-
 // stallReader fails a stream that has gone silent, without bounding one that is
 // still producing.
 //
@@ -81,12 +66,45 @@ type stallReader struct {
 	stalled bool
 }
 
+func (r *stallReader) fire() {
+	r.mu.Lock()
+
+	r.stalled = true
+
+	r.mu.Unlock()
+
+	_ = r.inner.Close()
+}
+
 func newStallReader(inner io.ReadCloser, timeout time.Duration) *stallReader {
 	reader := &stallReader{inner: inner, timeout: timeout}
 
 	reader.timer = time.AfterFunc(timeout, reader.fire)
 
 	return reader
+}
+
+func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+
+	response.Body = newStallReader(response.Body, streamStallTimeout)
+
+	return response, nil
+}
+
+// errStreamStalled is what a stream that went silent fails with. A sentinel, so
+// the retry rules can recognize it by type rather than by its wording.
+var errStreamStalled = errors.New("the stream stalled")
+
+func (r *stallReader) didStall() bool {
+	r.mu.Lock()
+
+	defer r.mu.Unlock()
+
+	return r.stalled
 }
 
 func (r *stallReader) Read(p []byte) (int, error) {
@@ -108,22 +126,4 @@ func (r *stallReader) Close() error {
 	r.timer.Stop()
 
 	return r.inner.Close()
-}
-
-func (r *stallReader) fire() {
-	r.mu.Lock()
-
-	r.stalled = true
-
-	r.mu.Unlock()
-
-	_ = r.inner.Close()
-}
-
-func (r *stallReader) didStall() bool {
-	r.mu.Lock()
-
-	defer r.mu.Unlock()
-
-	return r.stalled
 }

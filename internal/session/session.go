@@ -135,6 +135,65 @@ type Writer struct {
 	path string
 }
 
+// endTornLine starts a fresh line when the file does not end on one.
+func (w *Writer) endTornLine() error {
+	info, err := w.file.Stat()
+	if err != nil {
+		return fmt.Errorf("open session log: %w", err)
+	}
+
+	if info.Size() == 0 {
+		return nil
+	}
+
+	last := make([]byte, 1)
+
+	if _, err := w.file.ReadAt(last, info.Size()-1); err != nil {
+		return fmt.Errorf("open session log: %w", err)
+	}
+
+	if last[0] == '\n' {
+		return nil
+	}
+
+	if _, err := w.file.Write([]byte{'\n'}); err != nil {
+		return fmt.Errorf("open session log: %w", err)
+	}
+
+	return nil
+}
+
+// write appends one record as a single line and syncs it.
+//
+// The line is built whole and handed to the kernel in one write on an
+// append-only file, so a record is never interleaved with another and never
+// lands anywhere but the end. Synced per record on purpose: the log has to be
+// readable while the run is in flight, and a crashed run has to leave
+// everything up to the crash. Buffering would lose exactly the tail that
+// explains a failure.
+func (w *Writer) write(record Record) error {
+	line, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+
+	line = append(line, '\n')
+
+	w.mu.Lock()
+
+	defer w.mu.Unlock()
+
+	if w.file == nil {
+		return errors.New("session: log is closed")
+	}
+
+	if _, err := w.file.Write(line); err != nil {
+		return err
+	}
+
+	return w.file.Sync()
+}
+
 // Open starts a run in the log at path, appending to the file if it exists and
 // creating it, and its directory, if not.
 //
@@ -170,67 +229,8 @@ func Open(path string, meta Meta) (*Writer, error) {
 	return writer, nil
 }
 
-// endTornLine starts a fresh line when the file does not end on one.
-func (w *Writer) endTornLine() error {
-	info, err := w.file.Stat()
-	if err != nil {
-		return fmt.Errorf("open session log: %w", err)
-	}
-
-	if info.Size() == 0 {
-		return nil
-	}
-
-	last := make([]byte, 1)
-
-	if _, err := w.file.ReadAt(last, info.Size()-1); err != nil {
-		return fmt.Errorf("open session log: %w", err)
-	}
-
-	if last[0] == '\n' {
-		return nil
-	}
-
-	if _, err := w.file.Write([]byte{'\n'}); err != nil {
-		return fmt.Errorf("open session log: %w", err)
-	}
-
-	return nil
-}
-
 // Path returns the log file.
 func (w *Writer) Path() string { return w.path }
-
-// write appends one record as a single line and syncs it.
-//
-// The line is built whole and handed to the kernel in one write on an
-// append-only file, so a record is never interleaved with another and never
-// lands anywhere but the end. Synced per record on purpose: the log has to be
-// readable while the run is in flight, and a crashed run has to leave
-// everything up to the crash. Buffering would lose exactly the tail that
-// explains a failure.
-func (w *Writer) write(record Record) error {
-	line, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-
-	line = append(line, '\n')
-
-	w.mu.Lock()
-
-	defer w.mu.Unlock()
-
-	if w.file == nil {
-		return errors.New("session: log is closed")
-	}
-
-	if _, err := w.file.Write(line); err != nil {
-		return err
-	}
-
-	return w.file.Sync()
-}
 
 // Message records a conversation entry.
 func (w *Writer) Message(message conversation.Message) error {
@@ -240,15 +240,6 @@ func (w *Writer) Message(message conversation.Message) error {
 // Event records something that happened.
 func (w *Writer) Event(event Event) error {
 	return w.write(Record{Kind: KindEvent, At: time.Now().UTC(), Event: &event})
-}
-
-// Result records the outcome and closes the log.
-func (w *Writer) Result(result Result) error {
-	if err := w.write(Record{Kind: KindResult, At: time.Now().UTC(), Result: &result}); err != nil {
-		return err
-	}
-
-	return w.Close()
 }
 
 // Close releases the file. Safe to call twice.
@@ -266,4 +257,13 @@ func (w *Writer) Close() error {
 	w.file = nil
 
 	return err
+}
+
+// Result records the outcome and closes the log.
+func (w *Writer) Result(result Result) error {
+	if err := w.write(Record{Kind: KindResult, At: time.Now().UTC(), Result: &result}); err != nil {
+		return err
+	}
+
+	return w.Close()
 }

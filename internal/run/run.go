@@ -136,98 +136,6 @@ func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, w
 	return env
 }
 
-// Run executes one autonomous coding task, rendering the agent's activity in
-// the read-only TUI. The agent's file and shell tools operate on the current
-// working directory, so the caller chdirs into the target project first. It
-// blocks until the user quits the viewer or the run errors.
-func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options) error {
-	config.ScrubProviderSecrets(cfg)
-
-	client, opts, err := Resolve(ctx, cfg, options.Skills)
-	if err != nil {
-		return err
-	}
-
-	workdir, _ := os.Getwd()
-
-	// The order is the system prompt: its objective, criteria and constraints go
-	// in it, where they survive trimming however long the run grows, and the
-	// opening user message only has to get the agent moving. It is rendered here,
-	// once the provider secrets are out of the environment, so nothing it reads
-	// can be one of them.
-	//
-	// @note there is deliberately no way to open a run with a prompt of the
-	// caller's own. zot takes a work order, not a conversation; anything worth
-	// saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
-	if err != nil {
-		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
-	}
-
-	opts.Client = client
-	opts.Instructions = prompt
-	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: taskKickoff}}
-
-	task := o.Objective
-
-	// The session log is not optional. It is the run's record and, once the
-	// context window has forgotten something, the agent's long-term memory: a run
-	// that cannot be recorded is refused rather than run without either.
-	if options.SessionPath == "" {
-		return errors.New("no session log: a run is always recorded")
-	}
-
-	writer, err := session.Open(options.SessionPath, session.Meta{
-		Task:     task,
-		Model:    client.Config().Model,
-		Provider: cfg.Provider.Label(),
-		Workdir:  workdir,
-	})
-	if err != nil {
-		return fmt.Errorf("session log: %w", err)
-	}
-
-	defer writer.Close()
-
-	// A log that stops being writable ends the run: what it cannot record it
-	// should not go on doing.
-	ctx, stop := context.WithCancel(ctx)
-	defer stop()
-
-	recorder := session.NewRecorder(writer, func(error) { stop() })
-
-	// The seed is recorded before the run starts so a session that dies in its
-	// first turn still says what it was asked to do.
-	recorder.Conversation(opts.Messages)
-
-	opts.OnConversation = recorder.Conversation
-	opts.OnEvent = recorder.Event
-
-	meta := viewerMeta(cfg, task, workdir, &opts)
-	meta.Title = options.Title
-
-	viewer := options.Viewer
-	if viewer == nil {
-		viewer = tui.Run
-	}
-
-	result, err := viewer(ctx, meta, &opts)
-
-	// A run that never began, or was abandoned still going, has no ending to write
-	// down or to report.
-	if result.Reason != "" {
-		recorder.Result(&result)
-
-		printDigest(os.Stderr, writer.Path(), &result)
-	}
-
-	if failed := recorder.Err(); failed != nil {
-		return fmt.Errorf("session log: %w", failed)
-	}
-
-	return err
-}
-
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
 // and - when the run was recorded - the session log it was appended to.
 func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
@@ -358,4 +266,96 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	}
 
 	return client, opts, nil
+}
+
+// Run executes one autonomous coding task, rendering the agent's activity in
+// the read-only TUI. The agent's file and shell tools operate on the current
+// working directory, so the caller chdirs into the target project first. It
+// blocks until the user quits the viewer or the run errors.
+func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options) error {
+	config.ScrubProviderSecrets(cfg)
+
+	client, opts, err := Resolve(ctx, cfg, options.Skills)
+	if err != nil {
+		return err
+	}
+
+	workdir, _ := os.Getwd()
+
+	// The order is the system prompt: its objective, criteria and constraints go
+	// in it, where they survive trimming however long the run grows, and the
+	// opening user message only has to get the agent moving. It is rendered here,
+	// once the provider secrets are out of the environment, so nothing it reads
+	// can be one of them.
+	//
+	// @note there is deliberately no way to open a run with a prompt of the
+	// caller's own. zot takes a work order, not a conversation; anything worth
+	// saying to the agent belongs in the order, where it is durable.
+	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
+	if err != nil {
+		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
+	}
+
+	opts.Client = client
+	opts.Instructions = prompt
+	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: taskKickoff}}
+
+	task := o.Objective
+
+	// The session log is not optional. It is the run's record and, once the
+	// context window has forgotten something, the agent's long-term memory: a run
+	// that cannot be recorded is refused rather than run without either.
+	if options.SessionPath == "" {
+		return errors.New("no session log: a run is always recorded")
+	}
+
+	writer, err := session.Open(options.SessionPath, session.Meta{
+		Task:     task,
+		Model:    client.Config().Model,
+		Provider: cfg.Provider.Label(),
+		Workdir:  workdir,
+	})
+	if err != nil {
+		return fmt.Errorf("session log: %w", err)
+	}
+
+	defer writer.Close()
+
+	// A log that stops being writable ends the run: what it cannot record it
+	// should not go on doing.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	recorder := session.NewRecorder(writer, func(error) { stop() })
+
+	// The seed is recorded before the run starts so a session that dies in its
+	// first turn still says what it was asked to do.
+	recorder.Conversation(opts.Messages)
+
+	opts.OnConversation = recorder.Conversation
+	opts.OnEvent = recorder.Event
+
+	meta := viewerMeta(cfg, task, workdir, &opts)
+	meta.Title = options.Title
+
+	viewer := options.Viewer
+	if viewer == nil {
+		viewer = tui.Run
+	}
+
+	result, err := viewer(ctx, meta, &opts)
+
+	// A run that never began, or was abandoned still going, has no ending to write
+	// down or to report.
+	if result.Reason != "" {
+		recorder.Result(&result)
+
+		printDigest(os.Stderr, writer.Path(), &result)
+	}
+
+	if failed := recorder.Err(); failed != nil {
+		return fmt.Errorf("session log: %w", failed)
+	}
+
+	return err
 }

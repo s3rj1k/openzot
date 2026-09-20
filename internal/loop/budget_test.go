@@ -287,6 +287,17 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 	}
 }
 
+// mentionsAFailure reports whether any tool result carries an error.
+func mentionsAFailure(messages []conversation.Message) bool {
+	for _, message := range messages {
+		if message.Activity != nil && message.Activity.Failure != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Arguments that cannot be read even after repair are the model's mistake to
 // correct. Invoking the handler with a guess would be worse than not invoking it
 // at all.
@@ -357,6 +368,17 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 	}
 }
 
+// containsText reports whether any message holds the given text.
+func containsText(messages []conversation.Message, want string) bool {
+	for _, message := range messages {
+		if strings.Contains(message.Text, want) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // A tool that fails is information, not an outage. The run continues with the
 // error in hand.
 func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
@@ -381,6 +403,26 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 	if !containsText(result.Messages, "permission denied") {
 		t.Error("the failure must be visible to the model")
 	}
+}
+
+// countActivities counts each half of the tool-call pairs.
+func countActivities(messages []conversation.Message) (requests, responses int) {
+	for _, message := range messages {
+		if message.Activity == nil {
+			continue
+		}
+
+		switch message.Activity.Kind {
+		case conversation.ActivityRequest:
+			requests++
+		case conversation.ActivityResponse:
+			responses++
+		default:
+			// a trigger is neither half
+		}
+	}
+
+	return requests, responses
 }
 
 // A handler that returns nothing still has to produce a result message, or the
@@ -454,48 +496,6 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 	if result.Reason != StopEmpty && result.Reason != StopIterations {
 		t.Errorf("Reason = %q, want the turn treated as empty", result.Reason)
 	}
-}
-
-// containsText reports whether any message holds the given text.
-func containsText(messages []conversation.Message, want string) bool {
-	for _, message := range messages {
-		if strings.Contains(message.Text, want) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// mentionsAFailure reports whether any tool result carries an error.
-func mentionsAFailure(messages []conversation.Message) bool {
-	for _, message := range messages {
-		if message.Activity != nil && message.Activity.Failure != "" {
-			return true
-		}
-	}
-
-	return false
-}
-
-// countActivities counts each half of the tool-call pairs.
-func countActivities(messages []conversation.Message) (requests, responses int) {
-	for _, message := range messages {
-		if message.Activity == nil {
-			continue
-		}
-
-		switch message.Activity.Kind {
-		case conversation.ActivityRequest:
-			requests++
-		case conversation.ActivityResponse:
-			responses++
-		default:
-			// a trigger is neither half
-		}
-	}
-
-	return requests, responses
 }
 
 // A retriable provider failure has to be waited out, not hammered. Retrying

@@ -11,113 +11,47 @@ import (
 	"github.com/openzot/openzot/internal/plan"
 )
 
-// renderToolStart turns a tool invocation into one or more styled log lines.
-//
-// The built-in tools each get a tailored, scannable representation; anything a
-// caller has added falls through to a generic one. The names here are the names
-// in the tools package - a mismatch is not a compile error, it just quietly
-// renders the agent's most-used tool as an anonymous key/value dump.
-func renderToolStart(name string, args map[string]any) string {
-	switch name {
-	case "shell":
-		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
-	case "tasks":
-		return renderTasks(args)
+// taskMarker is the glyph drawn beside a task, colored for its status.
+func taskMarker(status plan.TaskStatus) string {
+	switch status {
+	case plan.TaskDone:
+		return okStyle.Render("✓")
+	case plan.TaskInProgress:
+		return toolOtherStyle.Render("▶")
+	case plan.TaskBlocked:
+		return errStyle.Render("✗")
 	default:
-		return toolOtherStyle.Render("  "+pad(name, 6)+" ") + outputStyle.Render(compactArgs(args))
+		return outputStyle.Render("·")
 	}
 }
 
-// renderToolEnd produces an optional follow-up line summarizing a tool result.
-// It returns "" when there is nothing worth showing.
-//
-// Zot's tools return plain strings, so that is the case handled first; the map
-// form is kept for a caller whose own tool returns something structured.
-func renderToolEnd(name string, result any) string {
-	if text, ok := result.(string); ok {
-		return renderTextResult(name, text)
-	}
-
-	m, ok := result.(map[string]any)
-	if !ok {
-		return ""
-	}
-
-	if success, present := m["success"].(bool); present && !success {
-		if e := str(m, "error"); e != "" {
-			out := errStyle.Render("    ✗ " + truncate(e, 200))
-			if tail := commandOutput(m); tail != "" {
-				out += "\n" + tail
-			}
-
-			return out
-		}
-	}
-
-	if tail := commandOutput(m); tail != "" {
-		return okStyle.Render("    ✓ done") + "\n" + tail
-	}
-
-	return okStyle.Render("    ✓ done")
-}
-
-// renderTextResult summarizes a string result.
-//
-// A shell command's output is the thing the operator most wants to see, so it is
-// echoed; how much of it stays on screen is the viewer's call (see
-// model.wrapRecord).
-func renderTextResult(name, text string) string {
-	trimmed := strings.TrimRight(text, "\n")
-
-	switch name {
-	case "shell":
-		if trimmed == "" {
-			return okStyle.Render("    ✓ done")
-		}
-
-		return okStyle.Render("    ✓ done") + "\n" + renderOutputLines(trimmed)
-
+// taskLineStyle dims what is finished and keeps the task being worked on bright,
+// so the eye lands on where the run is.
+func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
+	switch status {
+	case plan.TaskDone:
+		return outputStyle
+	case plan.TaskBlocked:
+		return errStyle
 	default:
-		if trimmed == "" {
-			return ""
-		}
-
-		return renderOutputLines(trimmed)
+		return taskStyle
 	}
 }
 
-// renderOutputLines renders captured output. It does not cap it: how much of a
-// record fits is the viewer's call, made against the terminal's height (see
-// model.wrapRecord).
-func renderOutputLines(text string) string {
-	lines := strings.Split(text, "\n")
+// truncate flattens a string to one line and caps it at max characters.
+//
+// Characters, not bytes: slicing bytes cuts a multi-byte rune in half, so a task
+// or tool argument in CJK or emoji rendered a replacement character - and the
+// cap bit far earlier than the width it was given, since one glyph can be four
+// bytes.
+func truncate(s string, limit int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
 
-	var b strings.Builder
-
-	for i, l := range lines {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-
-		b.WriteString(outputStyle.Render("    │ " + truncate(l, 200)))
+	if utf8.RuneCountInString(s) <= limit {
+		return s
 	}
 
-	return b.String()
-}
-
-// commandOutput renders the stdout/stderr of a structured result.
-func commandOutput(m map[string]any) string {
-	text := strings.TrimRight(str(m, "stdout"), "\n")
-
-	if text == "" {
-		text = strings.TrimRight(str(m, "stderr"), "\n")
-	}
-
-	if text == "" {
-		return ""
-	}
-
-	return renderOutputLines(text)
+	return string([]rune(s)[:limit-1]) + "…"
 }
 
 // --- small helpers over the loosely-typed arg/result maps -------------------.
@@ -152,33 +86,6 @@ func renderTasks(args map[string]any) string {
 	return b.String()
 }
 
-// taskMarker is the glyph drawn beside a task, colored for its status.
-func taskMarker(status plan.TaskStatus) string {
-	switch status {
-	case plan.TaskDone:
-		return okStyle.Render("✓")
-	case plan.TaskInProgress:
-		return toolOtherStyle.Render("▶")
-	case plan.TaskBlocked:
-		return errStyle.Render("✗")
-	default:
-		return outputStyle.Render("·")
-	}
-}
-
-// taskLineStyle dims what is finished and keeps the task being worked on bright,
-// so the eye lands on where the run is.
-func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
-	switch status {
-	case plan.TaskDone:
-		return outputStyle
-	case plan.TaskBlocked:
-		return errStyle
-	default:
-		return taskStyle
-	}
-}
-
 func compactArgs(args map[string]any) string {
 	parts := make([]string, 0, len(args))
 	for k, v := range args {
@@ -196,28 +103,121 @@ func str(m map[string]any, key string) string {
 	return ""
 }
 
-// truncate flattens a string to one line and caps it at max characters.
-//
-// Characters, not bytes: slicing bytes cuts a multi-byte rune in half, so a task
-// or tool argument in CJK or emoji rendered a replacement character - and the
-// cap bit far earlier than the width it was given, since one glyph can be four
-// bytes.
-func truncate(s string, limit int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-
-	if utf8.RuneCountInString(s) <= limit {
-		return s
-	}
-
-	return string([]rune(s)[:limit-1]) + "…"
-}
-
 func pad(s string, n int) string {
 	for len(s) < n {
 		s += " "
 	}
 
 	return s
+}
+
+// renderToolStart turns a tool invocation into one or more styled log lines.
+//
+// The built-in tools each get a tailored, scannable representation; anything a
+// caller has added falls through to a generic one. The names here are the names
+// in the tools package - a mismatch is not a compile error, it just quietly
+// renders the agent's most-used tool as an anonymous key/value dump.
+func renderToolStart(name string, args map[string]any) string {
+	switch name {
+	case "shell":
+		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
+	case "tasks":
+		return renderTasks(args)
+	default:
+		return toolOtherStyle.Render("  "+pad(name, 6)+" ") + outputStyle.Render(compactArgs(args))
+	}
+}
+
+// renderOutputLines renders captured output. It does not cap it: how much of a
+// record fits is the viewer's call, made against the terminal's height (see
+// model.wrapRecord).
+func renderOutputLines(text string) string {
+	lines := strings.Split(text, "\n")
+
+	var b strings.Builder
+
+	for i, l := range lines {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+
+		b.WriteString(outputStyle.Render("    │ " + truncate(l, 200)))
+	}
+
+	return b.String()
+}
+
+// renderTextResult summarizes a string result.
+//
+// A shell command's output is the thing the operator most wants to see, so it is
+// echoed; how much of it stays on screen is the viewer's call (see
+// model.wrapRecord).
+func renderTextResult(name, text string) string {
+	trimmed := strings.TrimRight(text, "\n")
+
+	switch name {
+	case "shell":
+		if trimmed == "" {
+			return okStyle.Render("    ✓ done")
+		}
+
+		return okStyle.Render("    ✓ done") + "\n" + renderOutputLines(trimmed)
+
+	default:
+		if trimmed == "" {
+			return ""
+		}
+
+		return renderOutputLines(trimmed)
+	}
+}
+
+// commandOutput renders the stdout/stderr of a structured result.
+func commandOutput(m map[string]any) string {
+	text := strings.TrimRight(str(m, "stdout"), "\n")
+
+	if text == "" {
+		text = strings.TrimRight(str(m, "stderr"), "\n")
+	}
+
+	if text == "" {
+		return ""
+	}
+
+	return renderOutputLines(text)
+}
+
+// renderToolEnd produces an optional follow-up line summarizing a tool result.
+// It returns "" when there is nothing worth showing.
+//
+// Zot's tools return plain strings, so that is the case handled first; the map
+// form is kept for a caller whose own tool returns something structured.
+func renderToolEnd(name string, result any) string {
+	if text, ok := result.(string); ok {
+		return renderTextResult(name, text)
+	}
+
+	m, ok := result.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	if success, present := m["success"].(bool); present && !success {
+		if e := str(m, "error"); e != "" {
+			out := errStyle.Render("    ✗ " + truncate(e, 200))
+			if tail := commandOutput(m); tail != "" {
+				out += "\n" + tail
+			}
+
+			return out
+		}
+	}
+
+	if tail := commandOutput(m); tail != "" {
+		return okStyle.Render("    ✓ done") + "\n" + tail
+	}
+
+	return okStyle.Render("    ✓ done")
 }
 
 // shortPath fits a directory into max columns from the right, because the

@@ -14,18 +14,6 @@ import (
 	"github.com/openzot/openzot/internal/loop"
 )
 
-// sized returns a model that has been through a window-size message, which is
-// what makes the viewport usable.
-func sized(t *testing.T, width, height int) *model {
-	t.Helper()
-
-	m := newModel("do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
-
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
-
-	return asModel(t, updated)
-}
-
 // asModel is what an Update returned, as the model it is.
 func asModel(t *testing.T, updated tea.Model) *model {
 	t.Helper()
@@ -36,6 +24,18 @@ func asModel(t *testing.T, updated tea.Model) *model {
 	}
 
 	return typed
+}
+
+// sized returns a model that has been through a window-size message, which is
+// what makes the viewport usable.
+func sized(t *testing.T, width, height int) *model {
+	t.Helper()
+
+	m := newModel("do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
+
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+
+	return asModel(t, updated)
 }
 
 // Without a command from Init nothing ever redraws, so the spinner never turns
@@ -233,6 +233,26 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 	}
 }
 
+func stripANSI(s string) string {
+	var (
+		builder strings.Builder
+		inEsc   bool
+	)
+
+	for _, r := range s {
+		switch {
+		case r == '\x1b':
+			inEsc = true
+		case inEsc && (r == 'm' || r == 'K'):
+			inEsc = false
+		case !inEsc:
+			builder.WriteRune(r)
+		}
+	}
+
+	return builder.String()
+}
+
 // A run the model declared a failure is not a crash and not a budget cut: it
 // reached a conclusion. Reporting it as "exited (code 1)" reads as a harness
 // malfunction, which sends the operator looking in the wrong place.
@@ -349,26 +369,6 @@ func TestRewrapOnResize(t *testing.T) {
 	if wide == narrow {
 		t.Error("resizing should re-wrap the committed log")
 	}
-}
-
-func stripANSI(s string) string {
-	var (
-		builder strings.Builder
-		inEsc   bool
-	)
-
-	for _, r := range s {
-		switch {
-		case r == '\x1b':
-			inEsc = true
-		case inEsc && (r == 'm' || r == 'K'):
-			inEsc = false
-		case !inEsc:
-			builder.WriteRune(r)
-		}
-	}
-
-	return builder.String()
 }
 
 // The badge is how an operator tells at a glance whether the run is still going

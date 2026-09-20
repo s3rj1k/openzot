@@ -106,6 +106,16 @@ type activityTailEntry struct {
 	hasOutput bool
 }
 
+func distinct(values []string) int {
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		seen[value] = struct{}{}
+	}
+
+	return len(seen)
+}
+
 // hasRepeatedActivityTail reports whether the conversation ends in a run of tool
 // calls that keeps re-treading the same small set of signatures.
 //
@@ -219,16 +229,6 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 		distinct(requestInputs) < len(requestInputs) &&
 		distinct(responseOutputs) < len(responseOutputs) &&
 		!progressing
-}
-
-func distinct(values []string) int {
-	seen := make(map[string]struct{}, len(values))
-
-	for _, value := range values {
-		seen[value] = struct{}{}
-	}
-
-	return len(seen)
 }
 
 // hasRepeatedResultRun reports whether the last few tool results are identical -

@@ -188,6 +188,15 @@ func (a *Agent) MaxDuration() (time.Duration, error) {
 	return d, nil
 }
 
+// The defaults of the two context thresholds are stated here because the rule
+// between them is the config's: forgetting starts before it is forced. The
+// engine has its own fallbacks for a caller that builds its options by hand,
+// and a test holds the two to the same numbers.
+const (
+	defaultContextSoft = 50
+	defaultContextHard = 90
+)
+
 // Defaults returns the built-in configuration used when nothing else is set.
 //
 // There is deliberately no default provider or model. Both name something the
@@ -203,15 +212,6 @@ func Defaults() Config {
 		},
 	}
 }
-
-// The defaults of the two context thresholds are stated here because the rule
-// between them is the config's: forgetting starts before it is forced. The
-// engine has its own fallbacks for a caller that builds its options by hand,
-// and a test holds the two to the same numbers.
-const (
-	defaultContextSoft = 50
-	defaultContextHard = 90
-)
 
 // ReasoningEfforts are the values reasoning_effort may take: the ones fantasy
 // knows how to send, in increasing order of effort.
@@ -236,6 +236,40 @@ func (a *Agent) validateContext() error {
 	}
 
 	return nil
+}
+
+// resolveSecret expands a "$ENV_VAR" / "${ENV_VAR}" reference; a literal value
+// is returned unchanged.
+//
+// An unset variable resolves to empty rather than to its own name, so a missing
+// credential is reported as a missing credential instead of being sent to the
+// provider as the literal text "$MY_KEY".
+func resolveSecret(v string) string {
+	v = strings.TrimSpace(v)
+
+	if v == "" {
+		return ""
+	}
+
+	if after, ok := strings.CutPrefix(v, "$"); ok {
+		name := strings.TrimSuffix(strings.TrimPrefix(after, "{"), "}")
+		return strings.TrimSpace(os.Getenv(strings.TrimSpace(name)))
+	}
+
+	return v
+}
+
+// resolveProvider resolves the credential from its "$ENV" reference, when it is
+// one.
+//
+// The credential is only ever what the config says. There is no fallback to a
+// conventional environment variable: a key is scoped to the host it was issued
+// for, and guessing which one belongs to a URL somebody typed is how a
+// credential ends up in someone else's logs. Every spelling is resolved: a
+// `$VAR` reference left unexpanded would send the literal string "$MY_KEY" to the
+// provider and come back as a 401 that reads like a bad key.
+func resolveProvider(cfg *Config) {
+	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
 }
 
 // Load resolves the configuration: defaults, then the YAML file (if present).
@@ -267,40 +301,6 @@ func Load(path string) (Config, error) {
 	resolveProvider(&cfg)
 
 	return cfg, nil
-}
-
-// resolveProvider resolves the credential from its "$ENV" reference, when it is
-// one.
-//
-// The credential is only ever what the config says. There is no fallback to a
-// conventional environment variable: a key is scoped to the host it was issued
-// for, and guessing which one belongs to a URL somebody typed is how a
-// credential ends up in someone else's logs. Every spelling is resolved: a
-// `$VAR` reference left unexpanded would send the literal string "$MY_KEY" to the
-// provider and come back as a 401 that reads like a bad key.
-func resolveProvider(cfg *Config) {
-	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
-}
-
-// resolveSecret expands a "$ENV_VAR" / "${ENV_VAR}" reference; a literal value
-// is returned unchanged.
-//
-// An unset variable resolves to empty rather than to its own name, so a missing
-// credential is reported as a missing credential instead of being sent to the
-// provider as the literal text "$MY_KEY".
-func resolveSecret(v string) string {
-	v = strings.TrimSpace(v)
-
-	if v == "" {
-		return ""
-	}
-
-	if after, ok := strings.CutPrefix(v, "$"); ok {
-		name := strings.TrimSuffix(strings.TrimPrefix(after, "{"), "}")
-		return strings.TrimSpace(os.Getenv(strings.TrimSpace(name)))
-	}
-
-	return v
 }
 
 // ScrubProviderSecrets removes the resolved provider credential from the process

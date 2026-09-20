@@ -32,6 +32,18 @@ func testOrder(objective string) order.Order {
 	return order.Order{Objective: objective, Body: "{{ .Objective }}"}
 }
 
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadProjectContext(t *testing.T) {
 	configDir := t.TempDir()
 	workDir := t.TempDir()
@@ -103,6 +115,122 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 			t.Errorf("err = %v, want it to name skills_dir", err)
 		}
 	})
+}
+
+// declared is the model list a provider needs to run the named models: each
+// with a context window, since a model without one cannot run.
+func declared(names ...string) map[string]config.ModelConfig {
+	models := make(map[string]config.ModelConfig, len(names))
+
+	for _, name := range names {
+		models[name] = config.ModelConfig{Context: 100_000}
+	}
+
+	return models
+}
+
+// testDefaults is the built-in configuration with the one thing it deliberately
+// lacks: a model to run.
+func testDefaults() *config.Config {
+	cfg := config.Defaults()
+	cfg.Agent.Model = litGlm52
+
+	return &cfg
+}
+
+func stubProvider(t *testing.T) *config.Config {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		fmt.Fprintf(w, "data: %s\n\n",
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`)
+
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	t.Cleanup(server.Close)
+
+	cfg := testDefaults()
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+
+	return cfg
+}
+
+// quietly runs a function with stdout discarded, returning what it printed.
+func quietly(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	original := os.Stdout
+
+	read, write, _ := os.Pipe()
+
+	os.Stdout = write
+
+	done := make(chan string)
+
+	go func() {
+		var builder strings.Builder
+
+		buffer := make([]byte, 4096)
+
+		for {
+			n, err := read.Read(buffer)
+
+			builder.Write(buffer[:n])
+
+			if err != nil {
+				break
+			}
+		}
+
+		done <- builder.String()
+	}()
+
+	err := fn()
+
+	write.Close()
+
+	os.Stdout = original
+
+	return <-done, err
+}
+
+// headlessViewer is tui.Run without the screen. It reports endings the way the
+// viewer does: an error behind the run as itself, otherwise an agent-declared
+// failure as an AgentExitError.
+func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
+	engine, err := loop.New(opts)
+	if err != nil {
+		return loop.Result{}, err
+	}
+
+	fmt.Println(meta.Task)
+
+	result := engine.Run(ctx, func(event loop.Event) {
+		if event.Kind == loop.EventToken {
+			fmt.Print(event.Text)
+		}
+	})
+
+	fmt.Println(result.Message)
+
+	switch {
+	case result.Err != nil:
+		return result, result.Err
+	case result.ExitCode() != 0:
+		return result, &tui.AgentExitError{Code: result.ExitCode(), Message: result.Message}
+	}
+
+	return result, nil
+}
+
+// logged is the options of a run that is recorded, as every run must be.
+func logged(t *testing.T) Options {
+	t.Helper()
+
+	return Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
 }
 
 // The whole path a skill takes: the model lists the skills, reads one by name,
@@ -707,65 +835,6 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	}
 }
 
-func stubProvider(t *testing.T) *config.Config {
-	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
-
-	return cfg
-}
-
-// quietly runs a function with stdout discarded, returning what it printed.
-func quietly(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	original := os.Stdout
-
-	read, write, _ := os.Pipe()
-
-	os.Stdout = write
-
-	done := make(chan string)
-
-	go func() {
-		var builder strings.Builder
-
-		buffer := make([]byte, 4096)
-
-		for {
-			n, err := read.Read(buffer)
-
-			builder.Write(buffer[:n])
-
-			if err != nil {
-				break
-			}
-		}
-
-		done <- builder.String()
-	}()
-
-	err := fn()
-
-	write.Close()
-
-	os.Stdout = original
-
-	return <-done, err
-}
-
 // readSession decodes every line of a session log, failing on any line that is
 // not a JSON record.
 func readSession(t *testing.T, path string) []session.Record {
@@ -1061,11 +1130,14 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	}
 }
 
-// logged is the options of a run that is recorded, as every run must be.
-func logged(t *testing.T) Options {
+// stubProviderConfig is a config that resolves without a network.
+func stubProviderConfig(t *testing.T) *config.Config {
 	t.Helper()
 
-	return Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
+	cfg := testDefaults()
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, APIKey: "k", Models: declared(litGlm52)}
+
+	return cfg
 }
 
 // promptOf renders an order the way a run does, with the tools a run really has.
@@ -1083,16 +1155,6 @@ func promptOf(t *testing.T, o order.Order) string {
 	}
 
 	return prompt
-}
-
-// stubProviderConfig is a config that resolves without a network.
-func stubProviderConfig(t *testing.T) *config.Config {
-	t.Helper()
-
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, APIKey: "k", Models: declared(litGlm52)}
-
-	return cfg
 }
 
 // newOrderNamed is the order zot new scaffolds, with its objective written in.
@@ -1262,6 +1324,28 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	}
 }
 
+// zot has no input channel: no stdin, no chat turn, no approval prompt - a run
+// is a work order, a provider and a read-only viewer. An agent that does not
+// know that asks a question and waits, and waiting is fatal in a way no other
+// prompt mistake is: nothing answers, the run burns its budget until a guard
+// kills it, and the work it never wrote is lost. These pin the directives that
+// prevent it. A prompt cannot be tested against a model here, so the patterns
+// are deliberately loose - they assert the directive survives a rewrite of the
+// wording, not the wording itself.
+var nonInteractiveDirectives = []struct {
+	need    string
+	pattern *regexp.Regexp
+}{
+	{"say the run is non-interactive", regexp.MustCompile(`(?i)non-interactive`)},
+	{"say nothing reaches the user", regexp.MustCompile(`(?i)nothing you address to the user is delivered|no reader|will never be seen|no one is watching`)},
+	{"forbid waiting for input", regexp.MustCompile(`(?i)never stop to wait|do not (stop and )?wait|NO further input`)},
+	{"name approval and confirmation as things not to wait for", regexp.MustCompile(`(?i)approval, permission or confirmation|approval|confirmation`)},
+	{"forbid ending a turn with a question", regexp.MustCompile(`(?i)never end your turn with a question|do not ask`)},
+	{"require deciding and recording the assumption instead", regexp.MustCompile(`(?i)assumption`)},
+	{"require a terminal tool call to end the task", regexp.MustCompile(`(?i)"success".*\n?.*"failure"|"failure"`)},
+	{"forbid simply stopping", regexp.MustCompile(`(?i)do not simply stop`)},
+}
+
 // assertNonInteractive checks that every directive above is present in what the
 // engine would send.
 func assertNonInteractive(t *testing.T, where, instructions string) {
@@ -1273,6 +1357,9 @@ func assertNonInteractive(t *testing.T, where, instructions string) {
 		}
 	}
 }
+
+// contractHeading is how the contract is spotted in an assembled prompt.
+const contractHeading = "## Non-interactive contract"
 
 // The prompt zot scaffolds carries the contract.
 func TestTheDefaultPromptForbidsWaitingForTheUser(t *testing.T) {
@@ -1517,90 +1604,3 @@ func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 			opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
 	}
 }
-
-// headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does: an error behind the run as itself, otherwise an agent-declared
-// failure as an AgentExitError.
-func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
-	engine, err := loop.New(opts)
-	if err != nil {
-		return loop.Result{}, err
-	}
-
-	fmt.Println(meta.Task)
-
-	result := engine.Run(ctx, func(event loop.Event) {
-		if event.Kind == loop.EventToken {
-			fmt.Print(event.Text)
-		}
-	})
-
-	fmt.Println(result.Message)
-
-	switch {
-	case result.Err != nil:
-		return result, result.Err
-	case result.ExitCode() != 0:
-		return result, &tui.AgentExitError{Code: result.ExitCode(), Message: result.Message}
-	}
-
-	return result, nil
-}
-
-func mustWrite(t *testing.T, path, content string) {
-	t.Helper()
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// declared is the model list a provider needs to run the named models: each
-// with a context window, since a model without one cannot run.
-func declared(names ...string) map[string]config.ModelConfig {
-	models := make(map[string]config.ModelConfig, len(names))
-
-	for _, name := range names {
-		models[name] = config.ModelConfig{Context: 100_000}
-	}
-
-	return models
-}
-
-// testDefaults is the built-in configuration with the one thing it deliberately
-// lacks: a model to run.
-func testDefaults() *config.Config {
-	cfg := config.Defaults()
-	cfg.Agent.Model = litGlm52
-
-	return &cfg
-}
-
-// zot has no input channel: no stdin, no chat turn, no approval prompt - a run
-// is a work order, a provider and a read-only viewer. An agent that does not
-// know that asks a question and waits, and waiting is fatal in a way no other
-// prompt mistake is: nothing answers, the run burns its budget until a guard
-// kills it, and the work it never wrote is lost. These pin the directives that
-// prevent it. A prompt cannot be tested against a model here, so the patterns
-// are deliberately loose - they assert the directive survives a rewrite of the
-// wording, not the wording itself.
-var nonInteractiveDirectives = []struct {
-	need    string
-	pattern *regexp.Regexp
-}{
-	{"say the run is non-interactive", regexp.MustCompile(`(?i)non-interactive`)},
-	{"say nothing reaches the user", regexp.MustCompile(`(?i)nothing you address to the user is delivered|no reader|will never be seen|no one is watching`)},
-	{"forbid waiting for input", regexp.MustCompile(`(?i)never stop to wait|do not (stop and )?wait|NO further input`)},
-	{"name approval and confirmation as things not to wait for", regexp.MustCompile(`(?i)approval, permission or confirmation|approval|confirmation`)},
-	{"forbid ending a turn with a question", regexp.MustCompile(`(?i)never end your turn with a question|do not ask`)},
-	{"require deciding and recording the assumption instead", regexp.MustCompile(`(?i)assumption`)},
-	{"require a terminal tool call to end the task", regexp.MustCompile(`(?i)"success".*\n?.*"failure"|"failure"`)},
-	{"forbid simply stopping", regexp.MustCompile(`(?i)do not simply stop`)},
-}
-
-// contractHeading is how the contract is spotted in an assembled prompt.
-const contractHeading = "## Non-interactive contract"

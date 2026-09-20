@@ -91,21 +91,43 @@ type frontMatter struct {
 	Constraints []string `yaml:"constraints"`
 }
 
-// Load reads and parses one order file.
-func Load(path string) (Order, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // G304: the order path is the one the operator named
-	if err != nil {
-		return Order{}, fmt.Errorf("read order: %w", err)
+// splitFrontMatter separates the data block from the prompt. The block opens the
+// file with a line of three dashes and closes with another; the prompt is what
+// follows.
+func splitFrontMatter(text string) (header, body string, err error) {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+
+	start := 0
+
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
 	}
 
-	order, err := Parse(data)
-	if err != nil {
-		return Order{}, fmt.Errorf("order %s: %w", path, err)
+	if start == len(lines) || strings.TrimSpace(lines[start]) != "---" {
+		return "", "", errors.New("no front matter: an order starts with a line of three dashes, then its objective")
 	}
 
-	order.Path = path
+	for end := start + 1; end < len(lines); end++ {
+		if strings.TrimSpace(lines[end]) == "---" {
+			return strings.Join(lines[start+1:end], "\n"), strings.Join(lines[end+1:], "\n"), nil
+		}
+	}
 
-	return order, nil
+	return "", "", errors.New("the front matter is not closed: it ends with a line of three dashes")
+}
+
+// cleanList trims entries and drops empty ones, so a stray "- " in the YAML
+// does not become an empty criterion the agent is asked to satisfy.
+func cleanList(items []string) []string {
+	var out []string
+
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+
+	return out
 }
 
 // Parse reads an order: the front matter, then the prompt.
@@ -153,50 +175,21 @@ func Parse(data []byte) (Order, error) {
 	return order, nil
 }
 
-// splitFrontMatter separates the data block from the prompt. The block opens the
-// file with a line of three dashes and closes with another; the prompt is what
-// follows.
-func splitFrontMatter(text string) (header, body string, err error) {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-
-	start := 0
-
-	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
-		start++
+// Load reads and parses one order file.
+func Load(path string) (Order, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the order path is the one the operator named
+	if err != nil {
+		return Order{}, fmt.Errorf("read order: %w", err)
 	}
 
-	if start == len(lines) || strings.TrimSpace(lines[start]) != "---" {
-		return "", "", errors.New("no front matter: an order starts with a line of three dashes, then its objective")
+	order, err := Parse(data)
+	if err != nil {
+		return Order{}, fmt.Errorf("order %s: %w", path, err)
 	}
 
-	for end := start + 1; end < len(lines); end++ {
-		if strings.TrimSpace(lines[end]) == "---" {
-			return strings.Join(lines[start+1:end], "\n"), strings.Join(lines[end+1:], "\n"), nil
-		}
-	}
+	order.Path = path
 
-	return "", "", errors.New("the front matter is not closed: it ends with a line of three dashes")
-}
-
-// DisplayTitle is what to call this order on screen.
-//
-// A declared title wins. Failing that the file name is one: order files are
-// named from their objective already, so fix-the-flaky-test.md is a
-// perfectly good "Fix the flaky test" and deriving it costs the operator
-// nothing. An order that is neither titled nor a file - one synthesized in
-// memory by a dispatcher - has no name to show, and gets none: inventing a
-// label from the objective would put a truncated sentence where a title goes,
-// which is the thing having titles is meant to stop.
-func (o Order) DisplayTitle() string {
-	if o.Title != "" {
-		return o.Title
-	}
-
-	if o.Path == "" {
-		return ""
-	}
-
-	return titleFromFilename(o.Path)
+	return order, nil
 }
 
 // titleFromFilename turns an order's file name into a label: dashes and
@@ -223,6 +216,27 @@ func titleFromFilename(path string) string {
 	first, size := utf8.DecodeRuneInString(name)
 
 	return string(unicode.ToUpper(first)) + name[size:]
+}
+
+// DisplayTitle is what to call this order on screen.
+//
+// A declared title wins. Failing that the file name is one: order files are
+// named from their objective already, so fix-the-flaky-test.md is a
+// perfectly good "Fix the flaky test" and deriving it costs the operator
+// nothing. An order that is neither titled nor a file - one synthesized in
+// memory by a dispatcher - has no name to show, and gets none: inventing a
+// label from the objective would put a truncated sentence where a title goes,
+// which is the thing having titles is meant to stop.
+func (o Order) DisplayTitle() string {
+	if o.Title != "" {
+		return o.Title
+	}
+
+	if o.Path == "" {
+		return ""
+	}
+
+	return titleFromFilename(o.Path)
 }
 
 // Create writes a blank order into dir, creating the directory if needed, and
@@ -259,18 +273,4 @@ func Create(dir string, now time.Time) (string, error) {
 
 		return path, nil
 	}
-}
-
-// cleanList trims entries and drops empty ones, so a stray "- " in the YAML
-// does not become an empty criterion the agent is asked to satisfy.
-func cleanList(items []string) []string {
-	var out []string
-
-	for _, item := range items {
-		if item = strings.TrimSpace(item); item != "" {
-			out = append(out, item)
-		}
-	}
-
-	return out
 }

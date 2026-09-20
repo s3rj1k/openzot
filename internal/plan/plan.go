@@ -43,6 +43,13 @@ type Task struct {
 	Note string
 }
 
+// stringField reads a string field, and is empty for anything that is not one.
+func stringField(fields map[string]any, key string) string {
+	value, _ := fields[key].(string)
+
+	return value
+}
+
 // ParseTasks reads the task list out of a call to the tasks tool.
 //
 // It is the one place the schema is read. The handler, the viewer and the
@@ -105,6 +112,20 @@ func CountDone(tasks []Task) int {
 	return done
 }
 
+// TaskMarker is the plain-text box drawn beside a task of the given status.
+func TaskMarker(status TaskStatus) string {
+	switch status {
+	case TaskDone:
+		return "[x]"
+	case TaskInProgress:
+		return "[>]"
+	case TaskBlocked:
+		return "[!]"
+	default:
+		return "[ ]"
+	}
+}
+
 // FormatTasks renders the list as a checklist, headed by how much of it is done.
 //
 // This is what the tool answers with, so the model reads its own state back on
@@ -124,25 +145,4 @@ func FormatTasks(tasks []Task) string {
 	}
 
 	return b.String()
-}
-
-// TaskMarker is the plain-text box drawn beside a task of the given status.
-func TaskMarker(status TaskStatus) string {
-	switch status {
-	case TaskDone:
-		return "[x]"
-	case TaskInProgress:
-		return "[>]"
-	case TaskBlocked:
-		return "[!]"
-	default:
-		return "[ ]"
-	}
-}
-
-// stringField reads a string field, and is empty for anything that is not one.
-func stringField(fields map[string]any, key string) string {
-	value, _ := fields[key].(string)
-
-	return value
 }

@@ -18,6 +18,34 @@ import (
 	"github.com/openzot/openzot/internal/order"
 )
 
+// openInEditor opens a file in the user's editor and waits for it to close:
+// $VISUAL, then $EDITOR, then the first of nano, vi and vim that is installed.
+// With none of them it prints the path and says so, since the file itself is
+// already in place.
+func openInEditor(path string) error {
+	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
+	if editor == "" {
+		for _, candidate := range []string{"nano", "vi", "vim"} {
+			if _, err := exec.LookPath(candidate); err == nil {
+				editor = candidate
+
+				break
+			}
+		}
+	}
+
+	if editor == "" {
+		fmt.Println(path)
+
+		return errors.New("no editor found; set $EDITOR (the file is at the path above)")
+	}
+
+	cmd := exec.CommandContext(context.Background(), editor, path) //nolint:gosec // G204: the editor is the operator's own $VISUAL or $EDITOR
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+
+	return cmd.Run()
+}
+
 // newOrder creates a blank work order under ./.zot/orders - or under
 // <dir>/.zot/orders when --dir names another working directory - and opens it
 // in the editor, the way `zot config` opens the config.
@@ -90,32 +118,4 @@ func editConfig() error {
 	}
 
 	return openInEditor(path)
-}
-
-// openInEditor opens a file in the user's editor and waits for it to close:
-// $VISUAL, then $EDITOR, then the first of nano, vi and vim that is installed.
-// With none of them it prints the path and says so, since the file itself is
-// already in place.
-func openInEditor(path string) error {
-	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
-	if editor == "" {
-		for _, candidate := range []string{"nano", "vi", "vim"} {
-			if _, err := exec.LookPath(candidate); err == nil {
-				editor = candidate
-
-				break
-			}
-		}
-	}
-
-	if editor == "" {
-		fmt.Println(path)
-
-		return errors.New("no editor found; set $EDITOR (the file is at the path above)")
-	}
-
-	cmd := exec.CommandContext(context.Background(), editor, path) //nolint:gosec // G204: the editor is the operator's own $VISUAL or $EDITOR
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-
-	return cmd.Run()
 }

@@ -69,47 +69,6 @@ func loadCorpus(t *testing.T) corpusFile {
 // two to differ is one it cannot express.
 type argumentForms map[string]string
 
-func typedMessage(raw map[string]any, forms argumentForms) (conversation.Message, bool) {
-	for key := range raw {
-		switch key {
-		case "type", "text", "meta":
-		default:
-			return conversation.Message{}, false
-		}
-	}
-
-	var message conversation.Message
-
-	if value, present := raw["type"]; present {
-		kind, ok := value.(string)
-		if !ok {
-			return conversation.Message{}, false
-		}
-
-		message.Type = conversation.MessageType(kind)
-	}
-
-	if value, present := raw["text"]; present {
-		text, ok := value.(string)
-		if !ok {
-			return conversation.Message{}, false
-		}
-
-		message.Text = text
-	}
-
-	if meta, present := raw["meta"]; present {
-		activity, ok := typedActivity(meta, forms)
-		if !ok {
-			return conversation.Message{}, false
-		}
-
-		message.Activity = activity
-	}
-
-	return message, true
-}
-
 func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool) {
 	fields, ok := meta.(map[string]any)
 	if !ok || len(fields) != 1 {
@@ -191,6 +150,47 @@ func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool)
 	return activity, true
 }
 
+func typedMessage(raw map[string]any, forms argumentForms) (conversation.Message, bool) {
+	for key := range raw {
+		switch key {
+		case "type", "text", "meta":
+		default:
+			return conversation.Message{}, false
+		}
+	}
+
+	var message conversation.Message
+
+	if value, present := raw["type"]; present {
+		kind, ok := value.(string)
+		if !ok {
+			return conversation.Message{}, false
+		}
+
+		message.Type = conversation.MessageType(kind)
+	}
+
+	if value, present := raw["text"]; present {
+		text, ok := value.(string)
+		if !ok {
+			return conversation.Message{}, false
+		}
+
+		message.Text = text
+	}
+
+	if meta, present := raw["meta"]; present {
+		activity, ok := typedActivity(meta, forms)
+		if !ok {
+			return conversation.Message{}, false
+		}
+
+		message.Activity = activity
+	}
+
+	return message, true
+}
+
 func typedMessages(t *testing.T, raw json.RawMessage) ([]conversation.Message, bool) {
 	t.Helper()
 
@@ -252,39 +252,92 @@ var corpusFloors = map[string]int{
 	"createRepetitionGuard":    68,
 }
 
-// TestCorpus runs every seeded case the typed model can express.
-func TestCorpus(t *testing.T) {
-	corpus := loadCorpus(t)
+func expectEqual(t *testing.T, fn string, got, want bool) {
+	t.Helper()
 
-	checked := map[string]int{}
-	skipped := map[string]int{}
+	if got != want {
+		t.Errorf("%s = %v, want %v", fn, got, want)
+	}
+}
 
-	for _, record := range corpus.Records {
-		// the trimming these records pin is not what runs any more: the
-		// conversation is forgotten lazily, see forget_test.go
-		if record.Fn == "buildThread" {
-			continue
+func closeEnough(got, want float64) bool {
+	return math.Abs(got-want) < 1e-9
+}
+
+func runGuardRecord(t *testing.T, record corpusRecord) {
+	t.Helper()
+
+	options := guardOptions{}
+
+	if len(record.Args) > 0 {
+		var raw struct {
+			Ngram          *int     `json:"ngram"`
+			Window         *int     `json:"window"`
+			MaxRepeats     *int     `json:"maxRepeats"`
+			MaxUniqueRatio *float64 `json:"maxUniqueRatio"`
+			MinChars       *int     `json:"minChars"`
 		}
 
-		ran := true
-
-		t.Run(record.ID, func(t *testing.T) {
-			ran = runRecord(t, record)
-		})
-
-		if ran {
-			checked[record.Fn]++
-		} else {
-			skipped[record.Fn]++
+		if err := json.Unmarshal(record.Args[0], &raw); err == nil {
+			options.Ngram = raw.Ngram
+			options.Window = raw.Window
+			options.MaxRepeats = raw.MaxRepeats
+			options.MaxUniqueRatio = raw.MaxUniqueRatio
+			options.MinChars = raw.MinChars
 		}
 	}
 
-	for fn, floor := range corpusFloors {
-		t.Logf("%-26s checked %3d, skipped %3d", fn, checked[fn], skipped[fn])
+	guard := newRunawayGuard(options)
 
-		if checked[fn] < floor {
-			t.Errorf("%s: %d records checked, want at least %d", fn, checked[fn], floor)
+	trippedAt := -1
+
+	for index, chunk := range record.Pushes {
+		if guard.Push(chunk) && trippedAt < 0 {
+			trippedAt = index
 		}
+	}
+
+	want := -1
+
+	if record.TrippedAt != nil {
+		want = *record.TrippedAt
+	}
+
+	if trippedAt != want {
+		t.Fatalf("tripped at %d, want %d", trippedAt, want)
+	}
+
+	var expected *guardReason
+
+	if len(record.Expected) > 0 && string(record.Expected) != "null" {
+		expected = &guardReason{}
+
+		if err := json.Unmarshal(record.Expected, expected); err != nil {
+			t.Fatalf("decode reason: %v", err)
+		}
+	}
+
+	got := guard.Reason()
+
+	switch {
+	case expected == nil && got != nil:
+		t.Fatalf("reason = %+v, want none", *got)
+	case expected == nil:
+		return
+	case got == nil:
+		t.Fatalf("reason = none, want %+v", *expected)
+	}
+
+	if got.Phrase != expected.Phrase || got.Count != expected.Count || got.Text != expected.Text {
+		t.Errorf("reason = %+v, want %+v", *got, *expected)
+	}
+
+	if !closeEnough(got.UniqueRatio, expected.UniqueRatio) {
+		t.Errorf("uniqueRatio = %v, want %v", got.UniqueRatio, expected.UniqueRatio)
+	}
+
+	if !closeEnough(got.HapaxRatio, expected.HapaxRatio) {
+		t.Errorf("hapaxRatio = %v, want %v", got.HapaxRatio, expected.HapaxRatio)
 	}
 }
 
@@ -370,91 +423,38 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 	return true
 }
 
-func expectEqual(t *testing.T, fn string, got, want bool) {
-	t.Helper()
+// TestCorpus runs every seeded case the typed model can express.
+func TestCorpus(t *testing.T) {
+	corpus := loadCorpus(t)
 
-	if got != want {
-		t.Errorf("%s = %v, want %v", fn, got, want)
-	}
-}
+	checked := map[string]int{}
+	skipped := map[string]int{}
 
-func runGuardRecord(t *testing.T, record corpusRecord) {
-	t.Helper()
-
-	options := guardOptions{}
-
-	if len(record.Args) > 0 {
-		var raw struct {
-			Ngram          *int     `json:"ngram"`
-			Window         *int     `json:"window"`
-			MaxRepeats     *int     `json:"maxRepeats"`
-			MaxUniqueRatio *float64 `json:"maxUniqueRatio"`
-			MinChars       *int     `json:"minChars"`
+	for _, record := range corpus.Records {
+		// the trimming these records pin is not what runs any more: the
+		// conversation is forgotten lazily, see forget_test.go
+		if record.Fn == "buildThread" {
+			continue
 		}
 
-		if err := json.Unmarshal(record.Args[0], &raw); err == nil {
-			options.Ngram = raw.Ngram
-			options.Window = raw.Window
-			options.MaxRepeats = raw.MaxRepeats
-			options.MaxUniqueRatio = raw.MaxUniqueRatio
-			options.MinChars = raw.MinChars
+		ran := true
+
+		t.Run(record.ID, func(t *testing.T) {
+			ran = runRecord(t, record)
+		})
+
+		if ran {
+			checked[record.Fn]++
+		} else {
+			skipped[record.Fn]++
 		}
 	}
 
-	guard := newRunawayGuard(options)
+	for fn, floor := range corpusFloors {
+		t.Logf("%-26s checked %3d, skipped %3d", fn, checked[fn], skipped[fn])
 
-	trippedAt := -1
-
-	for index, chunk := range record.Pushes {
-		if guard.Push(chunk) && trippedAt < 0 {
-			trippedAt = index
+		if checked[fn] < floor {
+			t.Errorf("%s: %d records checked, want at least %d", fn, checked[fn], floor)
 		}
 	}
-
-	want := -1
-
-	if record.TrippedAt != nil {
-		want = *record.TrippedAt
-	}
-
-	if trippedAt != want {
-		t.Fatalf("tripped at %d, want %d", trippedAt, want)
-	}
-
-	var expected *guardReason
-
-	if len(record.Expected) > 0 && string(record.Expected) != "null" {
-		expected = &guardReason{}
-
-		if err := json.Unmarshal(record.Expected, expected); err != nil {
-			t.Fatalf("decode reason: %v", err)
-		}
-	}
-
-	got := guard.Reason()
-
-	switch {
-	case expected == nil && got != nil:
-		t.Fatalf("reason = %+v, want none", *got)
-	case expected == nil:
-		return
-	case got == nil:
-		t.Fatalf("reason = none, want %+v", *expected)
-	}
-
-	if got.Phrase != expected.Phrase || got.Count != expected.Count || got.Text != expected.Text {
-		t.Errorf("reason = %+v, want %+v", *got, *expected)
-	}
-
-	if !closeEnough(got.UniqueRatio, expected.UniqueRatio) {
-		t.Errorf("uniqueRatio = %v, want %v", got.UniqueRatio, expected.UniqueRatio)
-	}
-
-	if !closeEnough(got.HapaxRatio, expected.HapaxRatio) {
-		t.Errorf("hapaxRatio = %v, want %v", got.HapaxRatio, expected.HapaxRatio)
-	}
-}
-
-func closeEnough(got, want float64) bool {
-	return math.Abs(got-want) < 1e-9
 }

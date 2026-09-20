@@ -83,27 +83,6 @@ func IsRateLimited(err error) bool {
 	return ok && found.StatusCode == http.StatusTooManyRequests
 }
 
-// RetryAfter reports the delay the provider advised before trying again, and
-// whether it advised one at all.
-//
-// This is the half of the rate-limit contract that makes excluding 429 from
-// IsRetriable defensible: the caller does not loop, it waits for as long as the
-// provider asked. A delay of zero with ok true means "now" rather than "no advice".
-func RetryAfter(err error) (time.Duration, bool) {
-	found, ok := providerError(err)
-	if !ok {
-		return 0, false
-	}
-
-	for key, value := range found.ResponseHeaders {
-		if strings.EqualFold(key, "Retry-After") {
-			return parseRetryAfter(value)
-		}
-	}
-
-	return 0, false
-}
-
 // parseRetryAfter reads the two forms the Retry-After header takes: a count of
 // seconds, and an HTTP-date to wait until. A date already in the past is advice
 // to retry now, not a negative sleep.
@@ -138,6 +117,27 @@ func parseRetryAfter(header string) (time.Duration, bool) {
 	}
 
 	return 0, true
+}
+
+// RetryAfter reports the delay the provider advised before trying again, and
+// whether it advised one at all.
+//
+// This is the half of the rate-limit contract that makes excluding 429 from
+// IsRetriable defensible: the caller does not loop, it waits for as long as the
+// provider asked. A delay of zero with ok true means "now" rather than "no advice".
+func RetryAfter(err error) (time.Duration, bool) {
+	found, ok := providerError(err)
+	if !ok {
+		return 0, false
+	}
+
+	for key, value := range found.ResponseHeaders {
+		if strings.EqualFold(key, "Retry-After") {
+			return parseRetryAfter(value)
+		}
+	}
+
+	return 0, false
 }
 
 // contextLimitPatterns identify a prompt that exceeded the model's window.
@@ -249,20 +249,6 @@ type Failure struct {
 	RequestBytes int `json:"request_bytes,omitzero"`
 }
 
-// FailureOf extracts the wire evidence from an error, when it carries any.
-func FailureOf(err error) *Failure {
-	found, ok := providerError(err)
-	if !ok || found.StatusCode == 0 {
-		return nil
-	}
-
-	return &Failure{
-		Status:       found.StatusCode,
-		ResponseBody: clip(bodyOf(found.ResponseBody), maxDumpBody),
-		RequestBytes: len(found.RequestBody),
-	}
-}
-
 // bodyOf returns a response's body. The SDK hands back the whole dumped
 // response, status line and headers included, when it could not parse one.
 func bodyOf(dump []byte) string {
@@ -284,4 +270,18 @@ func clip(s string, limit int) string {
 	}
 
 	return s
+}
+
+// FailureOf extracts the wire evidence from an error, when it carries any.
+func FailureOf(err error) *Failure {
+	found, ok := providerError(err)
+	if !ok || found.StatusCode == 0 {
+		return nil
+	}
+
+	return &Failure{
+		Status:       found.StatusCode,
+		ResponseBody: clip(bodyOf(found.ResponseBody), maxDumpBody),
+		RequestBytes: len(found.RequestBody),
+	}
 }

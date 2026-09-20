@@ -33,52 +33,6 @@ type Skill struct {
 // frontMatterFence opens and closes the front matter of a SKILL.md.
 const frontMatterFence = "---"
 
-// Load reads every skill under dir into memory, sorted by name.
-//
-// A skill is a subdirectory containing a SKILL.md whose front matter supplies
-// the name and description. A subdirectory without one is skipped rather than
-// treated as an error - a skills folder routinely contains other things. Dir
-// itself must exist: it was named in the config, so a typo should stop the run
-// at startup rather than quietly leave the model without its skills.
-func Load(dir string) ([]Skill, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	var (
-		skills []Skill
-		seen   = map[string]string{}
-	)
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		skillDir := filepath.Join(dir, entry.Name())
-
-		content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md")) //nolint:gosec // G304: a SKILL.md inside the operator's skills directory
-		if err != nil {
-			continue
-		}
-
-		skill := parseSkill(entry.Name(), skillDir, string(content))
-
-		if other, clash := seen[skill.Name]; clash {
-			return nil, fmt.Errorf("skills %s and %s are both named %q", other, skillDir, skill.Name)
-		}
-
-		seen[skill.Name] = skillDir
-
-		skills = append(skills, skill)
-	}
-
-	slices.SortFunc(skills, func(a, b Skill) int { return strings.Compare(a.Name, b.Name) })
-
-	return skills, nil
-}
-
 // parseSkill reads the name and description out of a SKILL.md.
 //
 // Front matter is preferred; the first heading-free line is the fallback so a
@@ -130,4 +84,50 @@ func parseSkill(directoryName, dir, content string) Skill {
 	}
 
 	return skill
+}
+
+// Load reads every skill under dir into memory, sorted by name.
+//
+// A skill is a subdirectory containing a SKILL.md whose front matter supplies
+// the name and description. A subdirectory without one is skipped rather than
+// treated as an error - a skills folder routinely contains other things. Dir
+// itself must exist: it was named in the config, so a typo should stop the run
+// at startup rather than quietly leave the model without its skills.
+func Load(dir string) ([]Skill, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		skills []Skill
+		seen   = map[string]string{}
+	)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		skillDir := filepath.Join(dir, entry.Name())
+
+		content, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md")) //nolint:gosec // G304: a SKILL.md inside the operator's skills directory
+		if err != nil {
+			continue
+		}
+
+		skill := parseSkill(entry.Name(), skillDir, string(content))
+
+		if other, clash := seen[skill.Name]; clash {
+			return nil, fmt.Errorf("skills %s and %s are both named %q", other, skillDir, skill.Name)
+		}
+
+		seen[skill.Name] = skillDir
+
+		skills = append(skills, skill)
+	}
+
+	slices.SortFunc(skills, func(a, b Skill) int { return strings.Compare(a.Name, b.Name) })
+
+	return skills, nil
 }
