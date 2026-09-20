@@ -144,12 +144,13 @@ func run() error {
 	// Fold in AGENTS.md from the config directory, then the working directory
 	// (project-level context wins / appends last).
 	workDir, _ := os.Getwd()
-	loadProjectContext(&cfg, configDir, workDir)
+	project := loadProjectContext(configDir, workDir)
 
 	// Skills are read once, here, into memory: the run offers them through the
 	// skills tool and never touches the folder again. Loaded after the chdir so a
 	// relative skills_dir means the project being worked on.
-	if err := loadSkills(&cfg); err != nil {
+	offered, err := loadSkills(cfg.SkillsDir)
+	if err != nil {
 		return err
 	}
 
@@ -164,7 +165,11 @@ func run() error {
 	// The run is a fresh conversation with its own session log, whatever ran
 	// before: nothing of an earlier run of the same order is read, continued or
 	// skipped.
-	return execute(ctx, cfg, o, orderOptions(logs, o))
+	options := orderOptions(logs, o)
+	options.Project = project
+	options.Skills = offered
+
+	return execute(ctx, cfg, o, options)
 }
 
 // orderOptions is how an order is run: its log goes in logs, named after it, and
@@ -384,13 +389,13 @@ const taskKickoff = "Begin working on your task. Start by calling the tasks tool
 
 // loadProjectContext reads the instructions found on disk under the given
 // directories, searched in order (typically the config directory first, then the
-// working directory), into cfg.ProjectContext:
+// working directory):
 //
 //   - <dir>/AGENTS.md
 //
 // Missing files are ignored, and duplicate directories are searched once. An
 // order's prompt decides whether and where to use them, as .Project.
-func loadProjectContext(cfg *config.Config, dirs ...string) {
+func loadProjectContext(dirs ...string) string {
 	seen := map[string]bool{}
 
 	var found []string
@@ -409,22 +414,22 @@ func loadProjectContext(cfg *config.Config, dirs ...string) {
 		}
 	}
 
-	cfg.ProjectContext = strings.Join(found, "\n\n---\n\n")
+	return strings.Join(found, "\n\n---\n\n")
 }
 
-// loadSkills reads the skills folder named by skills_dir into cfg.Skills. An
-// unset skills_dir means no skills; a set one that cannot be read is an error,
-// since the config asked for skills the run would otherwise silently lack.
-func loadSkills(cfg *config.Config) error {
-	dir := strings.TrimSpace(cfg.SkillsDir)
+// loadSkills reads the skills folder named by skills_dir. An unset skills_dir
+// means no skills; a set one that cannot be read is an error, since the config
+// asked for skills the run would otherwise silently lack.
+func loadSkills(skillsDir string) ([]skills.Skill, error) {
+	dir := strings.TrimSpace(skillsDir)
 	if dir == "" {
-		return nil
+		return nil, nil
 	}
 
 	if dir == "~" || strings.HasPrefix(dir, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return fmt.Errorf("skills_dir %q: %w", cfg.SkillsDir, err)
+			return nil, fmt.Errorf("skills_dir %q: %w", skillsDir, err)
 		}
 
 		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
@@ -432,12 +437,10 @@ func loadSkills(cfg *config.Config) error {
 
 	loaded, err := skills.Load(dir)
 	if err != nil {
-		return fmt.Errorf("skills_dir: %w", err)
+		return nil, fmt.Errorf("skills_dir: %w", err)
 	}
 
-	cfg.Skills = loaded
-
-	return nil
+	return loaded, nil
 }
 
 // runOptions configures a run beyond the configuration itself.
@@ -451,17 +454,25 @@ type runOptions struct {
 	// empty falls back to the task. It is presentation only and never reaches
 	// the model - the objective is the contract, a title is a label.
 	Title string
+
+	// Project is the instructions found in the AGENTS.md files of the config
+	// directory and the project, for an order's prompt to use as .Project.
+	Project string
+
+	// Skills are the skills loaded at startup, offered to the model through the
+	// skills tool.
+	Skills []skills.Skill
 }
 
 // orderEnv is what an order's prompt can know about the run beyond the order: the
 // tools it really has, where it is working, and what it is talking to.
-func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, workdir, sessionPath string) order.Env {
+func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
 		Model:    client.Config().Model,
 		Provider: cfg.DefaultProvider,
-		Project:  cfg.ProjectContext,
+		Project:  project,
 		Session:  sessionPath,
 	}
 
@@ -481,7 +492,7 @@ func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, wor
 func runTask(ctx context.Context, cfg config.Config, o order.Order, options runOptions) error {
 	config.ScrubProviderSecrets(cfg)
 
-	client, opts, err := resolve(cfg)
+	client, opts, err := resolve(cfg, options.Skills)
 	if err != nil {
 		return err
 	}
@@ -497,7 +508,7 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 	// @note there is deliberately no way to open a run with a prompt of the
 	// caller's own. zot takes a work order, not a conversation; anything worth
 	// saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir, options.SessionPath))
+	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", firstNonEmpty(o.Path, "(unsaved)"), err)
 	}
@@ -615,7 +626,7 @@ func toolOutputLimit(window, percent int) int {
 
 // resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func resolve(cfg config.Config) (*provider.Client, loop.Options, error) {
+func resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
 	if cfg.DefaultProvider == "" {
@@ -679,7 +690,7 @@ func resolve(cfg config.Config) (*provider.Client, loop.Options, error) {
 	maxDuration, _ := cfg.Agent.MaxDuration()
 
 	opts := loop.Options{
-		Tools: tools.New(toolOutputLimit(contextWindow, cfg.Agent.MaxToolOutputPercent), cfg.Skills),
+		Tools: tools.New(toolOutputLimit(contextWindow, cfg.Agent.MaxToolOutputPercent), offered),
 
 		// shell acts on the machine, so a command the model did not finish
 		// writing is refused rather than repaired into one that runs

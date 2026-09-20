@@ -1320,36 +1320,30 @@ func TestLoadProjectContext(t *testing.T) {
 	mustWrite(t, filepath.Join(configDir, "AGENTS.md"), "GLOBAL CONVENTIONS")
 	mustWrite(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
 
-	cfg := config.Config{}
-	loadProjectContext(&cfg, configDir, workDir, workDir)
+	project := loadProjectContext(configDir, workDir, workDir)
 
 	// both files are there, the config directory's first, each once
 	for _, want := range []string{"GLOBAL CONVENTIONS", "PROJECT CONVENTIONS"} {
-		if strings.Count(cfg.ProjectContext, want) != 1 {
-			t.Errorf("project context should hold %q once:\n%s", want, cfg.ProjectContext)
+		if strings.Count(project, want) != 1 {
+			t.Errorf("project context should hold %q once:\n%s", want, project)
 		}
 	}
 
-	if i, j := strings.Index(cfg.ProjectContext, "GLOBAL"), strings.Index(cfg.ProjectContext, "PROJECT"); i > j {
+	if i, j := strings.Index(project, "GLOBAL"), strings.Index(project, "PROJECT"); i > j {
 		t.Error("expected config-dir AGENTS.md to appear before work-dir AGENTS.md")
 	}
 }
 
 func TestLoadProjectContextNoFiles(t *testing.T) {
-	cfg := config.Config{}
-	loadProjectContext(&cfg, t.TempDir())
-
-	if cfg.ProjectContext != "" {
+	if project := loadProjectContext(t.TempDir()); project != "" {
 		t.Error("expected no project context when no AGENTS.md is present")
 	}
 }
 
 func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 	t.Run("unset means no skills", func(t *testing.T) {
-		cfg := config.Config{}
-
-		if err := loadSkills(&cfg); err != nil || cfg.Skills != nil {
-			t.Errorf("skills = %v, err = %v, want none and no error", cfg.Skills, err)
+		if loaded, err := loadSkills(""); err != nil || loaded != nil {
+			t.Errorf("skills = %v, err = %v, want none and no error", loaded, err)
 		}
 	})
 
@@ -1358,14 +1352,13 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 		mustWrite(t, filepath.Join(project, "my-skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: say hello\n---\nbody")
 		t.Chdir(project)
 
-		cfg := config.Config{SkillsDir: "my-skills"}
-
-		if err := loadSkills(&cfg); err != nil {
+		loaded, err := loadSkills("my-skills")
+		if err != nil {
 			t.Fatalf("loadSkills: %v", err)
 		}
 
-		if len(cfg.Skills) != 1 || cfg.Skills[0].Name != "greet" || cfg.Skills[0].Content == "" {
-			t.Errorf("skills = %+v, want greet loaded with its content", cfg.Skills)
+		if len(loaded) != 1 || loaded[0].Name != "greet" || loaded[0].Content == "" {
+			t.Errorf("skills = %+v, want greet loaded with its content", loaded)
 		}
 	})
 
@@ -1374,21 +1367,18 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 		mustWrite(t, filepath.Join(home, "skills", "deploy", "SKILL.md"), "---\nname: deploy\n---\nbody")
 		t.Setenv("HOME", home)
 
-		cfg := config.Config{SkillsDir: "~/skills"}
-
-		if err := loadSkills(&cfg); err != nil {
+		loaded, err := loadSkills("~/skills")
+		if err != nil {
 			t.Fatalf("loadSkills: %v", err)
 		}
 
-		if len(cfg.Skills) != 1 || cfg.Skills[0].Name != "deploy" {
-			t.Errorf("skills = %+v, want deploy from ~/skills", cfg.Skills)
+		if len(loaded) != 1 || loaded[0].Name != "deploy" {
+			t.Errorf("skills = %+v, want deploy from ~/skills", loaded)
 		}
 	})
 
 	t.Run("a folder that cannot be read stops the run", func(t *testing.T) {
-		cfg := config.Config{SkillsDir: filepath.Join(t.TempDir(), "missing")}
-
-		err := loadSkills(&cfg)
+		_, err := loadSkills(filepath.Join(t.TempDir(), "missing"))
 		if err == nil || !strings.Contains(err.Error(), "skills_dir") {
 			t.Errorf("err = %v, want it to name skills_dir", err)
 		}
@@ -1439,9 +1429,8 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	cfg.Providers = map[string]config.ProviderConfig{
 		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
 	}
-	cfg.SkillsDir = skillsDir
-
-	if err := loadSkills(&cfg); err != nil {
+	offered, err := loadSkills(skillsDir)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -1451,7 +1440,10 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	}
 
 	if _, err := quietly(t, func() error {
-		return runTask(context.Background(), cfg, testOrder("do the thing"), logged(t))
+		options := logged(t)
+		options.Skills = offered
+
+		return runTask(context.Background(), cfg, testOrder("do the thing"), options)
 	}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -1577,7 +1569,7 @@ providers:
 				t.Fatalf("Load: %v", err)
 			}
 
-			client, _, err := resolve(cfg)
+			client, _, err := resolve(cfg, nil)
 			if err != nil {
 				t.Fatalf("resolve: %v", err)
 			}
@@ -1722,7 +1714,7 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg.DefaultProvider = "myprovider"
 	cfg.Providers = map[string]config.ProviderConfig{"myprovider": {APIKey: "sk-test", Models: declared("glm-5.2")}}
 
-	_, _, err := resolve(cfg)
+	_, _, err := resolve(cfg, nil)
 	if err == nil {
 		t.Fatal("a provider naming no endpoint must be rejected")
 	}
@@ -1742,7 +1734,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 		"p": {BaseURL: "http://127.0.0.1:1", Models: declared("glm-5.2")},
 	}
 
-	_, opts, err := resolve(cfg)
+	_, opts, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1771,7 +1763,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 				"local": {BaseURL: "http://127.0.0.1:1", Models: models},
 			}
 
-			_, _, err := resolve(cfg)
+			_, _, err := resolve(cfg, nil)
 			if err == nil {
 				t.Fatal("a model with no context window resolved")
 			}
@@ -1820,7 +1812,7 @@ providers:
 	} {
 		cfg.DefaultProvider = name
 
-		client, _, err := resolve(cfg)
+		client, _, err := resolve(cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
@@ -1849,7 +1841,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 	for _, name := range []string{"openai", "anthropic", "zai", "ollama", "openrouter"} {
 		cfg.DefaultProvider = name
 
-		if _, _, err := resolve(cfg); err == nil {
+		if _, _, err := resolve(cfg, nil); err == nil {
 			t.Errorf("%q resolved with nothing declared", name)
 		}
 	}
@@ -1879,7 +1871,7 @@ providers:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	client, opts, err := resolve(cfg)
+	client, opts, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1915,7 +1907,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 		},
 	}
 
-	_, opts, err := resolve(cfg)
+	_, opts, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -1936,7 +1928,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
 	cfg.Providers["openai"].Models["capped"] = config.ModelConfig{Model: "gpt-5", Context: 100_000}
 
-	_, opts, err = resolve(cfg)
+	_, opts, err = resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2459,12 +2451,12 @@ func logged(t *testing.T) runOptions {
 func promptOf(t *testing.T, o order.Order) string {
 	t.Helper()
 
-	client, opts, err := resolve(stubProviderConfig(t))
+	client, opts, err := resolve(stubProviderConfig(t), nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work", ""))
+	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work", "", ""))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -2577,14 +2569,14 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	}
 
 	cfg := stubProviderConfig(t)
-	cfg.Skills = []skills.Skill{{Name: "deploy", Description: "ship it"}}
+	offered := []skills.Skill{{Name: "deploy", Description: "ship it"}}
 
-	client, opts, err := resolve(cfg)
+	client, opts, err := resolve(cfg, offered)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work", ""))
+	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work", "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2631,9 +2623,7 @@ func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 // run itself.
 func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	cfg := stubProviderConfig(t)
-	cfg.ProjectContext = "Always mention PINECONE."
-
-	client, opts, err := resolve(cfg)
+	client, opts, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2643,7 +2633,7 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project", ""))
+	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project", "", "Always mention PINECONE."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2770,7 +2760,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
-	_, opts, err := resolve(cfg)
+	_, opts, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2786,7 +2776,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// max_time is a duration string on the config, a time.Duration on the run
 	cfg.Agent.MaxTime = "30m"
 
-	_, timed, err := resolve(cfg)
+	_, timed, err := resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2799,7 +2789,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// and it never means "no settling"
 	cfg.Agent.MaxSettles = 0
 
-	_, opts, err = resolve(cfg)
+	_, opts, err = resolve(cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -2821,7 +2811,7 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 			Models: map[string]config.ModelConfig{"glm-5.2": {Context: window}},
 		}}
 
-		_, opts, err := resolve(cfg)
+		_, opts, err := resolve(cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve: %v", err)
 		}
@@ -2912,4 +2902,29 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 		t.Errorf("the recorded run's prompt does not point at its log %s", path)
 	}
 
+}
+
+// The config states the defaults of the context thresholds because the rule
+// between them is its own; the engine has fallbacks for a caller building its
+// options by hand. They are the same numbers, or a config that says nothing would
+// behave differently from an engine that was told nothing.
+func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
+	defaults := config.Defaults()
+
+	if defaults.Agent.ContextSoft != loop.DefaultContextSoft || defaults.Agent.ContextHard != loop.DefaultContextHard {
+		t.Errorf("config defaults %d/%d, engine defaults %d/%d",
+			defaults.Agent.ContextSoft, defaults.Agent.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
+	}
+
+	cfg := stubProviderConfig(t)
+
+	_, opts, err := resolve(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if opts.ContextSoft != loop.DefaultContextSoft || opts.ContextHard != loop.DefaultContextHard {
+		t.Errorf("a default config resolves to %d/%d, want the engine's %d/%d",
+			opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
+	}
 }

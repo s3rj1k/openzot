@@ -229,11 +229,6 @@ func New(options Options) (*Engine, error) {
 		planEvery = DefaultPlanNudgeEvery
 	}
 
-	soft, hard, err := ContextThresholds(options.ContextSoft, options.ContextHard)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Engine{
 		options:       options,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
@@ -251,10 +246,10 @@ func New(options Options) (*Engine, error) {
 		// outage does not have to sleep through it. Zero takes the default.
 		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
 		window:       options.ContextWindow,
-		softPercent:  soft,
+		softPercent:  pick(options.ContextSoft, DefaultContextSoft),
 		planEvery:    planEvery,
 		planTurns:    pick(options.PlanMinTurns, DefaultPlanMinTurns),
-		hardPercent:  hard,
+		hardPercent:  pick(options.ContextHard, DefaultContextHard),
 	}, nil
 }
 

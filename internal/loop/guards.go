@@ -8,7 +8,6 @@
 package loop
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -199,25 +198,4 @@ type Budget struct {
 func (b *Budget) spendContinuation() {
 	b.Continuations++
 	b.Recoveries++
-}
-
-// ContextThresholds resolves the soft and hard percentages of the window,
-// applying the defaults to zeros and refusing values that cannot mean anything:
-// each must be a percentage below 100, and forgetting must start before it is
-// forced.
-func ContextThresholds(soft, hard int) (int, int, error) {
-	if soft == 0 {
-		soft = DefaultContextSoft
-	}
-
-	if hard == 0 {
-		hard = DefaultContextHard
-	}
-
-	if soft < 1 || hard > 99 || soft >= hard {
-		return 0, 0, fmt.Errorf(
-			"loop: context thresholds soft=%d hard=%d: want 1 <= soft < hard <= 99 (percent of the window)", soft, hard)
-	}
-
-	return soft, hard, nil
 }

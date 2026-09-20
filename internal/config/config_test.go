@@ -1,9 +1,11 @@
 package config
 
 import (
+	"go/build"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -825,5 +827,24 @@ providers:
 	}
 	if got := cfg.Providers["openai"].APIKey; got != "sk-proxy" {
 		t.Errorf("openai key = %q, want the explicitly configured one", got)
+	}
+}
+
+// The config is what everything else reads and validates itself against, so it
+// must not depend on any of it: a rule written here is written once.
+func TestConfigImportsNoOtherPackageOfTheModule(t *testing.T) {
+	pkg, err := build.ImportDir(".", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Contains(pkg.Imports, "gopkg.in/yaml.v3") {
+		t.Fatalf("the check reads no imports at all: %v", pkg.Imports)
+	}
+
+	for _, path := range pkg.Imports {
+		if strings.Contains(path, "openzot/openzot/") {
+			t.Errorf("config imports %s", path)
+		}
 	}
 }

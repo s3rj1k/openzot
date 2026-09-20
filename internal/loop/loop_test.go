@@ -656,26 +656,26 @@ func TestTheWindowIsTheConfiguredOne(t *testing.T) {
 	}
 }
 
-// The thresholds are the operator's too, and only make sense as a soft mark
-// below a hard one.
-func TestContextThresholds(t *testing.T) {
-	soft, hard, err := ContextThresholds(0, 0)
-	if err != nil || soft != DefaultContextSoft || hard != DefaultContextHard {
-		t.Errorf("defaults = %d/%d (%v), want %d/%d", soft, hard, err, DefaultContextSoft, DefaultContextHard)
+// The thresholds are the operator's, and zero means the default; whether they
+// make sense together is the config's to say, so the engine takes what it is given.
+func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
+	engine, err := New(Options{Client: stub(t, []string{stop()}), ContextWindow: 1000})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if soft, hard, err = ContextThresholds(30, 60); err != nil || soft != 30 || hard != 60 {
-		t.Errorf("explicit values = %d/%d (%v), want 30/60", soft, hard, err)
+	if engine.softPercent != DefaultContextSoft || engine.hardPercent != DefaultContextHard {
+		t.Errorf("thresholds = %d/%d, want the defaults %d/%d",
+			engine.softPercent, engine.hardPercent, DefaultContextSoft, DefaultContextHard)
 	}
 
-	for _, bad := range [][2]int{{-1, 0}, {95, 0}, {60, 60}, {70, 50}, {0, 100}, {0, 40}, {10, -5}} {
-		if _, _, err := ContextThresholds(bad[0], bad[1]); err == nil {
-			t.Errorf("thresholds %v were accepted", bad)
-		}
+	engine, err = New(Options{Client: stub(t, []string{stop()}), ContextWindow: 1000, ContextSoft: 30, ContextHard: 60})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := New(Options{Client: stub(t, []string{stop()}), ContextWindow: 1000, ContextSoft: 80, ContextHard: 70}); err == nil {
-		t.Error("an engine with soft above hard was constructed")
+	if engine.softPercent != 30 || engine.hardPercent != 60 {
+		t.Errorf("thresholds = %d/%d, want the configured 30/60", engine.softPercent, engine.hardPercent)
 	}
 }
 

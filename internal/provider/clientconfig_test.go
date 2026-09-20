@@ -92,8 +92,10 @@ func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 	}
 }
 
-func TestResolveChecksTheReasoningEffort(t *testing.T) {
-	for _, effort := range []string{"", "low", "HIGH", " medium "} {
+// The effort is normalised and forwarded: which values exist is the config's
+// rule and the endpoint's, not the connection's.
+func TestResolveNormalisesTheReasoningEffort(t *testing.T) {
+	for _, effort := range []string{"", "low", "HIGH", " medium ", "somethingnew"} {
 		resolved, err := (ClientConfig{Model: "m", BaseURL: "http://127.0.0.1/v1", ReasoningEffort: effort}).Resolve()
 		if err != nil {
 			t.Errorf("effort %q: %v", effort, err)
@@ -102,9 +104,5 @@ func TestResolveChecksTheReasoningEffort(t *testing.T) {
 		if resolved.ReasoningEffort != strings.ToLower(strings.TrimSpace(effort)) {
 			t.Errorf("effort %q resolved to %q, want it normalised", effort, resolved.ReasoningEffort)
 		}
-	}
-
-	if _, err := (ClientConfig{Model: "m", BaseURL: "http://127.0.0.1/v1", ReasoningEffort: "extreme"}).Resolve(); err == nil {
-		t.Error("an unknown effort must be refused")
 	}
 }

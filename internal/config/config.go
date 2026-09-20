@@ -14,10 +14,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
-	"github.com/openzot/openzot/internal/skills"
 )
 
 // Config is the fully-resolved zot configuration.
@@ -29,13 +25,6 @@ type Config struct {
 	// the skills tool. "~/" is the home directory; a relative path is taken
 	// against --dir. Empty means no skills.
 	SkillsDir string `yaml:"skills_dir"`
-	// Skills are the skills loaded from SkillsDir at startup. Not configured
-	// directly.
-	Skills []skills.Skill `yaml:"-"`
-	// ProjectContext is the instructions found in the AGENTS.md files of the
-	// config directory and the project, for an order's prompt to use as
-	// .Project. Not configured directly.
-	ProjectContext string `yaml:"-"`
 	// DefaultProvider names the entry in Providers used by every run. There is
 	// no built-in default: a run needs one named.
 	DefaultProvider string `yaml:"default_provider"`
@@ -211,8 +200,44 @@ func Defaults() Config {
 	return Config{
 		Agent: Agent{
 			MaxIterations: 1_000_000,
+			ContextSoft:   defaultContextSoft,
+			ContextHard:   defaultContextHard,
 		},
 	}
+}
+
+// The defaults of the two context thresholds are stated here because the rule
+// between them is the config's: forgetting starts before it is forced. The
+// engine has its own fallbacks for a caller that builds its options by hand,
+// and a test holds the two to the same numbers.
+const (
+	defaultContextSoft = 50
+	defaultContextHard = 90
+)
+
+// ReasoningEfforts are the values reasoning_effort may take: the ones fantasy
+// knows how to send, in increasing order of effort.
+var ReasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// validateContext holds the thresholds to 1 <= soft < hard <= 99, percent of the
+// window. Zero is the default.
+func (a Agent) validateContext() error {
+	soft, hard := a.ContextSoft, a.ContextHard
+
+	if soft == 0 {
+		soft = defaultContextSoft
+	}
+
+	if hard == 0 {
+		hard = defaultContextHard
+	}
+
+	if soft < 1 || hard > 99 || soft >= hard {
+		return fmt.Errorf(
+			"agent.context_soft/context_hard: soft=%d hard=%d: want 1 <= soft < hard <= 99 (percent of the window)", soft, hard)
+	}
+
+	return nil
 }
 
 // Load resolves the configuration: defaults, then the YAML file (if present).
@@ -330,8 +355,8 @@ func (c Config) Validate() error {
 	if _, err := c.Agent.MaxDuration(); err != nil {
 		return fmt.Errorf("agent.max_time: %w", err)
 	}
-	if _, _, err := loop.ContextThresholds(c.Agent.ContextSoft, c.Agent.ContextHard); err != nil {
-		return fmt.Errorf("agent.context_soft/context_hard: %w", err)
+	if err := c.Agent.validateContext(); err != nil {
+		return err
 	}
 	if c.Agent.MaxToolOutputPercent < 0 || c.Agent.MaxToolOutputPercent > 100 {
 		return fmt.Errorf("agent.max_tool_output_percent: %d is out of range (1-100, or 0 for the default)", c.Agent.MaxToolOutputPercent)
@@ -374,9 +399,9 @@ func (c Config) Validate() error {
 					name, model)
 			}
 
-			if effort := strings.ToLower(strings.TrimSpace(endpoint.Models[model].ReasoningEffort)); !provider.ValidReasoningEffort(effort) {
+			if effort := strings.ToLower(strings.TrimSpace(endpoint.Models[model].ReasoningEffort)); !slices.Contains(ReasoningEfforts, effort) && effort != "" {
 				return fmt.Errorf("providers.%s.models.%s: reasoning_effort %q is not known (use %s)",
-					name, model, endpoint.Models[model].ReasoningEffort, strings.Join(provider.ReasoningEfforts, ", "))
+					name, model, endpoint.Models[model].ReasoningEffort, strings.Join(ReasoningEfforts, ", "))
 			}
 		}
 	}
