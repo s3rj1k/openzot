@@ -159,6 +159,14 @@ type Agent struct {
 	// MaxEmpties caps consecutive empty turns before the run bails. Zero uses the
 	// built-in default.
 	MaxEmpties int `yaml:"max_empties"`
+	// ContextSoft is the percentage of the model's context window at which the
+	// oldest message starts to be forgotten on every request. Zero uses the
+	// built-in default (50).
+	ContextSoft int `yaml:"context_soft"`
+	// ContextHard is the percentage of the window a request is never allowed to
+	// reach: past it, as many of the oldest messages are forgotten as it takes.
+	// Must be above context_soft. Zero uses the built-in default (90).
+	ContextHard int `yaml:"context_hard"`
 }
 
 // MaxDuration parses Agent.MaxTime into a duration. An empty value is zero
@@ -310,6 +318,9 @@ func (c Config) Validate() error {
 	}
 	if _, err := c.Agent.MaxDuration(); err != nil {
 		return fmt.Errorf("agent.max_time: %w", err)
+	}
+	if _, _, err := loop.ContextThresholds(c.Agent.ContextSoft, c.Agent.ContextHard); err != nil {
+		return fmt.Errorf("agent.context_soft/context_hard: %w", err)
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")

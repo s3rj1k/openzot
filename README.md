@@ -102,7 +102,7 @@ an order again adds to the same file. Read it with `jq`.
 
 - **Orders, not prompts.** Files you can edit, commit and re-run.
 - **Nothing in the way.** Your key, your provider, your machine.
-- **Built to run unattended.** Context trimming, loop detection, a full log of every run.
+- **Built to run unattended.** The oldest context is forgotten as the window fills, loop detection, a full log of every run.
 - **Orchestration is content.** No sub-agent framework; skills decide.
 
 Watch it work: [the factories](#factories) run in public, each shipping from

@@ -90,6 +90,13 @@ type Options struct {
 	// MaxTokens bounds a single response.
 	MaxTokens *int
 
+	// ContextSoft and ContextHard are the percentages of the window at which the
+	// oldest messages start to be forgotten (one per request) and at which as
+	// many as it takes are (so the request stays under it). Zero uses
+	// DefaultContextSoft and DefaultContextHard.
+	ContextSoft int
+	ContextHard int
+
 	// ContextWindow overrides the model's total context window, in tokens.
 	// Required: New refuses a run without it. There is no built-in table of what
 	// each model can take - the operator states it, because only the operator
@@ -188,7 +195,11 @@ type Engine struct {
 	maxSettles    int
 	retryBackoff  time.Duration
 
-	inputBudget int
+	// window is the context window requests are held under: the configured one,
+	// lowered when a provider rejects a request and states its own ceiling.
+	window      int
+	softPercent int
+	hardPercent int
 
 	// toolTokens caches the cost of the tool schemas, which are identical on
 	// every request of a run and would otherwise be re-counted each round.
@@ -233,13 +244,9 @@ func New(options Options) (*Engine, error) {
 		return fallback
 	}
 
-	// Three quarters of the window is input; the rest is the room the answer
-	// needs. Not all of it: a request that fills the window leaves the model
-	// nowhere to write.
-	budget := options.ContextWindow - options.ContextWindow/4
-
-	if budget < MinInputTokens {
-		budget = MinInputTokens
+	soft, hard, err := ContextThresholds(options.ContextSoft, options.ContextHard)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Engine{
@@ -258,7 +265,9 @@ func New(options Options) (*Engine, error) {
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
 		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
-		inputBudget:  budget,
+		window:       options.ContextWindow,
+		softPercent:  soft,
+		hardPercent:  hard,
 	}, nil
 }
 
@@ -392,6 +401,10 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	budget := Budget{}
 
+	// forgotten is how many of the oldest messages requests no longer carry. The
+	// conversation itself keeps them all; only the wire copy is short.
+	forgotten := 0
+
 	tools := e.toolDefinitions()
 
 	state := &step{engine: e}
@@ -440,7 +453,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		emit(Event{Kind: EventIteration, Iteration: budget.Iterations})
 
-		request, err := e.buildRequest(messages, tools)
+		request, err := e.buildRequest(messages, &forgotten, tools, emit)
 		if err != nil {
 			return e.finish(messages, budget, StopError, "could not assemble the request", err)
 		}
@@ -493,7 +506,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			if limit, ok := DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
-				if e.narrowInputBudget(limit, emit) {
+				if e.narrowWindow(limit, emit) {
 					continue
 				}
 			}
@@ -743,24 +756,24 @@ func cycleDetail(heuristic string) string {
 	}
 }
 
-// narrowInputBudget lowers the token budget the thread is trimmed to, after a
-// provider rejected a request as too long. It reports whether the budget went
+// narrowWindow lowers the context window requests are held under, after a
+// provider rejected a request as too long. It reports whether the window went
 // down - if not there is nothing left to try, and the rejection is a real
 // failure.
 //
 // The provider's stated window beats the configured one. A rejection is
 // precisely the case where the configured window was wrong - a serving endpoint
 // with a smaller ceiling than the operator stated - so believing the error is
-// what makes the retry fit instead of guessing again. A rejection that states no window, or one
-// no lower than the budget already in force, still has to shrink something or
-// the retry would send the identical request: the budget steps down by a quarter
-// instead, until it reaches the floor the instructions and tool schemas need.
+// what makes the retry fit instead of guessing again. A rejection that states no
+// window, or one no lower than the window already in force, still has to shrink
+// something or the retry would send the identical request: the window steps down
+// by a quarter instead, until it reaches a fraction of the configured one.
 //
-// Only the budget changes. The conversation itself is untouched; the thread
-// builder drops the oldest messages to fit it on the next request.
-func (e *Engine) narrowInputBudget(limit ContextLimit, emit func(Event)) bool {
-	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.inputBudget {
-		e.inputBudget = limit.SuggestedLimit
+// Only the window changes. The conversation itself is untouched; the oldest
+// messages are forgotten to fit it on the next request.
+func (e *Engine) narrowWindow(limit ContextLimit, emit func(Event)) bool {
+	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
+		e.window = limit.SuggestedLimit
 
 		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
 			"provider reported a %d token window; retrying under %d",
@@ -769,13 +782,13 @@ func (e *Engine) narrowInputBudget(limit ContextLimit, emit func(Event)) bool {
 		return true
 	}
 
-	narrowed := e.inputBudget * 3 / 4
+	narrowed := e.window * 3 / 4
 
-	if narrowed < MinInputTokens {
+	if narrowed < e.options.ContextWindow/narrowFloor {
 		return false
 	}
 
-	e.inputBudget = narrowed
+	e.window = narrowed
 
 	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
 		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
@@ -783,28 +796,30 @@ func (e *Engine) narrowInputBudget(limit ContextLimit, emit func(Event)) bool {
 	return true
 }
 
-// buildRequest assembles the provider request, trimming the conversation to fit.
-func (e *Engine) buildRequest(messages []Message, tools []fantasy.Tool) (turnRequest, error) {
+// buildRequest assembles the provider request, forgetting the oldest messages
+// as the window fills. forgotten is the run's offset into messages and only
+// moves forward.
+func (e *Engine) buildRequest(messages []Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) (turnRequest, error) {
 	instructions := e.instructions()
 
-	// reserve room for the system prompt and the tool schemas, both of which are
-	// sent on every request and neither of which the thread builder sees
-	reserved := estimateTokens(instructions) + e.toolSchemaTokens(tools)
+	// the system prompt and the tool schemas are sent on every request and are
+	// part of what fills the window
+	used := estimateTokens(instructions) + e.toolSchemaTokens(tools)
 
-	budget := e.inputBudget - reserved
-
-	if budget < MinInputTokens/2 {
-		budget = MinInputTokens / 2
+	for _, message := range messages[*forgotten:] {
+		used += messageCost(message)
 	}
 
-	// keep the most recent exchange whatever it costs, so a large tool result
-	// cannot starve the turn that has to interpret it
-	kept := fit(messages, budget, 2, messageCost)
+	if next := forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, messageCost); next > *forgotten {
+		emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
+			"forgot %d older messages to stay within the context window", next-*forgotten)})
 
-	chat := toPrompt(kept)
+		*forgotten = next
+	}
 
-	// Fitting keeps the largest suffix that fits, so the first
-	// message trimmed is the oldest - which is the run's opening user message.
+	chat := toPrompt(messages[*forgotten:])
+
+	// Forgetting takes the oldest first, which is the run's opening user message.
 	// A conversation with no user turn at all is invalid to strict providers:
 	// they reject the whole request, deterministically, from that iteration on
 	// (bisected live against one that answered only an opaque 400). The

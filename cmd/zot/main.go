@@ -675,6 +675,8 @@ func resolve(cfg config.Config) (*loop.Client, loop.Options, error) {
 		MaxCycles:        cfg.Agent.MaxCycles,
 		MaxEmpties:       cfg.Agent.MaxEmpties,
 		MaxDuration:      maxDuration,
+		ContextSoft:      cfg.Agent.ContextSoft,
+		ContextHard:      cfg.Agent.ContextHard,
 		ContextWindow:    contextWindow,
 	}
 

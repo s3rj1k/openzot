@@ -8,6 +8,7 @@
 package loop
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -94,9 +95,13 @@ const (
 	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
 
-	// MinInputTokens is reserved so the instructions and the tool schemas always
-	// fit, however long the conversation grows.
-	MinInputTokens = 10_000
+	// DefaultContextSoft is the share of the context window, in percent, at which
+	// the oldest message starts being forgotten on every request.
+	DefaultContextSoft = 50
+
+	// DefaultContextHard is the share of the window a request is never allowed to
+	// reach: past it, as many of the oldest messages are forgotten as it takes.
+	DefaultContextHard = 90
 
 	// RunawayGuardMinChars is the output length below which the streaming
 	// repetition guard will not trip. Short repetitive output ends on its own.
@@ -180,4 +185,25 @@ type Budget struct {
 func (b *Budget) spendContinuation() {
 	b.Continuations++
 	b.Recoveries++
+}
+
+// ContextThresholds resolves the soft and hard percentages of the window,
+// applying the defaults to zeros and refusing values that cannot mean anything:
+// each must be a percentage below 100, and forgetting must start before it is
+// forced.
+func ContextThresholds(soft, hard int) (int, int, error) {
+	if soft == 0 {
+		soft = DefaultContextSoft
+	}
+
+	if hard == 0 {
+		hard = DefaultContextHard
+	}
+
+	if soft < 1 || hard > 99 || soft >= hard {
+		return 0, 0, fmt.Errorf(
+			"loop: context thresholds soft=%d hard=%d: want 1 <= soft < hard <= 99 (percent of the window)", soft, hard)
+	}
+
+	return soft, hard, nil
 }

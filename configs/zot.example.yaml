@@ -73,10 +73,13 @@ agent:
   # bails. Default 3.
   # max_empties: 3
 
-  # There is no context-management setting: as the conversation approaches the
-  # model's context window the oldest messages are dropped to fit it. Nothing is
-  # summarised. The window is the `context` every model states under providers,
-  # so trimming fits the endpoint before it rejects a request.
+  # Short-term memory is the model's context window - the `context` every model
+  # states under providers. Nothing is summarised: once a request reaches
+  # context_soft percent of the window, the oldest message is forgotten on each
+  # request; at context_hard percent as many are forgotten as it takes to stay
+  # under it. Forgotten messages stay in the session log. Defaults 50 and 90.
+  # context_soft: 50
+  # context_hard: 90
 
 # The system prompt is not configured here: it is the body of each order file,
 # a Go template `zot new` writes out in full, so it can be changed order by order.

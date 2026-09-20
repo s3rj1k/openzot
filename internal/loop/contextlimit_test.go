@@ -12,7 +12,7 @@ import (
 
 // The context-limit recovery path: a provider rejecting an oversized prompt is
 // not a failure, it is a signal to trim harder and try again. The conversation
-// itself is never rewritten - only the budget the thread builder trims it to.
+// itself is never rewritten - only the window the oldest messages are forgotten to fit.
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
@@ -89,7 +89,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	}
 
 	// the configured window, far above the 8192 the provider states
-	engine.inputBudget = 40_000
+	engine.window = 40_000
 
 	result := engine.Run(context.Background(), nil)
 
@@ -106,8 +106,8 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	}
 
 	// 85% of the stated 8192
-	if engine.inputBudget != 6963 {
-		t.Errorf("input budget = %d, want it narrowed to the stated window", engine.inputBudget)
+	if engine.window != 6963 {
+		t.Errorf("window = %d, want it narrowed to the stated window", engine.window)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 40_000
+	engine.window = 40_000
 
 	result := engine.Run(context.Background(), nil)
 
@@ -141,8 +141,9 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	}
 }
 
-// Once the budget is down to what the instructions and tool schemas need there
-// is nothing left to trim, and retrying would send the same request again.
+// A provider that keeps saying "too long" is wrong about its own ceiling only so
+// far: once the window is down to a fraction of the configured one there is
+// nothing left to try, and retrying would send the same request again.
 func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
@@ -151,17 +152,17 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = MinInputTokens
+	floor := testWindow / narrowFloor
 
-	// no stated window, so the only move is stepping the budget down
-	limit := ContextLimit{}
+	engine.window = floor
 
-	if engine.narrowInputBudget(limit, func(Event) {}) {
-		t.Errorf("the budget narrowed to %d, below the %d floor", engine.inputBudget, MinInputTokens)
+	// no stated window, so the only move is stepping the window down
+	if engine.narrowWindow(ContextLimit{}, func(Event) {}) {
+		t.Errorf("the window narrowed to %d, below the %d floor", engine.window, floor)
 	}
 
-	if engine.inputBudget != MinInputTokens {
-		t.Errorf("input budget = %d, want it left at the floor", engine.inputBudget)
+	if engine.window != floor {
+		t.Errorf("window = %d, want it left at the floor", engine.window)
 	}
 }
 
@@ -169,19 +170,17 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := New(Options{ContextWindow: testWindow, Client: client})
+	engine, err := New(Options{ContextWindow: 40_000, Client: client})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 40_000
-
-	if !engine.narrowInputBudget(ContextLimit{}, func(Event) {}) {
+	if !engine.narrowWindow(ContextLimit{}, func(Event) {}) {
 		t.Fatal("expected the budget to narrow")
 	}
 
-	if engine.inputBudget != 30_000 {
-		t.Errorf("input budget = %d, want 30000", engine.inputBudget)
+	if engine.window != 30_000 {
+		t.Errorf("window = %d, want 30000", engine.window)
 	}
 }
 
@@ -217,7 +216,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine.inputBudget = 40_000
+	engine.window = 40_000
 
 	result := engine.Run(context.Background(), nil)
 
@@ -377,7 +376,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	}
 
 	// the configured window is wildly optimistic for this endpoint
-	before := engine.inputBudget
+	before := engine.window
 
 	result := engine.Run(context.Background(), nil)
 
@@ -386,9 +385,9 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	}
 
 	// 85% of the stated 8192
-	if engine.inputBudget != 6963 {
-		t.Errorf("input budget = %d, want 6963 (85%% of the stated 8192); was %d",
-			engine.inputBudget, before)
+	if engine.window != 6963 {
+		t.Errorf("window = %d, want 6963 (85%% of the stated 8192); was %d",
+			engine.window, before)
 	}
 }
 
@@ -424,12 +423,10 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		BaseURL:  server.URL,
 	})
 
-	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: longConversation(40)})
+	engine, err := New(Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
-	engine.inputBudget = 40_000
 
 	if result := engine.Run(context.Background(), nil); result.Reason != StopSettled {
 		t.Errorf("reason = %q, want the run to recover", result.Reason)

@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// The corpus pins the cycle heuristics, the runaway guards and the thread fit
-// against the implementation they were ported from. Each record is one call: a
+// The corpus pins the cycle heuristics and the runaway guards against the
+// implementation they were ported from. Each record is one call: a
 // function, its arguments and the value it must return.
 //
 // The corpus was captured from an engine whose messages are open maps; zot's are
@@ -35,15 +35,6 @@ type corpusRecord struct {
 	// createRepetitionGuard records are a session rather than a single call
 	Pushes    []string `json:"pushes"`
 	TrippedAt *int     `json:"trippedAt"`
-
-	// buildThread records carry the behaviour of the callbacks they were given
-	Callbacks []corpusCallback `json:"callbacks"`
-}
-
-type corpusCallback struct {
-	Kind   string            `json:"kind"`
-	Args   []json.RawMessage `json:"args"`
-	Result json.RawMessage   `json:"result"`
 }
 
 func loadCorpus(t *testing.T) corpusFile {
@@ -257,7 +248,6 @@ var corpusFloors = map[string]int{
 	"describeThreadCycle":     3,
 	"hasRepeatedTextRun":      14,
 	"createRepetitionGuard":   68,
-	"buildThread":             10,
 }
 
 // TestCorpus runs every seeded case the typed model can express.
@@ -268,6 +258,12 @@ func TestCorpus(t *testing.T) {
 	skipped := map[string]int{}
 
 	for _, record := range corpus.Records {
+		// the trimming these records pin is not what runs any more: the
+		// conversation is forgotten lazily, see forget_test.go
+		if record.Fn == "buildThread" {
+			continue
+		}
+
 		ran := true
 
 		t.Run(record.ID, func(t *testing.T) {
@@ -365,9 +361,6 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 	case "createRepetitionGuard":
 		runGuardRecord(t, record)
 
-	case "buildThread":
-		return runFitRecord(t, record)
-
 	default:
 		t.Fatalf("unhandled corpus function %q", record.Fn)
 	}
@@ -458,164 +451,6 @@ func runGuardRecord(t *testing.T, record corpusRecord) {
 	if !closeEnough(got.HapaxRatio, expected.HapaxRatio) {
 		t.Errorf("hapaxRatio = %v, want %v", got.HapaxRatio, expected.HapaxRatio)
 	}
-}
-
-// runFitRecord replays a buildThread record through fit. The record's token
-// estimator is a recorded callback keyed by message, so the cost is read back out
-// of it; the record's expected thread is compared on which messages were kept and
-// what they cost together.
-//
-// fit does less than the function it replaced - it has no recorded-usage
-// shortcut, no trimming of the message straddling the budget, and integer
-// budgets - so a record that exercises any of those is skipped.
-func runFitRecord(t *testing.T, record corpusRecord) bool {
-	t.Helper()
-
-	var raw map[string]any
-
-	if err := json.Unmarshal(record.Args[0], &raw); err != nil {
-		t.Fatalf("decode options: %v", err)
-	}
-
-	if raw["inclusive"] != nil || raw["tokenEstimationFunction"] != "@callback" {
-		return false
-	}
-
-	budget, ok := wholeNumber(raw["maxTokens"])
-	if !ok {
-		return false
-	}
-
-	minKept := 0
-
-	if value, present := raw["minMessages"]; present {
-		if minKept, ok = wholeNumber(value); !ok || minKept < 0 {
-			return false
-		}
-	}
-
-	// the record's own bookkeeping fields ride on the messages; the typed model has
-	// no place for them, and the cost is replayed from the callbacks instead
-	var entries []any
-
-	for _, entry := range raw["messages"].([]any) {
-		if fields, ok := entry.(map[string]any); ok {
-			entry = withoutKey(withoutKey(fields, "estimatedTokens"), "tokens")
-		}
-
-		entries = append(entries, entry)
-	}
-
-	messages, ok := typedMessages(t, mustMarshal(t, entries))
-	if !ok {
-		return false
-	}
-
-	// the callbacks are keyed by the message they priced; a record that priced one
-	// message two ways has no single cost to replay
-	costs := map[string]int{}
-
-	for _, callback := range record.Callbacks {
-		if callback.Kind != "tokenEstimation" {
-			return false
-		}
-
-		var priced map[string]any
-
-		var usage map[string]any
-
-		if json.Unmarshal(callback.Args[0], &priced) != nil || json.Unmarshal(callback.Result, &usage) != nil {
-			return false
-		}
-
-		tokens, ok := wholeNumber(usage["tokens"])
-		if !ok || tokens < 0 {
-			return false
-		}
-
-		message, ok := typedMessage(withoutKey(withoutKey(priced, "estimatedTokens"), "tokens"), nil)
-		if !ok {
-			return false
-		}
-
-		key := costKey(message)
-
-		if previous, seen := costs[key]; seen && previous != tokens {
-			return false
-		}
-
-		costs[key] = tokens
-	}
-
-	cost := func(message Message) int { return costs[costKey(message)] }
-
-	got := fit(messages, budget, minKept, cost)
-
-	var want struct {
-		Messages []map[string]any `json:"messages"`
-		Usage    struct {
-			Tokens float64 `json:"tokens"`
-		} `json:"usage"`
-	}
-
-	if err := json.Unmarshal(record.Expected, &want); err != nil {
-		t.Fatalf("decode expected: %v", err)
-	}
-
-	total := 0
-
-	for _, message := range got {
-		total += cost(message)
-	}
-
-	if len(got) != len(want.Messages) || float64(total) != want.Usage.Tokens {
-		t.Fatalf("fit kept %d messages costing %d, want %d costing %v", len(got), total, len(want.Messages), want.Usage.Tokens)
-	}
-
-	for index, message := range got {
-		if text, _ := want.Messages[index]["text"].(string); text != message.Text {
-			t.Errorf("kept message %d is %q, want %q", index, message.Text, text)
-		}
-	}
-
-	return true
-}
-
-// costKey identifies a message for cost replay.
-func costKey(message Message) string {
-	return string(message.Type) + "\x00" + message.Text
-}
-
-func withoutKey(entry map[string]any, key string) map[string]any {
-	kept := make(map[string]any, len(entry))
-
-	for name, value := range entry {
-		if name != key {
-			kept[name] = value
-		}
-	}
-
-	return kept
-}
-
-func wholeNumber(value any) (int, bool) {
-	number, ok := value.(float64)
-	if !ok || number != math.Trunc(number) {
-		return 0, false
-	}
-
-	return int(number), true
-}
-
-func mustMarshal(t *testing.T, value any) json.RawMessage {
-	t.Helper()
-
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	return encoded
 }
 
 func closeEnough(got, want float64) bool {

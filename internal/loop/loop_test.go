@@ -165,8 +165,9 @@ func TestNewAppliesDefaults(t *testing.T) {
 		t.Errorf("maxSettles = %d, want the default %d - there is no way to opt out", engine.maxSettles, DefaultMaxSettles)
 	}
 
-	if engine.inputBudget < MinInputTokens {
-		t.Errorf("input budget %d is below the floor", engine.inputBudget)
+	if engine.window != testWindow || engine.softPercent != DefaultContextSoft || engine.hardPercent != DefaultContextHard {
+		t.Errorf("window %d, thresholds %d/%d, want the configured window and the default thresholds",
+			engine.window, engine.softPercent, engine.hardPercent)
 	}
 }
 
@@ -641,29 +642,38 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 // The window is the operator's to state: there is no table of what models can
 // take, and a serving endpoint's real ceiling can be smaller than any model's
-// card. Budgeting - and with it trimming - follows the window that was given.
-func TestTheInputBudgetFollowsTheConfiguredWindow(t *testing.T) {
-	client := stub(t, []string{stop()})
-
-	large, err := New(Options{Client: client, ContextWindow: 200_000})
+// card. Forgetting follows the window that was given.
+func TestTheWindowIsTheConfiguredOne(t *testing.T) {
+	engine, err := New(Options{Client: stub(t, []string{stop()}), ContextWindow: 32_000})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	small, err := New(Options{Client: client, ContextWindow: 32_000})
-	if err != nil {
-		t.Fatal(err)
+	if engine.window != 32_000 {
+		t.Errorf("window = %d, want the configured 32000", engine.window)
+	}
+}
+
+// The thresholds are the operator's too, and only make sense as a soft mark
+// below a hard one.
+func TestContextThresholds(t *testing.T) {
+	soft, hard, err := ContextThresholds(0, 0)
+	if err != nil || soft != DefaultContextSoft || hard != DefaultContextHard {
+		t.Errorf("defaults = %d/%d (%v), want %d/%d", soft, hard, err, DefaultContextSoft, DefaultContextHard)
 	}
 
-	if small.inputBudget >= large.inputBudget {
-		t.Errorf("input budget = %d for the small window, want it below the large window's %d",
-			small.inputBudget, large.inputBudget)
+	if soft, hard, err = ContextThresholds(30, 60); err != nil || soft != 30 || hard != 60 {
+		t.Errorf("explicit values = %d/%d (%v), want 30/60", soft, hard, err)
 	}
 
-	// the output reserve still applies: the whole window is never given to input
-	if small.inputBudget >= 32_000 || large.inputBudget >= 200_000 {
-		t.Errorf("input budgets %d and %d must leave room for the answer inside their windows",
-			small.inputBudget, large.inputBudget)
+	for _, bad := range [][2]int{{-1, 0}, {95, 0}, {60, 60}, {70, 50}, {0, 100}, {0, 40}, {10, -5}} {
+		if _, _, err := ContextThresholds(bad[0], bad[1]); err == nil {
+			t.Errorf("thresholds %v were accepted", bad)
+		}
+	}
+
+	if _, err := New(Options{Client: stub(t, []string{stop()}), ContextWindow: 1000, ContextSoft: 80, ContextHard: 70}); err == nil {
+		t.Error("an engine with soft above hard was constructed")
 	}
 }
 
@@ -681,8 +691,8 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 	}
 }
 
-// The thread builder keeps the largest suffix that fits, so the first message
-// trimmed is the run's opening user message - leaving a conversation with no
+// Forgetting takes the oldest first, which is the run's opening user message -
+// leaving a conversation with no
 // user turn at all, which strict providers reject wholesale with an opaque
 // 400 from that iteration on (bisected live: the identical request with one
 // user message injected was accepted). The request must always carry a user
@@ -690,8 +700,8 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	engine, err := New(Options{
 		Client: stub(t, []string{stop()}),
-		// a window small enough that the builder must trim the oldest messages
-		ContextWindow: MinInputTokens * 2,
+		// a window small enough that the oldest messages must be forgotten
+		ContextWindow: 20_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -708,7 +718,9 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		)
 	}
 
-	request, err := engine.buildRequest(messages, nil)
+	forgotten := 0
+
+	request, err := engine.buildRequest(messages, &forgotten, nil, func(Event) {})
 	if err != nil {
 		t.Fatalf("buildRequest: %v", err)
 	}

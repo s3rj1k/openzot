@@ -634,6 +634,27 @@ agent:
 	}
 }
 
+// The thresholds are validated at load, where the operator is looking, not when
+// the run starts.
+func TestContextThresholdsAreReadAndValidated(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "agent:\n  context_soft: 30\n  context_hard: 70\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Agent.ContextSoft != 30 || cfg.Agent.ContextHard != 70 {
+		t.Errorf("thresholds = %d/%d, want 30/70", cfg.Agent.ContextSoft, cfg.Agent.ContextHard)
+	}
+
+	for _, bad := range [][2]int{{95, 0}, {60, 60}, {0, 100}, {-1, 0}} {
+		err := validConfig(func(c *Config) { c.Agent.ContextSoft, c.Agent.ContextHard = bad[0], bad[1] }).Validate()
+
+		if err == nil || !strings.Contains(err.Error(), "context") {
+			t.Errorf("thresholds %v: err = %v, want them refused and named", bad, err)
+		}
+	}
+}
+
 func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	for _, key := range []string{
 		"context_strategy: truncate",

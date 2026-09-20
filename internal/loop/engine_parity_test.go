@@ -49,19 +49,16 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	}
 }
 
-// The trim budget must price a tool call by its whole payload, not just its text.
-// A request half has no text - its cost is the name and arguments - so an
-// argument-heavy call (writing a big file) must be counted, or a thread the
+// Forgetting must price a tool call by its whole payload, not just its text. A
+// request half has no text - its cost is the name and arguments - so an
+// argument-heavy call (writing a big file) must be counted, or a request the
 // estimate thinks fits gets rejected by the provider.
-func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
+func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
+	// a window the huge call alone overflows, and the two recent turns fit in
+	engine, err := New(Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
-	// a window above the built-in floor but far too small for the huge call, and
-	// roomy for the two recent turns
-	engine.inputBudget = 8000
 
 	// varied text so BPE cannot merge it away - this must genuinely exceed the
 	// window once counted
@@ -75,18 +72,24 @@ func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
 		{Type: TypeBot, Text: "a short recent answer"},
 	}
 
-	req, err := engine.buildRequest(messages, nil)
+	forgotten := 0
+
+	req, err := engine.buildRequest(messages, &forgotten, nil, func(Event) {})
 	if err != nil {
 		t.Fatalf("buildRequest: %v", err)
 	}
 
+	if forgotten == 0 {
+		t.Error("the argument-heavy tool call was kept - its arguments were priced as empty, which is the bug")
+	}
+
 	for _, message := range req.messages {
 		if call, ok := toolCallOf(message); ok && strings.Contains(call.Input, huge) {
-			t.Error("the argument-heavy tool call was kept under a tight budget - its arguments were priced as empty, which is the bug")
+			t.Error("the argument-heavy tool call reached the request")
 		}
 	}
 
-	// the recent turns must survive (sanity: the trimmer did keep something)
+	// the recent turns must survive (sanity: forgetting did keep something)
 	var keptRecent bool
 	for _, message := range req.messages {
 		if strings.Contains(textOf(message), "short recent") {
@@ -94,7 +97,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheBudget(t *testing.T) {
 		}
 	}
 	if !keptRecent {
-		t.Error("the recent turns must survive trimming")
+		t.Error("the recent turns must survive forgetting")
 	}
 }
 
