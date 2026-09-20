@@ -634,39 +634,6 @@ agent:
 	}
 }
 
-// limit_checkpoints is validated so a typo (a percentage over 99, or a negative)
-// is caught at load rather than silently dropped into a run with no notices.
-func TestLimitCheckpointsAreValidated(t *testing.T) {
-	base := func(cp []int) Config {
-		return Config{
-			Agent:           Agent{Model: "m", MaxIterations: 10, LimitCheckpoints: cp},
-			DefaultProvider: "openai",
-			Providers: map[string]ProviderConfig{"openai": {
-				BaseURL: "https://gw.example.com/v1", APIKey: "k",
-				Models: map[string]ModelConfig{"m": {Context: 100_000}},
-			}},
-		}
-	}
-
-	if err := base([]int{50, 80, 90}).Validate(); err != nil {
-		t.Errorf("a valid checkpoint list must pass: %v", err)
-	}
-
-	if err := base(nil).Validate(); err != nil {
-		t.Errorf("unset checkpoints must pass (uses the default): %v", err)
-	}
-
-	if err := base([]int{}).Validate(); err != nil {
-		t.Errorf("an empty list must pass (disables notices): %v", err)
-	}
-
-	for _, bad := range [][]int{{0}, {100}, {150}, {-5}, {50, 200}} {
-		if err := base(bad).Validate(); err == nil {
-			t.Errorf("checkpoints %v must fail validation", bad)
-		}
-	}
-}
-
 func TestRemovedContextKnobsAreRejected(t *testing.T) {
 	for _, key := range []string{
 		"context_strategy: truncate",
@@ -674,6 +641,7 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 		"compact_trigger_ratio: 0.8",
 		"compact_min_tokens: 1000",
 		"compact_min_messages: 10",
+		"limit_checkpoints: [50, 80, 90]",
 	} {
 		t.Run(key, func(t *testing.T) {
 			path := writeConfig(t, "agent:\n  "+key+"\n")

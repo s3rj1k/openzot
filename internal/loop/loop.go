@@ -90,11 +90,6 @@ type Options struct {
 	// MaxTokens bounds a single response.
 	MaxTokens *int
 
-	// LimitCheckpoints are the percentages of a bounded limit at which the model
-	// is told it is approaching that limit. Nil uses DefaultLimitCheckpoints; a
-	// non-nil empty slice disables the notices.
-	LimitCheckpoints []int
-
 	// ContextWindow overrides the model's total context window, in tokens.
 	// Required: New refuses a run without it. There is no built-in table of what
 	// each model can take - the operator states it, because only the operator
@@ -192,7 +187,6 @@ type Engine struct {
 	maxEmpties    int
 	maxSettles    int
 	retryBackoff  time.Duration
-	checkpoints   []int
 
 	inputBudget int
 
@@ -261,7 +255,6 @@ func New(options Options) (*Engine, error) {
 		maxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
 		maxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
 		maxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
-		checkpoints:      normalizeCheckpoints(options.LimitCheckpoints),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
 		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
@@ -379,49 +372,6 @@ func nonNegative(v int) int {
 	return v
 }
 
-// noteApproachingLimits appends an approaching-limit notice for each configured
-// checkpoint a bounded limit has newly crossed. Only bounded limits are checked:
-// an unbounded call or time budget has nothing to approach, and a checkpoint
-// fires at most once because its per-limit mark only advances.
-func (e *Engine) noteApproachingLimits(messages []Message, budget *Budget, elapsed time.Duration) []Message {
-	if len(e.checkpoints) == 0 {
-		return messages
-	}
-
-	cross := func(mark *int, used, max int, kind limitKind, usage string) {
-		if max <= 0 {
-			return
-		}
-
-		pct := used * 100 / max
-
-		for *mark < len(e.checkpoints) && pct >= e.checkpoints[*mark] {
-			hit := e.checkpoints[*mark]
-			*mark++
-
-			messages = append(messages, Message{
-				Type: TypeUser,
-				Text: limitCheckpointNotice(kind, hit, usage),
-			})
-		}
-	}
-
-	cross(&budget.iterCheckpoint, budget.Iterations, e.maxIterations, iterationLimit,
-		fmt.Sprintf("%d of %d", budget.Iterations, e.maxIterations))
-
-	if e.maxCalls > 0 {
-		cross(&budget.callCheckpoint, budget.Calls, e.maxCalls, toolCallLimit,
-			fmt.Sprintf("%d of %d", budget.Calls, e.maxCalls))
-	}
-
-	if e.maxDuration > 0 {
-		cross(&budget.timeCheckpoint, int(elapsed.Seconds()), int(e.maxDuration.Seconds()), timeLimit,
-			fmt.Sprintf("%s of %s", elapsed.Round(time.Second), e.maxDuration))
-	}
-
-	return messages
-}
-
 // Run drives the conversation to a conclusion, emitting events as it goes.
 //
 // Run returns the Result; watch sees each event as it happens, and a nil watch is
@@ -489,12 +439,6 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		budget.Iterations++
 
 		emit(Event{Kind: EventIteration, Iteration: budget.Iterations})
-
-		// Tell the model when it crosses a checkpoint of a bounded limit, so it
-		// can pace itself and finish before the hard stop rather than being cut
-		// off mid-task. The notice reflects consumption so far - iterations now,
-		// tool calls and time from the rounds already done.
-		messages = e.noteApproachingLimits(messages, &budget, time.Since(started))
 
 		request, err := e.buildRequest(messages, tools)
 		if err != nil {

@@ -159,11 +159,6 @@ type Agent struct {
 	// MaxEmpties caps consecutive empty turns before the run bails. Zero uses the
 	// built-in default.
 	MaxEmpties int `yaml:"max_empties"`
-	// LimitCheckpoints are the percentages of a bounded limit (iterations, calls,
-	// time) at which the model is told it is approaching that limit, so it can
-	// pace itself. Unset uses the built-in default (50, 80, 90); an explicit
-	// empty list turns the notices off.
-	LimitCheckpoints []int `yaml:"limit_checkpoints"`
 }
 
 // MaxDuration parses Agent.MaxTime into a duration. An empty value is zero
@@ -315,11 +310,6 @@ func (c Config) Validate() error {
 	}
 	if _, err := c.Agent.MaxDuration(); err != nil {
 		return fmt.Errorf("agent.max_time: %w", err)
-	}
-	for _, p := range c.Agent.LimitCheckpoints {
-		if p < 1 || p > 99 {
-			return fmt.Errorf("agent.limit_checkpoints: %d is out of range (each must be 1-99)", p)
-		}
 	}
 	if c.UI.Scrollback < 0 {
 		return fmt.Errorf("ui.scrollback must not be negative")

@@ -8,7 +8,6 @@
 package loop
 
 import (
-	"sort"
 	"time"
 )
 
@@ -174,47 +173,6 @@ type Budget struct {
 	// turn.
 	InputTokens  int
 	OutputTokens int
-
-	// iterCheckpoint, callCheckpoint and timeCheckpoint record the index of the
-	// next approaching-limit checkpoint to fire for each bounded limit, so each
-	// checkpoint notice is injected at most once.
-	iterCheckpoint int
-	callCheckpoint int
-	timeCheckpoint int
-}
-
-// DefaultLimitCheckpoints are the percentages of a bounded limit at which the
-// model is told it is approaching that limit - once each - so it can pace itself
-// and finish before the hard stop rather than being cut off mid-task with no
-// warning. Configurable per run.
-var DefaultLimitCheckpoints = []int{50, 80, 90}
-
-// normalizeCheckpoints cleans a configured checkpoint list into an ascending set
-// of valid percentages.
-//
-// Nil means "use the defaults"; a non-nil empty slice means "no checkpoints" -
-// the operator turned them off. Values outside 1..99 are dropped, because 0 is
-// no progress and 100 is the limit itself (already its own stop), and duplicates
-// are collapsed so a list cannot fire the same notice twice.
-func normalizeCheckpoints(configured []int) []int {
-	if configured == nil {
-		return DefaultLimitCheckpoints
-	}
-
-	seen := map[int]bool{}
-	out := make([]int, 0, len(configured))
-
-	for _, p := range configured {
-		if p >= 1 && p <= 99 && !seen[p] {
-			seen[p] = true
-
-			out = append(out, p)
-		}
-	}
-
-	sort.Ints(out)
-
-	return out
 }
 
 // spendContinuation records one recovery attempt against both counts: the

@@ -73,12 +73,6 @@ agent:
   # bails. Default 3.
   # max_empties: 3
 
-  # As a run approaches a bounded limit (iterations, calls, time), the model is
-  # told at each of these percentages - once each - so it can pace itself and
-  # finish before the hard stop rather than being cut off mid-task. Default
-  # [50, 80, 90]. Set to [] to turn the notices off.
-  # limit_checkpoints: [50, 80, 90]
-
   # There is no context-management setting: as the conversation approaches the
   # model's context window the oldest messages are dropped to fit it. Nothing is
   # summarised. The window is the `context` every model states under providers,
