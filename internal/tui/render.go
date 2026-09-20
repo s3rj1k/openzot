@@ -65,7 +65,7 @@ func renderToolEnd(name string, result any) string {
 // A shell command's output is the thing the operator most wants to see, so it is
 // echoed; how much of it stays on screen is the viewer's call (see
 // model.wrapRecord).
-func renderTextResult(name string, text string) string {
+func renderTextResult(name, text string) string {
 	trimmed := strings.TrimRight(text, "\n")
 
 	switch name {

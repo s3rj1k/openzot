@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/plan"
 )
 

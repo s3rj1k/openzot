@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -43,7 +44,8 @@ func countTool(calls *int, name string) fantasy.AgentTool {
 func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", "echo", `{}`},
 			[3]string{"c2", SuccessTool, `{"summary":"all done"}`},
@@ -71,7 +73,8 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", "echo", `{}`},
 			[3]string{"c2", "echo", `{}`},
@@ -100,7 +103,8 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 	for _, finish := range []string{"stop", "something_new"} {
 		ran := 0
 
-		result := run(t, Options{ContextWindow: testWindow,
+		result := run(t, Options{
+			ContextWindow: testWindow,
 			Client: stub(t,
 				[]string{toolCalls(finish, [3]string{"c1", "echo", `{}`})},
 				[]string{settle("done")},
@@ -125,7 +129,8 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("length", [3]string{"c1", "echo", `{}`})},
 			[]string{settle("done")},
@@ -148,8 +153,9 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 // one it is handed might; fantasy will not start from it, so it is given a line
 // to continue from rather than failing the run.
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
-		Client: stub(t, []string{settle("carrying on")}),
+	result := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{settle("carrying on")}),
 		Messages: []conversation.Message{
 			{Type: conversation.TypeUser, Text: "go"},
 			{Type: conversation.TypeBot, Text: "I began"},
@@ -165,7 +171,8 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 // answered by fantasy without the tool being touched. It is still a call: it
 // counts, and it is written into the conversation as a request and a failure.
 func TestACallThatNeverReachedATool(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
 			[]string{settle("noted")},
@@ -204,7 +211,8 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ran := 0
 
-			result := run(t, Options{ContextWindow: testWindow,
+			result := run(t, Options{
+				ContextWindow: testWindow,
 				Client: stub(t,
 					[]string{toolCalls("tool_calls", [3]string{"c1", "echo", unfinished})},
 					[]string{settle("done")},
@@ -292,10 +300,11 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	var sunk, watched []EventKind
 
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{settle("hi")}),
-		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		OnEvent:  func(event Event) { sunk = append(sunk, event.Kind) },
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{settle("hi")}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		OnEvent:       func(event Event) { sunk = append(sunk, event.Kind) },
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,8 +1,9 @@
 package loop
 
 import (
-	"github.com/openzot/openzot/internal/conversation"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // Cases the corpus cannot carry. See notPortableCases in divergence_test.go for

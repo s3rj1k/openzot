@@ -82,9 +82,10 @@ func longConversation(turns int) []conversation.Message {
 func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	client, requests := contextLimitOnce(t)
 
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   client,
-		Messages: longConversation(40),
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        client,
+		Messages:      longConversation(40),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -209,7 +210,8 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{ContextWindow: testWindow,
+	engine, err := New(Options{
+		ContextWindow:    testWindow,
 		Client:           client,
 		Messages:         longConversation(40),
 		MaxContinuations: 3,
@@ -264,10 +266,11 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:       client,
-		Messages:     []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		RetryBackoff: -1, // the retry itself is under test, not its pacing
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        client,
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		RetryBackoff:  -1, // the retry itself is under test, not its pacing
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -311,9 +314,10 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   client,
-		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        client,
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -369,9 +373,10 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   client,
-		Messages: longConversation(40),
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        client,
+		Messages:      longConversation(40),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

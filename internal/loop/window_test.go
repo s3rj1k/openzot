@@ -73,8 +73,10 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 
 		messages = append(messages,
 			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},
-			conversation.Message{Type: conversation.TypeActivity, Text: strings.Repeat("line of file content ", 60),
-				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 60)}},
+			conversation.Message{
+				Type: conversation.TypeActivity, Text: strings.Repeat("line of file content ", 60),
+				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: "read", Result: strings.Repeat("line of file content ", 60)},
+			},
 		)
 
 		before := forgotten

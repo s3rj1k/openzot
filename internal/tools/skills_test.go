@@ -1,9 +1,10 @@
 package tools
 
 import (
-	"github.com/openzot/openzot/internal/skills"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/skills"
 )
 
 func skillsCall(t *testing.T, offered []skills.Skill, args map[string]any) (any, error) {

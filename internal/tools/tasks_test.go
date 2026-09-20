@@ -1,9 +1,10 @@
 package tools
 
 import (
-	"github.com/openzot/openzot/internal/plan"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/plan"
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model

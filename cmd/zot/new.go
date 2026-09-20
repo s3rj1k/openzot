@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
-	"github.com/spf13/pflag"
 )
 
 // newOrder creates a blank work order under ./.zot/orders - or under

@@ -11,6 +11,7 @@ import (
 	"charm.land/fantasy/jsonrepair"
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 

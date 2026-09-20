@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/skills"
 )
 

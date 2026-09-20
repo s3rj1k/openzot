@@ -2,10 +2,11 @@ package loop
 
 import (
 	"encoding/json"
-	"github.com/openzot/openzot/internal/conversation"
 	"math"
 	"os"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // The corpus pins the cycle heuristics and the runaway guards against the

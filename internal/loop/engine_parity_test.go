@@ -2,9 +2,10 @@ package loop
 
 import (
 	"fmt"
-	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // The cycle budget counts CONSECUTIVE cyclic rounds: a clean round in between
@@ -104,10 +105,11 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// every turn is empty (no content, finish=stop) and the
 	// empty budget is tighter than the settle budget
-	result := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{stop()}),
-		MaxSettles: 5,
-		MaxEmpties: 2,
+	result := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{stop()}),
+		MaxSettles:    5,
+		MaxEmpties:    2,
 	})
 
 	// bounded by the empty budget, not the settle budget
@@ -153,7 +155,8 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 // cumulative, so a run could die to its third stall hundreds of iterations after
 // the first.)
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{stop()},                       // empty: 1/3
 			[]string{tool("call_1", "echo", "{}")}, // productive - resets

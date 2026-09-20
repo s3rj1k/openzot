@@ -423,8 +423,10 @@ func TestRunEndToEnd(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		frames := [][]string{
-			{`{"choices":[{"delta":{"content":"on it"}}]}`,
-				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`},
+			{
+				`{"choices":[{"delta":{"content":"on it"}}]}`,
+				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+			},
 			{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`},
 		}
 

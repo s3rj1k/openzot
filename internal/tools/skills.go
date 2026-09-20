@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/skills"
 )
 

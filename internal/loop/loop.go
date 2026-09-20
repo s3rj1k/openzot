@@ -12,6 +12,7 @@ import (
 
 	"charm.land/fantasy"
 	"charm.land/fantasy/schema"
+
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )

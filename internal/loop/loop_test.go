@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -182,7 +183,8 @@ func TestNewRequiresAClient(t *testing.T) {
 func TestIterationBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -204,7 +206,8 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 func TestCallBudgetStopsTheRun(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -223,10 +226,11 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 }
 
 func TestEmptyTurnsAreBounded(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{stop()}),
-		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		MaxEmpties: 2,
+	result := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{stop()}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		MaxEmpties:    2,
 	})
 
 	if result.Reason != StopEmpty {
@@ -239,7 +243,8 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 }
 
 func TestTruncatedOutputIsContinued(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("half an answ"), truncated()},
 			[]string{settle("er, continued")},
@@ -271,7 +276,8 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 }
 
 func TestTruncationIsBounded(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow:    testWindow,
 		Client:           stub(t, []string{text("x"), truncated()}),
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 2,
@@ -285,7 +291,8 @@ func TestTruncationIsBounded(t *testing.T) {
 func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 	calls := 0
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client:        stub(t, []string{tool("c1", "echo", `{"q":"same"}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -304,7 +311,8 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 }
 
 func TestSettleModeRequiresATerminalCall(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{text("All done, the task is completed."), stop()},
 			[]string{tool("c9", SuccessTool, `{"summary":"really done"}`)},
@@ -327,10 +335,11 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 }
 
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
-		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		MaxSettles: 5,
+	result := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		MaxSettles:    5,
 	})
 
 	if result.Reason != StopFailed {
@@ -347,16 +356,18 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 // renders as "done" - a mission the model gave up on was reported to scripts,
 // schedules and the session log as a success.
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
-	settled := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{tool("c1", SuccessTool, `{"summary":"shipped it"}`)}),
-		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		MaxSettles: 5,
+	settled := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{tool("c1", SuccessTool, `{"summary":"shipped it"}`)}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		MaxSettles:    5,
 	})
 
-	failed := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
-		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		MaxSettles: 5,
+	failed := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{tool("c9", FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		MaxSettles:    5,
 	})
 
 	if settled.Reason == failed.Reason {
@@ -373,10 +384,11 @@ func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 }
 
 func TestSettleModeGivesUpEventually(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
-		Client:     stub(t, []string{text("I believe I am finished."), stop()}),
-		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		MaxSettles: 2,
+	result := run(t, Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{text("I believe I am finished."), stop()}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+		MaxSettles:    2,
 	})
 
 	if result.Reason != StopUnsettled {
@@ -385,9 +397,10 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 }
 
 func TestCancellationStopsTheRun(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{text("hi"), stop()}),
-		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{text("hi"), stop()}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -405,7 +418,8 @@ func TestCancellationStopsTheRun(t *testing.T) {
 }
 
 func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "missing", `{}`)},
 			[]string{settle("recovered")},
@@ -435,7 +449,8 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 		return nil, fmt.Errorf("disk on fire")
 	})}
 
-	result := run(t, Options{ContextWindow: testWindow,
+	result := run(t, Options{
+		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{tool("c1", "boom", `{}`)},
 			[]string{settle("noted")},
@@ -458,9 +473,10 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 }
 
 func TestEventsAreEmitted(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:   stub(t, []string{text("hello"), tool("c1", SuccessTool, `{"summary":"done"}`)}),
-		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{text("hello"), tool("c1", SuccessTool, `{"summary":"done"}`)}),
+		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -488,10 +504,11 @@ func TestEventsAreEmitted(t *testing.T) {
 }
 
 func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client:       stub(t, []string{stop()}),
-		Instructions: "you are an agent",
-		MaxSettles:   5,
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{stop()}),
+		Instructions:  "you are an agent",
+		MaxSettles:    5,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -512,9 +529,10 @@ func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
 
 // The terminal tools are always offered: the model cannot settle without them.
 func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow,
-		Client: stub(t, []string{stop()}),
-		Tools:  []fantasy.AgentTool{namedTool("echo", nil)},
+	engine, err := New(Options{
+		ContextWindow: testWindow,
+		Client:        stub(t, []string{stop()}),
+		Tools:         []fantasy.AgentTool{namedTool("echo", nil)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -612,7 +630,8 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{ContextWindow: testWindow,
+	engine, err := New(Options{
+		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 1,

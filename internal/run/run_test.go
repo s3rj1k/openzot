@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
@@ -612,8 +613,10 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		frames := [][]string{
-			{`{"choices":[{"delta":{"content":"working on it"}}]}`,
-				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`},
+			{
+				`{"choices":[{"delta":{"content":"working on it"}}]}`,
+				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+			},
 			{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`},
 		}
 
@@ -1479,7 +1482,6 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	if !strings.Contains(bodies[0], path) || !strings.Contains(bodies[0], "short-term memory") {
 		t.Errorf("the recorded run's prompt does not point at its log %s", path)
 	}
-
 }
 
 // The config states the defaults of the context thresholds because the rule
