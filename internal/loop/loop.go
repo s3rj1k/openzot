@@ -148,7 +148,7 @@ type Result struct {
 // declared it could not be done (StopFailed) or the run was cut short by a guard.
 // A caller scripting against zot needs to tell those apart from success without
 // parsing prose.
-func (r Result) ExitCode() int {
+func (r *Result) ExitCode() int {
 	switch r.Reason {
 	case StopSettled:
 		return 0
@@ -208,7 +208,7 @@ func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 }
 
 // New creates an engine, applying defaults.
-func New(options Options) (*Engine, error) {
+func New(options *Options) (*Engine, error) {
 	if options.Client == nil {
 		return nil, errors.New("loop: no provider client")
 	}
@@ -232,7 +232,7 @@ func New(options Options) (*Engine, error) {
 	}
 
 	return &Engine{
-		options:       options,
+		options:       *options,
 		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value

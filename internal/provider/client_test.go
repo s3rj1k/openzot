@@ -296,7 +296,7 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 
 	client := serve(t, seen.capture)
 
-	call := fantasy.Call{
+	call := &fantasy.Call{
 		Prompt:          fantasy.Prompt{fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi")},
 		MaxOutputTokens: new(int64(321)),
 		Tools: []fantasy.Tool{fantasy.FunctionTool{
@@ -343,7 +343,7 @@ func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 
 	client := serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" })
 
-	collect(client, fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
+	collect(client, &fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
 
 	if seen.body["max_tokens"] != float64(64) {
 		t.Errorf("max_tokens = %v, want the limit", seen.body["max_tokens"])
@@ -396,7 +396,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 
 		client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = contentArray })
 
-		collect(client, fantasy.Call{Prompt: prompt})
+		collect(client, &fantasy.Call{Prompt: prompt})
 
 		messages := seen.messages()
 
@@ -421,7 +421,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 	var seen wireRequest
 
-	collect(serve(t, seen.capture), fantasy.Call{Prompt: fantasy.Prompt{
+	collect(serve(t, seen.capture), &fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
 	}})
 
@@ -437,7 +437,7 @@ func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 
 	client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = true })
 
-	collect(client, fantasy.Call{Prompt: fantasy.Prompt{
+	collect(client, &fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
 	}})
 

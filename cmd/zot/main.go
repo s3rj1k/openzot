@@ -162,7 +162,7 @@ func command() error {
 	options.Skills = offered
 	options.Viewer = runViewer
 
-	return execute(ctx, cfg, o, options)
+	return execute(ctx, &cfg, o, options)
 }
 
 // orderOptions is how an order is run: its log goes in logs, named after it, and

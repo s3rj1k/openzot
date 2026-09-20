@@ -68,7 +68,7 @@ type turn struct {
 }
 
 // collect runs one call to the end.
-func collect(client *Client, call fantasy.Call) turn {
+func collect(client *Client, call *fantasy.Call) turn {
 	var result turn
 
 	for part := range client.Stream(context.Background(), call) {
@@ -96,9 +96,9 @@ func collect(client *Client, call fantasy.Call) turn {
 
 // Stream runs one model call. A failure to start it arrives as an error part,
 // the same way a failure mid-stream does, so a caller has one place to look.
-func (c *Client) Stream(ctx context.Context, call fantasy.Call) fantasy.StreamResponse {
+func (c *Client) Stream(ctx context.Context, call *fantasy.Call) fantasy.StreamResponse {
 	return func(yield func(fantasy.StreamPart) bool) {
-		stream, err := c.model.Stream(ctx, call)
+		stream, err := c.model.Stream(ctx, *call)
 		if err != nil {
 			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
 
@@ -114,8 +114,8 @@ func (c *Client) Stream(ctx context.Context, call fantasy.Call) fantasy.StreamRe
 }
 
 // hello is the smallest valid call.
-func hello() fantasy.Call {
-	return fantasy.Call{Prompt: fantasy.Prompt{fantasy.NewUserMessage("hi")}}
+func hello() *fantasy.Call {
+	return &fantasy.Call{Prompt: fantasy.Prompt{fantasy.NewUserMessage("hi")}}
 }
 
 // withStallTimeout shortens the silence bound for a test.

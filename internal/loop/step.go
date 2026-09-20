@@ -143,7 +143,7 @@ func (e *Engine) providerOptions() fantasy.ProviderOptions {
 
 // repairToolCall is fantasy's own repair - mend the JSON - except for the tools
 // the engine was told never to repair, whose calls are refused as they stand.
-func (e *Engine) repairToolCall(_ context.Context, options fantasy.ToolCallRepairOptions) (*fantasy.ToolCallContent, error) {
+func (e *Engine) repairToolCall(_ context.Context, options fantasy.ToolCallRepairOptions) (*fantasy.ToolCallContent, error) { //nolint:gocritic // hugeParam: the callback type is fantasy's
 	call := options.OriginalToolCall
 
 	if slices.Contains(e.options.Unrepaired, call.ToolName) {

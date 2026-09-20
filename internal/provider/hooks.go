@@ -24,7 +24,7 @@ import (
 func prepareCall(
 	model fantasy.LanguageModel,
 	params *openaisdk.ChatCompletionNewParams,
-	call fantasy.Call,
+	call fantasy.Call, //nolint:gocritic // hugeParam: the prepare-call callback type is fantasy's
 ) ([]fantasy.CallWarning, error) {
 	warnings, err := openaicompat.PrepareCallFunc(model, params, call)
 	if err != nil {

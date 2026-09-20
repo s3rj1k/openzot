@@ -25,7 +25,7 @@ func (e *AgentExitError) Error() string {
 	return fmt.Sprintf("agent exited with code %d: %s", e.Code, e.Message)
 }
 
-func (m model) runError() error {
+func (m *model) runError() error {
 	if m.err != nil {
 		return m.err
 	}

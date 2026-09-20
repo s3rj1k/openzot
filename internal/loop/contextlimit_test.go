@@ -82,7 +82,7 @@ func longConversation(turns int) []conversation.Message {
 func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	client, requests := contextLimitOnce(t)
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      longConversation(40),
@@ -122,7 +122,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 
 	original := longConversation(40)
 
-	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: original})
+	engine, err := New(&Options{ContextWindow: testWindow, Client: client, Messages: original})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := New(Options{ContextWindow: testWindow, Client: client, Messages: longConversation(4)})
+	engine, err := New(&Options{ContextWindow: testWindow, Client: client, Messages: longConversation(4)})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := New(Options{ContextWindow: 40_000, Client: client})
+	engine, err := New(&Options{ContextWindow: 40_000, Client: client})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow:    testWindow,
 		Client:           client,
 		Messages:         longConversation(40),
@@ -266,7 +266,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -314,7 +314,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -373,7 +373,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      longConversation(40),
@@ -430,7 +430,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		BaseURL:  server.URL,
 	})
 
-	engine, err := New(Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
+	engine, err := New(&Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

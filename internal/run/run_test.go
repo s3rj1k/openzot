@@ -268,7 +268,7 @@ provider:
 				t.Fatalf("Load: %v", err)
 			}
 
-			client, _, err := Resolve(t.Context(), cfg, nil)
+			client, _, err := Resolve(t.Context(), &cfg, nil)
 			if err != nil {
 				t.Fatalf("resolve: %v", err)
 			}
@@ -278,7 +278,7 @@ provider:
 			}
 
 			if _, err := quietly(t, func() error {
-				return Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
+				return Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -360,7 +360,7 @@ provider:
 			}
 
 			if _, err := quietly(t, func() error {
-				return Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
+				return Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -485,7 +485,7 @@ provider:
 	} {
 		cfg.Agent.Model = name
 
-		client, opts, err := Resolve(t.Context(), cfg, nil)
+		client, opts, err := Resolve(t.Context(), &cfg, nil)
 		if err != nil {
 			t.Fatalf("resolve(%s): %v", name, err)
 		}
@@ -505,7 +505,7 @@ provider:
 
 	cfg.Agent.Model = "huge"
 
-	if _, _, err := Resolve(t.Context(), cfg, nil); err == nil || !strings.Contains(err.Error(), "context window") {
+	if _, _, err := Resolve(t.Context(), &cfg, nil); err == nil || !strings.Contains(err.Error(), "context window") {
 		t.Errorf("a model the provider does not list resolved: %v", err)
 	}
 }
@@ -544,7 +544,7 @@ provider:
 		t.Fatalf("Load: %v", err)
 	}
 
-	client, opts, err := Resolve(t.Context(), cfg, nil)
+	client, opts, err := Resolve(t.Context(), &cfg, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 		t.Fatalf("the run resolved to %d iterations, want the model's cap", opts.MaxIterations)
 	}
 
-	meta := viewerMeta(cfg, "a task", "/somewhere", opts)
+	meta := viewerMeta(cfg, "a task", "/somewhere", &opts)
 
 	if meta.MaxIterations != opts.MaxIterations {
 		t.Errorf("the viewer shows a limit of %d while the engine stops at %d",
@@ -605,7 +605,7 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if got := viewerMeta(cfg, "a task", "/somewhere", opts).MaxIterations; got != 0 {
+	if got := viewerMeta(cfg, "a task", "/somewhere", &opts).MaxIterations; got != 0 {
 		t.Errorf("the viewer shows a limit of %d, want the backstop hidden", got)
 	}
 }
@@ -707,7 +707,7 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	}
 }
 
-func stubProvider(t *testing.T) config.Config {
+func stubProvider(t *testing.T) *config.Config {
 	t.Helper()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -974,8 +974,8 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 
 	var recorded, unrecorded strings.Builder
 
-	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", result)
-	printDigest(&unrecorded, "", result)
+	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", &result)
+	printDigest(&unrecorded, "", &result)
 
 	if !strings.Contains(recorded.String(), "/w/.zot/orders/1758300000.jsonl") {
 		t.Errorf("the digest must say where the log is:\n%s", recorded.String())
@@ -1055,7 +1055,7 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	}
 
 	// and the library entry point, which does not validate, says the same
-	err = Run(t.Context(), cfg, testOrder("task"), logged(t))
+	err = Run(t.Context(), &cfg, testOrder("task"), logged(t))
 	if err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
@@ -1077,7 +1077,7 @@ func promptOf(t *testing.T, o order.Order) string {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work", "", ""))
+	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, &opts, "/work", "", ""))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -1086,7 +1086,7 @@ func promptOf(t *testing.T, o order.Order) string {
 }
 
 // stubProviderConfig is a config that resolves without a network.
-func stubProviderConfig(t *testing.T) config.Config {
+func stubProviderConfig(t *testing.T) *config.Config {
 	t.Helper()
 
 	cfg := testDefaults()
@@ -1194,7 +1194,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work", "", ""))
+	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, &opts, "/work", "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1252,7 +1252,7 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project", "", "Always mention PINECONE."))
+	got, err := o.Render(orderEnv(cfg, client, &opts, "/work/project", "", "Always mention PINECONE."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1521,7 +1521,7 @@ func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 // headlessViewer is tui.Run without the screen. It reports endings the way the
 // viewer does: an error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
-func headlessViewer(ctx context.Context, meta tui.Meta, opts loop.Options) (loop.Result, error) {
+func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
 	if err != nil {
 		return loop.Result{}, err
@@ -1573,11 +1573,11 @@ func declared(names ...string) map[string]config.ModelConfig {
 
 // testDefaults is the built-in configuration with the one thing it deliberately
 // lacks: a model to run.
-func testDefaults() config.Config {
+func testDefaults() *config.Config {
 	cfg := config.Defaults()
 	cfg.Agent.Model = litGlm52
 
-	return cfg
+	return &cfg
 }
 
 // zot has no input channel: no stdin, no chat turn, no approval prompt - a run

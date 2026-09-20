@@ -23,8 +23,8 @@ func writeConfig(t *testing.T, body string) string {
 }
 
 // validConfig returns a minimal config that passes Validate, optionally tweaked.
-func validConfig(tweak func(*Config)) Config {
-	c := Config{
+func validConfig(tweak func(*Config)) *Config {
+	c := &Config{
 		Agent: Agent{Model: "m", MaxIterations: 1},
 		Provider: ProviderConfig{
 			BaseURL: litHTTPSGwExampleCom, APIKey: "x",
@@ -32,7 +32,7 @@ func validConfig(tweak func(*Config)) Config {
 		},
 	}
 	if tweak != nil {
-		tweak(&c)
+		tweak(c)
 	}
 
 	return c
@@ -382,7 +382,7 @@ provider:
 		t.Fatalf("Load: %v", err)
 	}
 
-	ScrubProviderSecrets(cfg)
+	ScrubProviderSecrets(&cfg)
 
 	if _, ok := os.LookupEnv("ZAI_API_KEY"); ok {
 		t.Error("ZAI_API_KEY should be removed after scrub")

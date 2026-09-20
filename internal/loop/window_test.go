@@ -56,7 +56,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	const window = 20_000
 
-	engine, err := New(Options{Client: stub(t, []string{stop()}), ContextWindow: window})
+	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: window})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 		told    []string
 	)
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		Client:        stub(t, []string{tool("c", litEcho, "{}")}),
 		Tools:         echoTool(new(int)),
 		ContextWindow: 3_000,

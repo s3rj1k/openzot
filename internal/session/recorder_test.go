@@ -82,7 +82,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 		},
 	})
 
-	recorder.Result(loop.Result{
+	recorder.Result(&loop.Result{
 		Reason:   loop.StopSettled,
 		Message:  "finished",
 		Messages: messages,
@@ -171,7 +171,7 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 
 	recorder.Conversation([]conversation.Message{{Type: conversation.TypeUser, Text: "a"}})
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
-	recorder.Result(loop.Result{})
+	recorder.Result(&loop.Result{})
 
 	if recorder.Err() == nil {
 		t.Fatal("writes to a closed log were not reported")
@@ -209,7 +209,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 
 	recorder := NewRecorder(writer, nil)
 
-	recorder.Result(loop.Result{
+	recorder.Result(&loop.Result{
 		Reason:  loop.StopError,
 		Message: "the provider failed",
 		Err: fmt.Errorf("provider: Model 'stealth/ox-alpha' not found (404): %w", &fantasy.ProviderError{
@@ -259,7 +259,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	recorder.Conversation(messages)
 
-	recorder.Result(loop.Result{Reason: loop.StopSettled, Messages: messages})
+	recorder.Result(&loop.Result{Reason: loop.StopSettled, Messages: messages})
 
 	var got []string
 
@@ -303,7 +303,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 
 		writer, _ := Open(path, Meta{Task: "t"})
 
-		NewRecorder(writer, nil).Result(loop.Result{Reason: reason})
+		NewRecorder(writer, nil).Result(&loop.Result{Reason: reason})
 
 		records := readLog(t, path)
 

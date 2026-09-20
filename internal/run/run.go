@@ -112,12 +112,12 @@ type Options struct {
 
 	// Viewer shows the run. Nil is the full-screen viewer; it is a field so that
 	// what needs a terminal can be replaced by what does not.
-	Viewer func(context.Context, tui.Meta, loop.Options) (loop.Result, error)
+	Viewer func(context.Context, tui.Meta, *loop.Options) (loop.Result, error)
 }
 
 // orderEnv is what an order's prompt can know about the run beyond the order: the
 // tools it really has, where it is working, and what it is talking to.
-func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, workdir, sessionPath, project string) order.Env {
+func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
@@ -140,7 +140,7 @@ func orderEnv(cfg config.Config, client *provider.Client, opts loop.Options, wor
 // the read-only TUI. The agent's file and shell tools operate on the current
 // working directory, so the caller chdirs into the target project first. It
 // blocks until the user quits the viewer or the run errors.
-func Run(ctx context.Context, cfg config.Config, o order.Order, options Options) error {
+func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options) error {
 	config.ScrubProviderSecrets(cfg)
 
 	client, opts, err := Resolve(ctx, cfg, options.Skills)
@@ -159,7 +159,7 @@ func Run(ctx context.Context, cfg config.Config, o order.Order, options Options)
 	// @note there is deliberately no way to open a run with a prompt of the
 	// caller's own. zot takes a work order, not a conversation; anything worth
 	// saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir, options.SessionPath, options.Project))
+	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
 	}
@@ -203,7 +203,7 @@ func Run(ctx context.Context, cfg config.Config, o order.Order, options Options)
 	opts.OnConversation = recorder.Conversation
 	opts.OnEvent = recorder.Event
 
-	meta := viewerMeta(cfg, task, workdir, opts)
+	meta := viewerMeta(cfg, task, workdir, &opts)
 	meta.Title = options.Title
 
 	viewer := options.Viewer
@@ -211,14 +211,14 @@ func Run(ctx context.Context, cfg config.Config, o order.Order, options Options)
 		viewer = tui.Run
 	}
 
-	result, err := viewer(ctx, meta, opts)
+	result, err := viewer(ctx, meta, &opts)
 
 	// A run that never began, or was abandoned still going, has no ending to write
 	// down or to report.
 	if result.Reason != "" {
-		recorder.Result(result)
+		recorder.Result(&result)
 
-		printDigest(os.Stderr, writer.Path(), result)
+		printDigest(os.Stderr, writer.Path(), &result)
 	}
 
 	if failed := recorder.Err(); failed != nil {
@@ -230,7 +230,7 @@ func Run(ctx context.Context, cfg config.Config, o order.Order, options Options)
 
 // printDigest writes the end-of-run digest: the outcome, what the run spent,
 // and - when the run was recorded - the session log it was appended to.
-func printDigest(w io.Writer, sessionPath string, result loop.Result) {
+func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	digest := tui.Digest{
 		Status:       tui.DigestStatus(string(result.Reason), result.ExitCode()),
 		Session:      sessionPath,
@@ -250,7 +250,7 @@ func printDigest(w io.Writer, sessionPath string, result loop.Result) {
 // configuration: a per-model max_iterations lowers the limit the engine
 // enforces, and a meta bar counting up to a number the run will never reach is
 // worse than no number at all.
-func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.Meta {
+func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
 	// the default is a 1,000,000 backstop, which is not a budget worth displaying.
 	iterLimit := 0
@@ -271,7 +271,7 @@ func viewerMeta(cfg config.Config, task, workdir string, opts loop.Options) tui.
 
 // Resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages; callers supply those.
-func Resolve(ctx context.Context, cfg config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
+func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
 	providerConfig := cfg.Provider

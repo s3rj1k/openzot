@@ -71,7 +71,7 @@ func (r *Recorder) Conversation(messages []conversation.Message) {
 // Token-by-token narration is deliberately dropped: it is the same content the
 // finished message already carries, and keeping it would make the log an order
 // of magnitude larger for nothing.
-func (r *Recorder) Event(event loop.Event) {
+func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it is loop.Options.OnEvent, which takes the event by value
 	if event.Kind == loop.EventToken || event.Kind == loop.EventReasoningToken {
 		return
 	}
@@ -91,7 +91,7 @@ func (r *Recorder) Event(event loop.Event) {
 
 // Result records the ending: the last of the conversation, then the outcome, which
 // closes the log.
-func (r *Recorder) Result(result loop.Result) {
+func (r *Recorder) Result(result *loop.Result) {
 	// the run's last turn happened after the final hand-over, so the ending is
 	// written down here
 	r.Conversation(result.Messages)

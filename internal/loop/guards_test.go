@@ -124,7 +124,9 @@ func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
 		StopAborted:       1,
 		StopError:         1,
 	} {
-		if got := (Result{Reason: reason}).ExitCode(); got != want {
+		result := Result{Reason: reason}
+
+		if got := result.ExitCode(); got != want {
 			t.Errorf("%s: exit code %d, want %d", reason, got, want)
 		}
 	}

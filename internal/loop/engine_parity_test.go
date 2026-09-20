@@ -12,7 +12,7 @@ import (
 // must reset it, so two unrelated repetitions far apart in a long run do not add
 // up to a false StopCycle. (Regressed once: the counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
-	engine, err := New(Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
+	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 // estimate thinks fits gets rejected by the provider.
 func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	// a window the huge call alone overflows, and the two recent turns fit in
-	engine, err := New(Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
+	engine, err := New(&Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// every turn is empty (no content, finish=stop) and the
 	// empty budget is tighter than the settle budget
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{stop()}),
 		MaxSettles:    5,
@@ -144,7 +144,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 	client := stub(t, []string{settle("all done"), usageFrame(100, 40)})
 
-	result := run(t, Options{ContextWindow: testWindow, Client: client})
+	result := run(t, &Options{ContextWindow: testWindow, Client: client})
 
 	if result.Budget.InputTokens != 100 || result.Budget.OutputTokens != 40 {
 		t.Errorf("run must accumulate provider usage, got in=%d out=%d",
@@ -158,7 +158,7 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 // cumulative, so a run could die to its third stall hundreds of iterations after
 // the first.)
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{stop()},                        // empty: 1/3

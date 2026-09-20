@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -113,7 +114,7 @@ func openInEditor(path string) error {
 		return errors.New("no editor found; set $EDITOR (the file is at the path above)")
 	}
 
-	cmd := exec.Command(editor, path) //nolint:gosec // G204: the editor is the operator's own $VISUAL or $EDITOR
+	cmd := exec.CommandContext(context.Background(), editor, path) //nolint:gosec // G204: the editor is the operator's own $VISUAL or $EDITOR
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	return cmd.Run()

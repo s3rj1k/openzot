@@ -16,16 +16,23 @@ import (
 
 // sized returns a model that has been through a window-size message, which is
 // what makes the viewport usable.
-func sized(t *testing.T, width, height int) model {
+func sized(t *testing.T, width, height int) *model {
 	t.Helper()
 
 	m := newModel("do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 
-	typed, ok := updated.(model)
+	return asModel(t, updated)
+}
+
+// asModel is what an Update returned, as the model it is.
+func asModel(t *testing.T, updated tea.Model) *model {
+	t.Helper()
+
+	typed, ok := updated.(*model)
 	if !ok {
-		t.Fatalf("Update returned %T, want model", updated)
+		t.Fatalf("Update returned %T, want *model", updated)
 	}
 
 	return typed
@@ -112,13 +119,13 @@ func TestJumpKeys(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 
-	if updated.(model).follow {
+	if updated.(*model).follow {
 		t.Error("jumping to the top must stop following")
 	}
 
-	updated, _ = updated.(model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	updated, _ = updated.(*model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 
-	if !updated.(model).follow {
+	if !updated.(*model).follow {
 		t.Error("jumping to the bottom must resume following")
 	}
 }
@@ -140,7 +147,7 @@ func TestScrollingStopsFollowing(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 
-	if updated.(model).follow {
+	if updated.(*model).follow {
 		t.Error("scrolling up must stop the log from jumping back to the bottom")
 	}
 }
@@ -154,7 +161,7 @@ func TestTickAdvancesTheElapsedClock(t *testing.T) {
 		t.Error("a tick must schedule the next one, or the clock stops")
 	}
 
-	if updated.(model).elapsed < 0 {
+	if updated.(*model).elapsed < 0 {
 		t.Error("elapsed time must not be negative")
 	}
 }
@@ -162,14 +169,14 @@ func TestTickAdvancesTheElapsedClock(t *testing.T) {
 func TestHandleEventBuildsTheLog(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 1})
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
+	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 1})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
 	// tokens are what the log shows; a MessageAgentEvent carries the same
 	// content and is deliberately not drawn twice
-	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "here is "})
-	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "the answer"})
-	m.handleEvent(loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
+	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "here is "})
+	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "the answer"})
+	m.handleEvent(&loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
 
 	m.flushPending()
 
@@ -189,7 +196,7 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 func TestToolErrorsAreShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallError, Tool: litShell, Text: "command not found"})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallError, Tool: litShell, Text: "command not found"})
 
 	log := strings.Join(m.entries, "\n")
 
@@ -213,7 +220,7 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			m := sized(t, 100, 30)
 
-			m.finish(test.exit)
+			m.finish(&test.exit)
 
 			if m.status != test.want {
 				t.Errorf("status = %v, want %v", m.status, test.want)
@@ -232,7 +239,7 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.finish(loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
+	m.finish(&loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
 
 	log := stripANSI(strings.Join(m.entries, "\n"))
 
@@ -248,8 +255,8 @@ func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 func TestViewRendersWithoutPanicking(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 2})
-	m.handleEvent(loop.Event{Kind: loop.EventToken, Text: "something"})
+	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 2})
+	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "something"})
 	m.flushPending()
 
 	view := m.View()
@@ -280,7 +287,7 @@ func TestViewBeforeReady(t *testing.T) {
 func TestIterationRuleIsFixedShort(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 7})
+	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 7})
 
 	entry := m.entries[len(m.entries)-1]
 
@@ -301,7 +308,7 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 		t.Run(fmt.Sprintf("%dcolumns", width), func(t *testing.T) {
 			m := sized(t, width, 30)
 
-			m.handleEvent(loop.Event{Kind: loop.EventIteration, Iteration: 4})
+			m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 4})
 
 			rows := strings.Split(m.committedWrapped, "\n")
 
@@ -337,7 +344,7 @@ func TestRewrapOnResize(t *testing.T) {
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 30})
 
-	narrow := updated.(model).committedWrapped
+	narrow := updated.(*model).committedWrapped
 
 	if wide == narrow {
 		t.Error("resizing should re-wrap the committed log")
@@ -426,7 +433,7 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 func TestExitBecomesAnError(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.finish(loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
+	m.finish(&loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
 
 	err := m.runError()
 	if err == nil {
@@ -439,7 +446,7 @@ func TestExitBecomesAnError(t *testing.T) {
 
 	clean := sized(t, 100, 30)
 
-	clean.finish(loop.Result{Reason: loop.StopSettled, Message: litDone})
+	clean.finish(&loop.Result{Reason: loop.StopSettled, Message: litDone})
 
 	if err := clean.runError(); err != nil {
 		t.Errorf("a settled run must not error: %v", err)
@@ -531,7 +538,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
 	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
 
@@ -554,7 +561,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 
 	long := strings.Repeat("word ", 40)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
 
 	if got := len(strings.Split(m.committedWrapped, "\n")); got != 10 {
 		t.Errorf("a wrapped record took %d rows, want the 10 a third of 30 allows", got)
@@ -565,7 +572,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 func TestARecordThatFitsIsNotClipped(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
 
 	got := stripANSI(m.committedWrapped)
 
@@ -585,12 +592,12 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
+	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
 	before := len(strings.Split(m.committedWrapped, "\n"))
 
 	resized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
-	m = resized.(model)
+	m = asModel(t, resized)
 
 	if after := len(strings.Split(m.committedWrapped, "\n")); after != 20 || after <= before {
 		t.Errorf("rows after growing the window = %d (was %d), want 20", after, before)
@@ -631,7 +638,7 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 		// a quit would leave the model unchanged and end the program; what we
 		// can check without running the program is that the viewer is still
 		// there and still running
-		if updated.(model).status != statusRunning {
+		if updated.(*model).status != statusRunning {
 			t.Errorf("key %v ended the run", key)
 		}
 	}
@@ -652,7 +659,7 @@ func TestTheClockStopsWhenTheRunEnds(t *testing.T) {
 		t.Error("a finished run must not schedule another tick")
 	}
 
-	if next.(model).elapsed != before {
+	if next.(*model).elapsed != before {
 		t.Error("the clock kept running after the run ended")
 	}
 }
@@ -974,7 +981,7 @@ func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 func TestHandleEventRecordsUsage(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
+	m.handleEvent(&loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
 
 	if m.inputTokens != 1234 || m.outputTokens != 567 {
 		t.Errorf("usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
@@ -1007,7 +1014,7 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 		Message: "the provider failed",
 		Err:     errors.New("provider: Model 'x' not found (404)"),
 	}})
-	m = next.(model)
+	m = asModel(t, next)
 
 	if err := m.runError(); err == nil || !strings.Contains(err.Error(), "not found (404)") {
 		t.Errorf("runError() = %v, want the provider's own words", err)
@@ -1025,7 +1032,7 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 func TestRetryEventIsRendered(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
+	m.handleEvent(&loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
 
 	joined := strings.Join(m.entries, "\n")
 	if !strings.Contains(joined, "retrying") || !strings.Contains(joined, "Stealth") {
@@ -1100,11 +1107,11 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 			m := sized(t, 400, 30)
 			m.workdir = "/work/project"
 
-			test.before(&m)
+			test.before(m)
 
 			was := strings.Index(stripANSI(m.metaBar()), test.next)
 
-			test.after(&m)
+			test.after(m)
 
 			if now := strings.Index(stripANSI(m.metaBar()), test.next); now != was {
 				t.Errorf("the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.metaBar()))

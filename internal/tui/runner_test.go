@@ -68,7 +68,7 @@ func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 
 // headless starts a Bubble Tea program with no terminal attached, collecting
 // every message it receives.
-func headless(t *testing.T) (*tea.Program, *collector, func() model) {
+func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
 	t.Helper()
 
 	seen := &collector{}
@@ -91,7 +91,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() model) {
 		finished <- final
 	}()
 
-	return program, seen, func() model {
+	return program, seen, func() *model {
 		program.Quit()
 
 		select {
@@ -100,12 +100,12 @@ func headless(t *testing.T) (*tea.Program, *collector, func() model) {
 				return recording.inner
 			}
 
-			return model{}
+			return &model{}
 
 		case <-time.After(5 * time.Second):
 			t.Fatal("the program did not stop")
 
-			return model{}
+			return &model{}
 		}
 	}
 }
@@ -119,7 +119,7 @@ type collector struct {
 // recordingModel wraps the real model, noting the run's messages as they arrive.
 type recordingModel struct {
 	collector *collector
-	inner     model
+	inner     *model
 }
 
 func (*recordingModel) Init() tea.Cmd { return nil }
@@ -134,7 +134,7 @@ func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	updated, cmd := r.inner.Update(msg)
 
-	if typed, ok := updated.(model); ok {
+	if typed, ok := updated.(*model); ok {
 		r.inner = typed
 	}
 
@@ -161,7 +161,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 		change(&options)
 	}
 
-	engine, err := loop.New(options)
+	engine, err := loop.New(&options)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

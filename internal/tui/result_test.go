@@ -10,7 +10,7 @@ import (
 
 func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	m := newModel("task", "model", "openai", "/tmp")
-	m.finish(loop.Result{Reason: loop.StopFailed, Message: "verification failed"})
+	m.finish(&loop.Result{Reason: loop.StopFailed, Message: "verification failed"})
 
 	err := m.runError()
 	if err == nil {

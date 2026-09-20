@@ -74,12 +74,12 @@ type model struct {
 	elapsed   time.Duration
 }
 
-func newModel(task, modelName, provider, workdir string) model {
+func newModel(task, modelName, provider, workdir string) *model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(colYellow)
 
-	return model{
+	return &model{
 		task:       task,
 		model:      modelName,
 		provider:   provider,
@@ -92,7 +92,7 @@ func newModel(task, modelName, provider, workdir string) model {
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m *model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, tickCmd())
 }
 
@@ -100,7 +100,7 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -162,11 +162,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case eventMsg:
-		m.handleEvent(msg.ev)
+		m.handleEvent(&msg.ev)
 		return m, nil
 
 	case doneMsg:
-		m.finish(msg.result)
+		m.finish(&msg.result)
 		return m, nil
 	}
 
@@ -174,7 +174,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleEvent folds one event of the run into the UI state.
-func (m *model) handleEvent(ev loop.Event) {
+func (m *model) handleEvent(ev *loop.Event) {
 	switch ev.Kind {
 	case loop.EventIteration:
 		m.iteration = ev.Iteration
@@ -228,7 +228,7 @@ func (m *model) handleEvent(ev loop.Event) {
 // behind it when there is one. The error is usually the run's only diagnostic -
 // "the provider failed" on screen with the actual 404 dropped on the floor was
 // how that got lost - so it is kept and shown.
-func (m *model) finish(result loop.Result) {
+func (m *model) finish(result *loop.Result) {
 	code := result.ExitCode()
 
 	m.exitCode = code
@@ -370,7 +370,7 @@ func (m *model) wrap(s string) string {
 // terminal's height, so no single record - a chatty command, a long task list, a
 // wall of narration - can push the rest of the run off the screen. Zero, meaning
 // no limit, until the terminal has reported a size.
-func (m model) recordHeight() int {
+func (m *model) recordHeight() int {
 	if m.height <= 0 {
 		return 0
 	}
@@ -381,7 +381,7 @@ func (m model) recordHeight() int {
 // wrapRecord wraps one log record to the viewport width and cuts it at
 // recordHeight rows, the last of which is an ellipsis when anything was dropped.
 // The full run is always in the session log.
-func (m model) wrapRecord(s string) string {
+func (m *model) wrapRecord(s string) string {
 	limit := m.recordHeight()
 	if limit == 0 {
 		return m.wrap(s)
@@ -411,7 +411,7 @@ func (m model) wrapRecord(s string) string {
 
 // --- view -------------------------------------------------------------------.
 
-func (m model) View() string {
+func (m *model) View() string {
 	if !m.ready {
 		return "starting zot…"
 	}
@@ -425,7 +425,7 @@ func (m model) View() string {
 	}, "\n")
 }
 
-func (m model) titleBar() string {
+func (m *model) titleBar() string {
 	left := titleStyle.Render("✦ zot") + " " + m.badge()
 
 	room := m.width - lipgloss.Width(left) - 2
@@ -442,7 +442,7 @@ func (m model) titleBar() string {
 	return left + " " + taskStyle.Render(truncate(label, room))
 }
 
-func (m model) badge() string {
+func (m *model) badge() string {
 	switch m.status {
 	case statusDone:
 		return statusDoneStyle.Render("✓ done")
@@ -462,7 +462,7 @@ func (m model) badge() string {
 // what comes first is what survives a narrow terminal. "dir" is last despite
 // being useful because it never changes: a static path is not worth the live
 // numbers it would push off the end.
-func (m model) metaBar() string {
+func (m *model) metaBar() string {
 	seg := func(k, v string, value lipgloss.Style) string {
 		return metaKey.Render(k+" ") + value.Render(v)
 	}
@@ -530,7 +530,7 @@ func (m model) metaBar() string {
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(line)
 }
 
-func (m model) footer() string {
+func (m *model) footer() string {
 	hints := footerStyle.Render(
 		keyHint.Render("↑/↓") + " scroll  " +
 			keyHint.Render("g/G") + " top/bottom  " +

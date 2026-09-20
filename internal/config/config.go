@@ -170,7 +170,7 @@ type Agent struct {
 // MaxDuration parses Agent.MaxTime into a duration. An empty value is zero
 // (unbounded); a malformed value is an error so a typo in the config is caught
 // at load rather than silently ignored.
-func (a Agent) MaxDuration() (time.Duration, error) {
+func (a *Agent) MaxDuration() (time.Duration, error) {
 	value := strings.TrimSpace(a.MaxTime)
 	if value == "" {
 		return 0, nil
@@ -219,7 +219,7 @@ var ReasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhi
 
 // validateContext holds the thresholds to 1 <= soft < hard <= 99, percent of the
 // window. Zero is the default.
-func (a Agent) validateContext() error {
+func (a *Agent) validateContext() error {
 	soft, hard := a.ContextSoft, a.ContextHard
 
 	if soft == 0 {
@@ -306,7 +306,7 @@ func resolveSecret(v string) string {
 // ScrubProviderSecrets removes the resolved provider credential from the process
 // environment. Config retains the resolved value used by the SDK client, while
 // shell commands launched by the agent no longer inherit it.
-func ScrubProviderSecrets(cfg Config) {
+func ScrubProviderSecrets(cfg *Config) {
 	secret := cfg.Provider.APIKey
 	if secret == "" {
 		return
@@ -321,7 +321,7 @@ func ScrubProviderSecrets(cfg Config) {
 }
 
 // Validate checks the fully-merged configuration.
-func (c Config) Validate() error {
+func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
 		return errors.New("agent.model must be set in the config: zot has no default model")
 	}

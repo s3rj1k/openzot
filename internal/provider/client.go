@@ -86,7 +86,7 @@ type toolCallsModel struct {
 	fantasy.LanguageModel
 }
 
-func (m toolCallsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
+func (m toolCallsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) { //nolint:gocritic // hugeParam: fantasy.LanguageModel takes the call by value
 	stream, err := m.LanguageModel.Stream(ctx, call)
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (m toolCallsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 // streamUsage reads a chunk's token counts. Fantasy ignores a usage block that
 // carries no total, and a server is free to leave the total out.
 func streamUsage(
-	chunk openaisdk.ChatCompletionChunk,
+	chunk openaisdk.ChatCompletionChunk, //nolint:gocritic // hugeParam: the stream usage callback type is fantasy's
 	extra map[string]any,
 	metadata fantasy.ProviderMetadata,
 ) (fantasy.Usage, fantasy.ProviderMetadata) {

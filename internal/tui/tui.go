@@ -62,7 +62,7 @@ func IsInteractive() bool {
 // Along with any error it returns the run's Result, so a caller can report how it
 // ended - and what it spent - without scraping the screen. The result is empty
 // when the run never began, or was still going when it was abandoned.
-func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error) {
+func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
 	if err != nil {
 		return loop.Result{}, err
@@ -88,7 +88,7 @@ func Run(ctx context.Context, meta Meta, opts loop.Options) (loop.Result, error)
 // still consumes messages.
 func runViewer(
 	ctx context.Context,
-	m model,
+	m *model,
 	engine *loop.Engine,
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,
@@ -130,8 +130,6 @@ func runViewer(
 	}
 
 	switch m := final.(type) {
-	case model:
-		return result, m.runError()
 	case *model:
 		return result, m.runError()
 	default:

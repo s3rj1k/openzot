@@ -44,7 +44,7 @@ func countTool(calls *int) fantasy.AgentTool {
 func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
@@ -73,7 +73,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
@@ -103,7 +103,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 	for _, finish := range []string{"stop", "something_new"} {
 		ran := 0
 
-		result := run(t, Options{
+		result := run(t, &Options{
 			ContextWindow: testWindow,
 			Client: stub(t,
 				[]string{toolCalls(finish, [3]string{"c1", litEcho, `{}`})},
@@ -129,7 +129,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("length", [3]string{"c1", litEcho, `{}`})},
@@ -153,7 +153,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 // one it is handed might; fantasy will not start from it, so it is given a line
 // to continue from rather than failing the run.
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{settle("carrying on")}),
 		Messages: []conversation.Message{
@@ -171,7 +171,7 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 // answered by fantasy without the tool being touched. It is still a call: it
 // counts, and it is written into the conversation as a request and a failure.
 func TestACallThatNeverReachedATool(t *testing.T) {
-	result := run(t, Options{
+	result := run(t, &Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
@@ -211,7 +211,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ran := 0
 
-			result := run(t, Options{
+			result := run(t, &Options{
 				ContextWindow: testWindow,
 				Client: stub(t,
 					[]string{toolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
@@ -261,7 +261,7 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 		t.Fatal(err)
 	}
 
-	run(t, Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
+	run(t, &Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
 
 	if body == nil {
 		t.Fatal("the server saw no request")
@@ -300,7 +300,7 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 	var sunk, watched []EventKind
 
-	engine, err := New(Options{
+	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{settle("hi")}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},

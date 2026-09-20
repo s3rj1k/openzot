@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 // headlessViewer is tui.Run without the screen. It reports endings the way the
 // viewer does: an error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
-func headlessViewer(ctx context.Context, meta tui.Meta, opts loop.Options) (loop.Result, error) {
+func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
 	if err != nil {
 		return loop.Result{}, err
