@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2449,7 +2450,7 @@ func promptOf(t *testing.T, o order.Order) string {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work"))
+	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, opts, "/work", ""))
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -2569,7 +2570,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work"))
+	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, opts, "/work", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2628,7 +2629,7 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project"))
+	got, err := o.Render(orderEnv(cfg, client, opts, "/work/project", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2844,5 +2845,66 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 
 	if tight := shellOutput(64_000, 5); tight >= large/3 {
 		t.Errorf("max_tool_output_percent 5 let through %d bytes against %d at the default", tight, large)
+	}
+}
+
+// The session log is the agent's long-term memory, so the prompt a run really
+// sends says where it is - and only when there is one.
+func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		bodies []string
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+
+		mu.Lock()
+		bodies = append(bodies, string(body))
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		fmt.Fprintf(w, "data: %s\n\n",
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"done\"}"}}]},"finish_reason":"tool_calls"}]}`)
+
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	t.Cleanup(server.Close)
+
+	cfg := testDefaults()
+	cfg.DefaultProvider = "local"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"local": {BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")},
+	}
+
+	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
+
+	if _, err := quietly(t, func() error {
+		return runTask(context.Background(), cfg, newOrderNamed(t, "do the thing"), runOptions{SessionPath: path})
+	}); err != nil {
+		t.Fatalf("runTask: %v", err)
+	}
+
+	if _, err := quietly(t, func() error {
+		return runTask(context.Background(), cfg, newOrderNamed(t, "do the thing"), runOptions{})
+	}); err != nil {
+		t.Fatalf("runTask: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(bodies) != 2 {
+		t.Fatalf("the provider saw %d requests, want 2", len(bodies))
+	}
+
+	if !strings.Contains(bodies[0], path) || !strings.Contains(bodies[0], "short-term memory") {
+		t.Errorf("the recorded run's prompt does not point at its log %s", path)
+	}
+
+	if strings.Contains(bodies[1], "short-term memory") {
+		t.Error("a run with no log was told about one")
 	}
 }

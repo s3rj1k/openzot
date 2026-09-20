@@ -97,6 +97,9 @@ one in full when it decides it applies.
 Every run is logged beside its order as `.zot/orders/<name>.jsonl`: one JSON
 line per step, including the model's reasoning, appended as the run goes. Running
 an order again adds to the same file. Read it with `jq`.
+The agent is told where it is, too: the context window is its short-term memory,
+forgotten oldest first as it fills, and the log is the long-term memory it can
+look things up in.
 
 ## Why Zot
 

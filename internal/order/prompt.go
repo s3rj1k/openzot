@@ -60,6 +60,22 @@ const promptRules = `Operating rules:
 - Never run interactive or long-lived commands.
 - Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarise, interpret, or analyse tool output - keep working, and use "tasks" for status.`
 
+// promptMemory tells the agent where its long-term memory is. The context window
+// is short-term memory and is forgotten oldest first as it fills; the session log
+// keeps every message, so a model that knows it exists can go back for what it
+// lost. Only offered when the run has a log.
+const promptMemory = `
+{{- if .Session }}
+
+## Memory
+
+What you can see is short-term memory: your context window. When it fills, the oldest messages are forgotten, and you are not told which. Everything you have said and done - in this run and in any earlier run of this order - is kept, one JSON record per line, in the session log:
+
+    {{ .Session }}
+
+Search it with your shell when you need something that is no longer in view: a file you read, a command's output, a decision you made. A message record looks like {"kind":"message","message":{"type":"user|bot|reasoning|activity","text":"...","activity":{"kind":"request|response","name":"...","arguments":"...","result":...}}}; a "meta" record opens each run and a "result" record closes it. Records can be large, so filter before you print - grep -n, tail -n, sed -n 'START,ENDp', or jq -c if it is installed - and never cat the whole file.
+{{- end }}`
+
 // promptProject adds the project's own instructions - its AGENTS.md - when it has
 // any.
 const promptProject = `
@@ -97,7 +113,7 @@ Constraints - these hold for the whole run:
 `
 
 // DefaultBody is the prompt zot writes into a new order.
-const DefaultBody = promptIntro + promptTools + promptRules + "\n\n" + Contract + promptProject + promptTask
+const DefaultBody = promptIntro + promptTools + promptRules + promptMemory + "\n\n" + Contract + promptProject + promptTask
 
 // frontMatterBlank is the data block a new order starts from. The objective is
 // left empty, so the order will not run until it is written.
@@ -126,6 +142,7 @@ objective:
 #   Tools                                       each tool's Name and Description
 #   Workdir Date Model Provider                 facts about the run
 #   Project                                     the AGENTS.md of the config and the project
+#   Session                                     the log of this run, its long-term memory
 #   Contract                                    the non-interactive contract, below
 # and the functions: file "path", env "NAME", inc N.
 # Edit the prompt freely. If the rendered result loses the non-interactive
@@ -161,6 +178,11 @@ type Env struct {
 	// Project is the instructions the config directory and the project itself
 	// carry for every run in them (their AGENTS.md files), or empty.
 	Project string
+
+	// Session is the path of the log this run is recorded in, or empty when it is
+	// not recorded. It is the run's long-term memory: every message, including
+	// the ones the context window has forgotten.
+	Session string
 }
 
 // data is what a prompt template is executed against.
@@ -176,6 +198,7 @@ type data struct {
 	Model    string
 	Provider string
 	Project  string
+	Session  string
 	Contract string
 }
 
@@ -211,6 +234,7 @@ func (o Order) execute(env Env, funcs template.FuncMap) (string, error) {
 		Model:       env.Model,
 		Provider:    env.Provider,
 		Project:     env.Project,
+		Session:     env.Session,
 		Contract:    Contract,
 	})
 	if err != nil {
@@ -239,6 +263,7 @@ func (o Order) check() error {
 		Model:    "model",
 		Provider: "provider",
 		Project:  "project",
+		Session:  "/work/.zot/orders/order.jsonl",
 	}, stub)
 
 	// the stand-in order is the real one, but a list that is empty in the real

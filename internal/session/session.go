@@ -15,8 +15,10 @@
 // up to the crash: at worst the final line is torn, and the next run starts on a
 // fresh one.
 //
-// Nothing in zot reads a log back. It is a record for a person, with `cat` and
-// `jq`, not a state to resume from.
+// zot itself never reads a log back, and a run is not resumed from one. It is a
+// record for a person, with `cat` and `jq` - and the agent is told where its own
+// is, so what its context window has forgotten it can look up: the log is its
+// long-term memory.
 package session
 
 import (

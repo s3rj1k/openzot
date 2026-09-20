@@ -451,13 +451,14 @@ type runOptions struct {
 
 // orderEnv is what an order's prompt can know about the run beyond the order: the
 // tools it really has, where it is working, and what it is talking to.
-func orderEnv(cfg config.Config, client *loop.Client, opts loop.Options, workdir string) order.Env {
+func orderEnv(cfg config.Config, client *loop.Client, opts loop.Options, workdir, sessionPath string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
 		Model:    client.Config().Model,
 		Provider: cfg.DefaultProvider,
 		Project:  cfg.ProjectContext,
+		Session:  sessionPath,
 	}
 
 	for _, tool := range opts.Tools {
@@ -492,7 +493,7 @@ func runTask(ctx context.Context, cfg config.Config, o order.Order, options runO
 	// @note there is deliberately no way to open a run with a prompt of the
 	// caller's own. zot takes a work order, not a conversation; anything worth
 	// saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir))
+	prompt, err := o.Render(orderEnv(cfg, client, opts, workdir, options.SessionPath))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", firstNonEmpty(o.Path, "(unsaved)"), err)
 	}

@@ -469,3 +469,51 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 		t.Error("creating under a file must fail")
 	}
 }
+
+// The default prompt tells the agent about its long-term memory when the run has
+// a log, and says nothing of one when it has not.
+func TestTheDefaultPromptPointsAtTheSessionLog(t *testing.T) {
+	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\n", 1)
+
+	order, err := Parse([]byte(filled))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	with, err := order.Render(Env{Session: "/work/.zot/orders/1.jsonl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"## Memory", "short-term memory", "/work/.zot/orders/1.jsonl", "earlier run"} {
+		if !strings.Contains(with, want) {
+			t.Errorf("the prompt does not say %q:\n%s", want, with)
+		}
+	}
+
+	without, err := order.Render(Env{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(without, "Memory") || strings.Contains(without, "session log") {
+		t.Errorf("a run with no log was told about one:\n%s", without)
+	}
+}
+
+// An order that writes its own prompt can put the log where it likes.
+func TestAnOrdersOwnPromptCanReadTheSessionLog(t *testing.T) {
+	order, err := Parse([]byte("---\nobjective: x\n---\nyour notes are in {{ .Session }}\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	got, err := order.Render(Env{Session: "/log.jsonl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(got, "your notes are in /log.jsonl") {
+		t.Errorf("Session was not available to the prompt:\n%s", got)
+	}
+}
