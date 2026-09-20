@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -235,7 +236,7 @@ func New(options Options) (*Engine, error) {
 		// @note calls and time are unbounded unless the caller sets them: only
 		// the iteration count is a hard default backstop. A non-positive value
 		// means "no cap", which is why they are stored raw rather than picked.
-		maxCalls:         nonNegative(options.MaxCalls),
+		maxCalls:         max(options.MaxCalls, 0),
 		maxDuration:      options.MaxDuration,
 		maxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
 		maxRecoveries:    pick(options.MaxRecoveries, DefaultMaxRecoveries),
@@ -244,7 +245,7 @@ func New(options Options) (*Engine, error) {
 		maxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
-		retryBackoff: pickDuration(options.RetryBackoff, DefaultRetryBackoff),
+		retryBackoff: cmp.Or(options.RetryBackoff, DefaultRetryBackoff),
 		window:       options.ContextWindow,
 		softPercent:  pick(options.ContextSoft, DefaultContextSoft),
 		planEvery:    planEvery,
@@ -333,18 +334,6 @@ func (e *Engine) wait(ctx context.Context, d time.Duration) {
 	}
 }
 
-// pickDuration returns value when it is set, and the fallback when it is zero.
-// A negative value is kept, meaning "explicitly none".
-func pickDuration(value, fallback time.Duration) time.Duration {
-	if value == 0 {
-		return fallback
-	}
-
-	return value
-}
-
-// nonNegative clamps a budget to zero, so a negative value means the same as
-// unset - unbounded - rather than an ever-true stop condition.
 // firstNonNil returns a if it is set, else b - so an abort prefers the
 // provider failure worth diagnosing over the bare cancellation.
 func firstNonNil(a, b error) error {
@@ -353,14 +342,6 @@ func firstNonNil(a, b error) error {
 	}
 
 	return b
-}
-
-func nonNegative(v int) int {
-	if v < 0 {
-		return 0
-	}
-
-	return v
 }
 
 // Run drives the conversation to a conclusion, emitting events as it goes.

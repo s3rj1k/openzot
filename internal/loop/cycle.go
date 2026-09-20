@@ -2,8 +2,10 @@ package loop
 
 import (
 	"encoding/json"
-	"github.com/openzot/openzot/internal/conversation"
+	"slices"
 	"strings"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // The cycle heuristics decide whether a conversation has stopped making
@@ -77,7 +79,7 @@ func hasRepeatedSuffix(messages []conversation.Message) bool {
 		repetitions := 0
 
 		for start := len(fingerprints) - length; start >= 0; start -= length {
-			if !equalStrings(fingerprints[start:start+length], pattern) {
+			if !slices.Equal(fingerprints[start:start+length], pattern) {
 				break
 			}
 
@@ -90,16 +92,6 @@ func hasRepeatedSuffix(messages []conversation.Message) bool {
 	}
 
 	return false
-}
-
-func equalStrings(a, b []string) bool {
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return len(a) == len(b)
 }
 
 // activityTailEntry is one tool-call activity reduced to its identity.

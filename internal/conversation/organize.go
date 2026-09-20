@@ -1,5 +1,7 @@
 package conversation
 
+import "slices"
+
 // Message hygiene applied before a conversation goes on the wire.
 //
 // A run's history does not stay tidy on its own. Trimming to the window can cut
@@ -69,12 +71,12 @@ func clusterActivities(messages []Message) []Message {
 				continue
 			}
 
-			organized = insertAt(organized, partner+1, message)
+			organized = slices.Insert(organized, partner+1, message)
 
 		case ActivityTrigger:
 			// a trigger says "act now"; anywhere but last it is describing a
 			// moment that has already passed
-			if hasLaterConversation(messages[index+1:]) {
+			if slices.ContainsFunc(messages[index+1:], func(later Message) bool { return later.Type != TypeInstructions }) {
 				continue
 			}
 
@@ -106,7 +108,7 @@ func dropOrphanedActivities(messages []Message) []Message {
 
 		switch message.Activity.Kind {
 		case ActivityRequest, ActivityResponse:
-			if !hasPartner(messages, message) {
+			if !slices.ContainsFunc(messages, func(candidate Message) bool { return candidate.Activity.IsPair(message.Activity) }) {
 				continue
 			}
 		}
@@ -170,28 +172,6 @@ func lastPairedIndex(messages []Message, message Message) int {
 	return -1
 }
 
-// hasPartner reports whether the conversation holds the other half.
-func hasPartner(messages []Message, message Message) bool {
-	for _, candidate := range messages {
-		if candidate.Activity.IsPair(message.Activity) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// hasLaterConversation reports whether anything the model would see follows.
-func hasLaterConversation(rest []Message) bool {
-	for _, message := range rest {
-		if message.Type != TypeInstructions {
-			return true
-		}
-	}
-
-	return false
-}
-
 // sameMessage compares two messages for the duplicate check.
 func sameMessage(a, b Message) bool {
 	if a.Type != b.Type || a.Text != b.Text {
@@ -206,15 +186,4 @@ func sameMessage(a, b Message) bool {
 	}
 
 	return a.Activity == nil && b.Activity == nil
-}
-
-// insertAt places a message at an index, shifting the rest along.
-func insertAt(messages []Message, index int, message Message) []Message {
-	messages = append(messages, Message{})
-
-	copy(messages[index+1:], messages[index:])
-
-	messages[index] = message
-
-	return messages
 }

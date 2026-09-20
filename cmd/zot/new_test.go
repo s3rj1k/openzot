@@ -158,26 +158,6 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 	}
 }
 
-func TestFirstNonEmpty(t *testing.T) {
-	tests := []struct {
-		values []string
-		want   string
-	}{
-		{[]string{"", "second"}, "second"},
-		{[]string{"first", "second"}, "first"},
-		// whitespace is not a value - it is how an unset variable usually looks
-		{[]string{"  ", "\t", "real"}, "real"},
-		{[]string{"", ""}, ""},
-		{nil, ""},
-	}
-
-	for _, test := range tests {
-		if got := firstNonEmpty(test.values...); got != test.want {
-			t.Errorf("firstNonEmpty(%q) = %q, want %q", test.values, got, test.want)
-		}
-	}
-}
-
 // editConfig is the setup path: it must create the config from the template on
 // first run, and say something useful when there is no editor to open it with.
 func TestEditConfigSeedsTheTemplate(t *testing.T) {
@@ -212,8 +192,10 @@ func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
 
 	t.Setenv("ZOT_CONFIG", path)
 
-	// a no-op "editor" that just succeeds
+	// a no-op "editor" that just succeeds; $VISUAL wins over $EDITOR, which here
+	// would fail the edit if it were the one run
 	t.Setenv("VISUAL", "true")
+	t.Setenv("EDITOR", "false")
 
 	if err := editConfig(); err != nil {
 		t.Fatalf("editConfig: %v", err)

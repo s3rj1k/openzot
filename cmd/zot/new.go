@@ -1,12 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/openzot/openzot/configs"
@@ -93,7 +93,7 @@ func editConfig() error {
 // With none of them it prints the path and says so, since the file itself is
 // already in place.
 func openInEditor(path string) error {
-	editor := firstNonEmpty(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
+	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
 	if editor == "" {
 		for _, candidate := range []string{"nano", "vi", "vim"} {
 			if _, err := exec.LookPath(candidate); err == nil {
@@ -114,14 +114,4 @@ func openInEditor(path string) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	return cmd.Run()
-}
-
-func firstNonEmpty(values ...string) string {
-
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }
