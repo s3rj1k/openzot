@@ -105,7 +105,7 @@ func run(t *testing.T, options Options) Result {
 		t.Fatalf("New: %v", err)
 	}
 
-	return engine.Run(context.Background(), nil)
+	return engine.Run(t.Context(), nil)
 }
 
 // noInput is the argument struct of the engine tests' tools, which take none.
@@ -393,7 +393,7 @@ func TestCancellationStopsTheRun(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	cancel()
 
@@ -468,7 +468,7 @@ func TestEventsAreEmitted(t *testing.T) {
 
 	var kinds []EventKind
 
-	engine.Run(context.Background(), func(event Event) {
+	engine.Run(t.Context(), func(event Event) {
 		kinds = append(kinds, event.Kind)
 	})
 
@@ -548,7 +548,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	for round := 0; round < 20; round++ {
+	for range 20 {
 		var names []string
 
 		for _, tool := range engine.toolDefinitions() {
@@ -570,9 +570,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	cancelled := make(chan struct{})
 
-	var once sync.Once
-
-	done := func() { once.Do(func() { close(cancelled) }) }
+	done := sync.OnceFunc(func() { close(cancelled) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -625,7 +623,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	var runaway bool
 
-	engine.Run(context.Background(), func(event Event) {
+	engine.Run(t.Context(), func(event Event) {
 		if event.Kind == EventRunaway {
 			runaway = true
 		}
@@ -712,7 +710,7 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	// an old user kickoff followed by enough tool-round bulk to evict it
 	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
 
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		id := fmt.Sprintf("c%d", i)
 		messages = append(messages,
 			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: "read", Arguments: `{"path":"x"}`}},

@@ -1,15 +1,15 @@
 package loop
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/provider"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // The context-limit recovery path: a provider rejecting an oversized prompt is
@@ -63,7 +63,7 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 func longConversation(turns int) []conversation.Message {
 	messages := make([]conversation.Message, 0, turns)
 
-	for index := 0; index < turns; index++ {
+	for index := range turns {
 		kind := conversation.TypeUser
 
 		if index%2 == 1 {
@@ -93,7 +93,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	// the configured window, far above the 8192 the provider states
 	engine.window = 40_000
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q, want the run to recover and stop normally", result.Reason)
@@ -128,7 +128,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 
 	engine.window = 40_000
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if len(result.Messages) < len(original) {
 		t.Fatalf("the conversation shrank from %d to %d messages", len(original), len(result.Messages))
@@ -220,7 +220,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 
 	engine.window = 40_000
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if result.Reason != StopError {
 		t.Errorf("reason = %q, want error once narrowing stops helping", result.Reason)
@@ -275,7 +275,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 
 	var retried bool
 
-	result := engine.Run(context.Background(), func(event Event) {
+	result := engine.Run(t.Context(), func(event Event) {
 		if event.Kind == EventRetry {
 			retried = true
 		}
@@ -319,7 +319,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if result.Reason != StopError {
 		t.Errorf("reason = %q, want error", result.Reason)
@@ -380,7 +380,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	// the configured window is wildly optimistic for this endpoint
 	before := engine.window
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if result.Reason != StopSettled {
 		t.Fatalf("reason = %q, want the run to recover", result.Reason)
@@ -430,7 +430,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if result := engine.Run(context.Background(), nil); result.Reason != StopSettled {
+	if result := engine.Run(t.Context(), nil); result.Reason != StopSettled {
 		t.Errorf("reason = %q, want the run to recover", result.Reason)
 	}
 }

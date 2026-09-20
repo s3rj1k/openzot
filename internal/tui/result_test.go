@@ -17,8 +17,8 @@ func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 		t.Fatal("runError() = nil, want a failed agent exit")
 	}
 
-	var exitErr *AgentExitError
-	if !errors.As(err, &exitErr) {
+	exitErr, ok := errors.AsType[*AgentExitError](err)
+	if !ok {
 		t.Fatalf("runError() = %T, want *AgentExitError", err)
 	}
 	if exitErr.Code != 1 || !strings.Contains(exitErr.Error(), "verification failed") {

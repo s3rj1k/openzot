@@ -364,8 +364,7 @@ func Resolve(cfg config.Config, offered []skills.Skill) (*provider.Client, loop.
 	// MaxTokens is a pointer so that "unset" (provider decides) is distinct from
 	// a deliberate zero; the config uses a positive value to mean "cap here".
 	if cfg.Agent.MaxTokens > 0 {
-		limit := cfg.Agent.MaxTokens
-		opts.MaxTokens = &limit
+		opts.MaxTokens = new(cfg.Agent.MaxTokens)
 	}
 
 	return client, opts, nil

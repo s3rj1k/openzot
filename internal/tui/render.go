@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -16,7 +17,7 @@ import (
 // caller has added falls through to a generic one. The names here are the names
 // in the tools package - a mismatch is not a compile error, it just quietly
 // renders the agent's most-used tool as an anonymous key/value dump.
-func renderToolStart(name string, args map[string]interface{}) string {
+func renderToolStart(name string, args map[string]any) string {
 	switch name {
 	case "shell":
 		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
@@ -32,12 +33,12 @@ func renderToolStart(name string, args map[string]interface{}) string {
 //
 // zot's tools return plain strings, so that is the case handled first; the map
 // form is kept for a caller whose own tool returns something structured.
-func renderToolEnd(name string, result interface{}) string {
+func renderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
 		return renderTextResult(name, text)
 	}
 
-	m, ok := result.(map[string]interface{})
+	m, ok := result.(map[string]any)
 	if !ok {
 		return ""
 	}
@@ -104,7 +105,7 @@ func renderOutputLines(text string) string {
 }
 
 // commandOutput renders the stdout/stderr of a structured result.
-func commandOutput(m map[string]interface{}) string {
+func commandOutput(m map[string]any) string {
 	text := strings.TrimRight(str(m, "stdout"), "\n")
 
 	if text == "" {
@@ -124,7 +125,7 @@ func commandOutput(m map[string]interface{}) string {
 // how much of it is done. The list is the one piece of the run worth reading in
 // full - it is the map the agent is following and how far along it is, and seeing
 // it is how the operator knows whether the approach is sound.
-func renderTasks(args map[string]interface{}) string {
+func renderTasks(args map[string]any) string {
 	head := toolOtherStyle.Render("  tasks  ")
 
 	tasks, err := plan.ParseTasks(args)
@@ -177,7 +178,7 @@ func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
 	}
 }
 
-func compactArgs(args map[string]interface{}) string {
+func compactArgs(args map[string]any) string {
 	parts := make([]string, 0, len(args))
 	for k, v := range args {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, truncate(fmt.Sprint(v), 40)))
@@ -185,7 +186,7 @@ func compactArgs(args map[string]interface{}) string {
 	return strings.Join(parts, " ")
 }
 
-func str(m map[string]interface{}, key string) string {
+func str(m map[string]any, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
 	}
@@ -243,12 +244,11 @@ func shortPath(path string, max int) string {
 	// grow from the right while the whole thing, plus the "…/" marker, fits
 	kept := ""
 
-	for i := len(segments) - 1; i >= 0; i-- {
-		if segments[i] == "" {
+	for _, candidate := range slices.Backward(segments) {
+		if candidate == "" {
 			continue
 		}
 
-		candidate := segments[i]
 		if kept != "" {
 			candidate += "/" + kept
 		}

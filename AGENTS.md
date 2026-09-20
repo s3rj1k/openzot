@@ -24,6 +24,9 @@ worked around.
   not fall below 90% (`make cover` reports it per package). Write tests that
   assert _behaviour_, not constants; a test that restates a value it reads is
   worse than none.
-- **It vets clean.** `make vet` runs `go vet`. Run `govulncheck ./...` when
-  dependencies change.
+- **It vets clean, in modern Go.** `make vet` runs `go vet` and fails on anything
+  `go fix` would rewrite (the modernizers: `any`, `range n`, `min`/`max`, `slices`,
+  `maps`, `cmp.Or`, ...). Write the current idiom rather than the old one; the
+  Modern Go Guidelines skill lists what the target version has. Run
+  `govulncheck ./...` when dependencies change.
 - **Match the surrounding code.** Same naming, comment density, and idioms.

@@ -182,7 +182,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, engineFor(t, client, func(o *loop.Options) { o.MaxSettles = 5 }),
+	runAgent(t.Context(), program, engineFor(t, client, func(o *loop.Options) { o.MaxSettles = 5 }),
 		make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
@@ -239,7 +239,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(context.Background(), program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
+	runAgent(t.Context(), program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
 
@@ -264,7 +264,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	cancel()
 
@@ -288,7 +288,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	streaming := make(chan struct{})
 	cancelled := make(chan struct{})
 
-	var once sync.Once
+	markStreaming := sync.OnceFunc(func() { close(streaming) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -299,7 +299,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 			flusher.Flush()
 		}
 
-		once.Do(func() { close(streaming) })
+		markStreaming()
 
 		// hold the turn open, the way a model thinking through a long task does,
 		// and report whether the client ever went away
@@ -336,7 +336,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		return p.Run()
 	}
 
-	if _, err := runViewer(context.Background(), m, engineFor(t, client), start,
+	if _, err := runViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler()); err == nil {
 		t.Error("quitting mid-run should report that the run did not finish")
 	}
@@ -355,7 +355,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	streaming := make(chan struct{})
 
-	var once sync.Once
+	markStreaming := sync.OnceFunc(func() { close(streaming) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -364,7 +364,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 			flusher.Flush()
 		}
 
-		once.Do(func() { close(streaming) })
+		markStreaming()
 
 		select {
 		case <-r.Context().Done():
@@ -398,7 +398,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		return p.Run()
 	}
 
-	result, _ := runViewer(context.Background(), m, engineFor(t, client), start,
+	result, _ := runViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 
 	if result.Reason != loop.StopAborted {

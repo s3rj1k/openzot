@@ -21,7 +21,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	// Every non-empty line must parse as (key, value) by splitting on the first
 	// run of spaces - the whole point of the format.
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, value, found := strings.Cut(strings.TrimRight(line, " "), " ")
 		if !found {
 			t.Fatalf("line %q is not a key/value pair", line)

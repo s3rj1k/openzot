@@ -103,10 +103,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		vpHeight := msg.Height - reserved
-		if vpHeight < 1 {
-			vpHeight = 1
-		}
+		vpHeight := max(msg.Height-reserved, 1)
 		if !m.ready {
 			m.vp = viewport.New(msg.Width, vpHeight)
 			m.ready = true

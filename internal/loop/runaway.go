@@ -52,10 +52,7 @@ func (o textRunOptions) minUnits() int {
 func (o textRunOptions) window() int {
 	minUnits := o.minUnits()
 
-	fallback := 64
-	if minUnits > fallback {
-		fallback = minUnits
-	}
+	fallback := max(minUnits, 64)
 
 	return clamp(o.Window, minUnits, fallback)
 }
@@ -247,10 +244,7 @@ type runawayGuard struct {
 func newRunawayGuard(options guardOptions) *runawayGuard {
 	ngram := clamp(options.Ngram, 2, 4)
 
-	windowFallback := 48
-	if ngram > windowFallback {
-		windowFallback = ngram
-	}
+	windowFallback := max(ngram, 48)
 
 	window := clamp(options.Window, ngram, windowFallback)
 

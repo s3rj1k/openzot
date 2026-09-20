@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -60,7 +60,7 @@ func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]
 		t.Fatal(err)
 	}
 
-	response, err := tool.Run(context.Background(), fantasy.ToolCall{ID: "c", Name: name, Input: string(input)})
+	response, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c", Name: name, Input: string(input)})
 	if err != nil {
 		return nil, err
 	}
@@ -154,14 +154,14 @@ func TestShellTimeoutIsReported(t *testing.T) {
 }
 
 func TestShellRequiresACommand(t *testing.T) {
-	if _, err := shellHandler(context.Background(), map[string]any{}); err == nil {
+	if _, err := shellHandler(t.Context(), map[string]any{}); err == nil {
 		t.Error("running without a command must be reported")
 	}
 }
 
 // A cancelled context stops a command rather than waiting out its timeout.
 func TestShellRespectsCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	cancel()
 
@@ -174,7 +174,7 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 	done := make(chan any, 1)
 
 	go func() {
-		out, _ := shellHandler(context.Background(), map[string]any{
+		out, _ := shellHandler(t.Context(), map[string]any{
 			// the child outlives the shell and keeps the inherited pipe open
 			"command": "sh -c 'sleep 60' & echo started",
 			"timeout": 1,
@@ -205,7 +205,7 @@ func TestTheToolboxIsShellAndTasks(t *testing.T) {
 		names = append(names, tool.Info().Name)
 	}
 
-	sort.Strings(names)
+	slices.Sort(names)
 
 	if got := strings.Join(names, ","); got != "shell,tasks" {
 		t.Errorf("tools = %s, want shell and tasks", got)

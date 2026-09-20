@@ -301,7 +301,7 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	engine.Run(context.Background(), func(event Event) { watched = append(watched, event.Kind) })
+	engine.Run(t.Context(), func(event Event) { watched = append(watched, event.Kind) })
 
 	if len(sunk) == 0 || strings.Join(kindsOf(sunk), ",") != strings.Join(kindsOf(watched), ",") {
 		t.Errorf("sink saw %v, watcher saw %v, want the same events", sunk, watched)

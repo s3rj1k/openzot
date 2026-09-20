@@ -562,7 +562,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -980,7 +980,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 
 	var notices []string
 
-	result := engine.Run(context.Background(), func(event Event) {
+	result := engine.Run(t.Context(), func(event Event) {
 		if event.Kind == EventNotice {
 			notices = append(notices, event.Text)
 		}

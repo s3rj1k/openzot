@@ -163,8 +163,8 @@ func dropConsecutiveDuplicates(messages []Message) []Message {
 // result belongs to the call that just happened, not the identical one earlier
 // in the conversation.
 func lastPairedIndex(messages []Message, message Message) int {
-	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index].Activity.IsPair(message.Activity) {
+	for index, candidate := range slices.Backward(messages) {
+		if candidate.Activity.IsPair(message.Activity) {
 			return index
 		}
 	}

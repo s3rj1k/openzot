@@ -155,7 +155,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 
 	previous, _ := os.ReadFile(path)
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		var err error
 
 		if i%2 == 0 {
@@ -332,20 +332,16 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for w := 0; w < writers; w++ {
-		wg.Add(1)
-
-		go func(w int) {
-			defer wg.Done()
-
-			for i := 0; i < each; i++ {
+	for w := range writers {
+		wg.Go(func() {
+			for i := range each {
 				text := strings.Repeat(fmt.Sprintf("w%d-%d ", w, i), 40)
 
 				if err := writer.Message(conversation.Message{Type: "bot", Text: text}); err != nil {
 					t.Errorf("write: %v", err)
 				}
 			}
-		}(w)
+		})
 	}
 
 	wg.Wait()

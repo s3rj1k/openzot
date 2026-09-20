@@ -3,9 +3,10 @@ package loop
 import (
 	"context"
 	"fmt"
-	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 const planArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"fix it","status":"in_progress"}]}`
@@ -124,7 +125,7 @@ func history(n int, filler string) []conversation.Message {
 	messages := []conversation.Message{{Type: conversation.TypeUser, Text: "kickoff"}}
 	messages = append(messages, planCall("plan", planArgs, "the plan")...)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		id := fmt.Sprintf("c%d", i)
 
 		messages = append(messages,
@@ -290,7 +291,7 @@ func planRun(t *testing.T, options Options, iterations int) Result {
 		t.Fatal(err)
 	}
 
-	return engine.Run(context.Background(), nil)
+	return engine.Run(t.Context(), nil)
 }
 
 func countNudges(result Result) int {

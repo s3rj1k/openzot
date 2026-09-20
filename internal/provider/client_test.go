@@ -296,11 +296,9 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 
 	client := serve(t, seen.capture)
 
-	limit := int64(321)
-
 	call := fantasy.Call{
 		Prompt:          fantasy.Prompt{fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi")},
-		MaxOutputTokens: &limit,
+		MaxOutputTokens: new(int64(321)),
 		Tools: []fantasy.Tool{fantasy.FunctionTool{
 			Name: "shell", Description: "run", InputSchema: map[string]any{"type": "object"},
 		}},
@@ -345,9 +343,7 @@ func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 
 	client := serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" })
 
-	limit := int64(64)
-
-	collect(client, fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: &limit})
+	collect(client, fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
 
 	if seen.body["max_tokens"] != float64(64) {
 		t.Errorf("max_tokens = %v, want the limit", seen.body["max_tokens"])
@@ -531,7 +527,7 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 
 	t.Cleanup(func() { close(release) })
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	done := make(chan struct{})
 
@@ -580,7 +576,7 @@ func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 		}
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	for part := range client.Stream(ctx, hello()) {
 		if part.Type == fantasy.StreamPartTypeTextDelta {
@@ -605,7 +601,7 @@ func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"x"}}]}`+"\n\n")
 
 			w.(http.Flusher).Flush()

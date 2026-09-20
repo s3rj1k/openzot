@@ -853,8 +853,8 @@ func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([
 		return nil, false
 	}
 
-	for index := len(messages) - 1; index >= 0; index-- {
-		activity := messages[index].Activity
+	for index, message := range slices.Backward(messages) {
+		activity := message.Activity
 
 		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
 			continue
@@ -914,9 +914,7 @@ func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) tu
 	call := turnRequest{messages: chat}
 
 	if e.options.MaxTokens != nil {
-		limit := int64(*e.options.MaxTokens)
-
-		call.maxOutput = &limit
+		call.maxOutput = new(int64(*e.options.MaxTokens))
 	}
 
 	return call

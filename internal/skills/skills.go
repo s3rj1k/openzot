@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -71,7 +71,7 @@ func Load(dir string) ([]Skill, error) {
 		skills = append(skills, skill)
 	}
 
-	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
+	slices.SortFunc(skills, func(a, b Skill) int { return strings.Compare(a.Name, b.Name) })
 
 	return skills, nil
 }

@@ -162,7 +162,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 		options := logged(t)
 		options.Skills = offered
 
-		return Run(context.Background(), cfg, testOrder("do the thing"), options)
+		return Run(t.Context(), cfg, testOrder("do the thing"), options)
 	}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -288,7 +288,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return Run(context.Background(), cfg, testOrder("do the thing"), logged(t))
+				return Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -372,7 +372,7 @@ providers:
 			}
 
 			if _, err := quietly(t, func() error {
-				return Run(context.Background(), cfg, testOrder("do the thing"), logged(t))
+				return Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
 			}); err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -689,7 +689,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		done <- builder.String()
 	}()
 
-	err := Run(context.Background(), cfg, testOrder("do the thing"), logged(t))
+	err := Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
 
 	write.Close()
 
@@ -715,7 +715,7 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg.DefaultProvider = "nowhere"
 	cfg.Providers = map[string]config.ProviderConfig{}
 
-	err := Run(context.Background(), cfg, testOrder("task"), logged(t))
+	err := Run(t.Context(), cfg, testOrder("task"), logged(t))
 
 	if err == nil {
 		t.Fatal("an unconfigured provider must fail")
@@ -821,7 +821,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".zot", "orders", "task.jsonl")
 
 	if _, err := quietly(t, func() error {
-		return Run(context.Background(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
 	}); err != nil {
 		t.Fatalf("RunWith: %v", err)
 	}
@@ -869,9 +869,9 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if output, err := quietly(t, func() error {
-			return Run(context.Background(), cfg, testOrder("the same brief"), Options{Viewer: headlessViewer, SessionPath: path})
+			return Run(t.Context(), cfg, testOrder("the same brief"), Options{Viewer: headlessViewer, SessionPath: path})
 		}); err != nil {
 			t.Fatalf("run %d: %v\n%s", i+1, err, output)
 		}
@@ -949,7 +949,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	cfg.Providers["local"] = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared("glm-5.2")}
 
 	if output, err := quietly(t, func() error {
-		return Run(context.Background(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
 	}); err != nil {
 		t.Fatalf("RunWith: %v\n%s", err, output)
 	}
@@ -1028,7 +1028,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	}
 
 	output, err := quietly(t, func() error {
-		return Run(context.Background(), cfg, testOrder("do the thing"), Options{
+		return Run(t.Context(), cfg, testOrder("do the thing"), Options{
 			Viewer:      headlessViewer,
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
@@ -1049,7 +1049,7 @@ func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 	t.Chdir(dir)
 
 	_, err := quietly(t, func() error {
-		return Run(context.Background(), stubProvider(t), testOrder("do the thing"), Options{Viewer: headlessViewer})
+		return Run(t.Context(), stubProvider(t), testOrder("do the thing"), Options{Viewer: headlessViewer})
 	})
 	if err == nil || !strings.Contains(err.Error(), "session log") {
 		t.Fatalf("err = %v, want a run with no log refused", err)
@@ -1078,7 +1078,7 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	}
 
 	// and the library entry point, which does not validate, says the same
-	err = Run(context.Background(), cfg, testOrder("task"), logged(t))
+	err = Run(t.Context(), cfg, testOrder("task"), logged(t))
 	if err == nil || !strings.Contains(err.Error(), "providers:") {
 		t.Errorf("Run = %v, want it to say to declare a provider", err)
 	}
@@ -1440,7 +1440,7 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 				continue
 			}
 
-			response, err := tool.Run(context.Background(), fantasy.ToolCall{
+			response, err := tool.Run(t.Context(), fantasy.ToolCall{
 				ID: "c", Name: tools.ShellTool, Input: `{"command":"head -c 600000 /dev/zero | tr '\\0' x"}`,
 			})
 			if err != nil {
@@ -1505,7 +1505,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 
 	if _, err := quietly(t, func() error {
-		return Run(context.Background(), cfg, newOrderNamed(t, "do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
 	}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

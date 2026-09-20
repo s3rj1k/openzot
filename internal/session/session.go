@@ -91,7 +91,7 @@ type Event struct {
 	Kind      string `json:"kind"`
 	Tool      string `json:"tool,omitempty"`
 	Text      string `json:"text,omitempty"`
-	Iteration int    `json:"iteration,omitempty"`
+	Iteration int    `json:"iteration,omitzero"`
 }
 
 // Result is how a run ended.
@@ -121,8 +121,8 @@ type Result struct {
 	// InputTokens and OutputTokens are the provider-billed totals for the run,
 	// persisted so an audit can see cost rather than only the terminal that
 	// produced it.
-	InputTokens  int `json:"inputTokens,omitempty"`
-	OutputTokens int `json:"outputTokens,omitempty"`
+	InputTokens  int `json:"inputTokens,omitzero"`
+	OutputTokens int `json:"outputTokens,omitzero"`
 }
 
 // Writer appends records to a session log.

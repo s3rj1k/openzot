@@ -1,11 +1,11 @@
 package loop
 
 import (
-	"context"
 	"fmt"
-	"github.com/openzot/openzot/internal/conversation"
 	"strings"
 	"testing"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // requestFor is what the engine would send for a conversation it has not seen
@@ -68,7 +68,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		hard      = window * DefaultContextHard / 100
 	)
 
-	for round := 0; round < 120; round++ {
+	for round := range 120 {
 		id := fmt.Sprintf("c%d", round)
 
 		messages = append(messages,
@@ -136,7 +136,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := engine.Run(context.Background(), nil)
+	result := engine.Run(t.Context(), nil)
 
 	if result.Reason != StopIterations {
 		t.Fatalf("reason = %q, want the run to reach its iteration cap", result.Reason)

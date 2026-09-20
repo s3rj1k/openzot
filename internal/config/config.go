@@ -303,8 +303,8 @@ func resolveSecret(v string) string {
 		return ""
 	}
 
-	if strings.HasPrefix(v, "$") {
-		name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(v, "$"), "{"), "}")
+	if after, ok := strings.CutPrefix(v, "$"); ok {
+		name := strings.TrimSuffix(strings.TrimPrefix(after, "{"), "}")
 		return strings.TrimSpace(os.Getenv(strings.TrimSpace(name)))
 	}
 	return v

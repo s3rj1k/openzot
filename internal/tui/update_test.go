@@ -2,10 +2,11 @@ package tui
 
 import (
 	"fmt"
-	"github.com/charmbracelet/lipgloss"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -103,7 +104,7 @@ func TestQuitKeys(t *testing.T) {
 func TestJumpKeys(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		m.appendEntry("line")
 	}
 
@@ -127,7 +128,7 @@ func TestJumpKeys(t *testing.T) {
 func TestScrollingStopsFollowing(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		m.appendEntry("line")
 	}
 
@@ -522,7 +523,7 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 	var lines []string
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
 
@@ -576,7 +577,7 @@ func TestARecordThatFitsIsNotClipped(t *testing.T) {
 func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 	var lines []string
 
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		lines = append(lines, "line")
 	}
 
@@ -766,7 +767,7 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 
 	limit := m.maxEntries          // DefaultMaxScrollback
 	total := limit + limit/4 + 200 // enough to force a trim past the cap + slack
-	for i := 0; i < total; i++ {
+	for i := range total {
 		m.appendEntry(fmt.Sprintf("line %d", i))
 	}
 
@@ -809,7 +810,7 @@ func TestScrollbackCapIsConfigurable(t *testing.T) {
 	m := newModel("t", "m", "b", "d")
 	m.maxEntries = 50 // what Run sets from Meta.MaxScrollback
 
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		m.appendEntry(fmt.Sprintf("line %d", i))
 	}
 
@@ -850,7 +851,7 @@ func TestMetaBarOrder(t *testing.T) {
 func metaSegments(bar string) []string {
 	var out []string
 
-	for _, part := range strings.Split(stripANSI(bar), "·") {
+	for part := range strings.SplitSeq(stripANSI(bar), "·") {
 		if part = strings.TrimSpace(part); part != "" {
 			out = append(out, part)
 		}
@@ -1150,12 +1151,12 @@ func TestRenderTasksShowsTheChecklist(t *testing.T) {
 // A call the tool refuses - no tasks, an unknown status - still shows its header
 // rather than crashing the render, and draws nothing it cannot vouch for.
 func TestRenderTasksIsRobust(t *testing.T) {
-	for name, args := range map[string]map[string]interface{}{
+	for name, args := range map[string]map[string]any{
 		"no arguments":  {},
-		"an empty list": {"tasks": []interface{}{}},
+		"an empty list": {"tasks": []any{}},
 		"a bad status":  tasksArgs([3]string{"a", "started", ""}),
 		"not a list":    {"tasks": "do it"},
-		"a non-object":  {"tasks": []interface{}{"do it"}},
+		"a non-object":  {"tasks": []any{"do it"}},
 	} {
 		out := stripANSI(renderToolStart("tasks", args))
 

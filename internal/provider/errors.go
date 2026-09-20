@@ -22,9 +22,7 @@ const maxDumpBody = 1 << 20 // 1 MiB
 
 // providerError is the error fantasy raises for anything an endpoint did wrong.
 func providerError(err error) (*fantasy.ProviderError, bool) {
-	var found *fantasy.ProviderError
-
-	return found, errors.As(err, &found)
+	return errors.AsType[*fantasy.ProviderError](err)
 }
 
 // IsProviderError reports whether err is a failure the endpoint returned, as
@@ -248,7 +246,7 @@ type Failure struct {
 	// RequestBytes is the size of the request that was refused - against a
 	// suspected context ceiling, the number that turns a correlation into a
 	// diagnosis.
-	RequestBytes int `json:"request_bytes,omitempty"`
+	RequestBytes int `json:"request_bytes,omitzero"`
 }
 
 // FailureOf extracts the wire evidence from an error, when it carries any.

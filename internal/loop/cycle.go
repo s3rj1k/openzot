@@ -119,8 +119,7 @@ type activityTailEntry struct {
 func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
 
-	for index := len(messages) - 1; index >= 0; index-- {
-		message := messages[index]
+	for _, message := range slices.Backward(messages) {
 
 		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			break
@@ -251,8 +250,7 @@ func distinct(values []string) int {
 func hasRepeatedResultRun(messages []conversation.Message) bool {
 	var signatures []string
 
-	for index := len(messages) - 1; index >= 0; index-- {
-		message := messages[index]
+	for _, message := range slices.Backward(messages) {
 
 		if message.Type != conversation.TypeActivity || message.Activity == nil {
 			continue
@@ -299,10 +297,7 @@ func hasRepeatedResultRun(messages []conversation.Message) bool {
 // repetitive - enumerations, grids, table rows - and neither is the answer the
 // user sees.
 func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
-	start := len(messages) - 5
-	if start < 0 {
-		start = 0
-	}
+	start := max(len(messages)-5, 0)
 
 	for _, message := range messages[start:] {
 		if message.Type == conversation.TypeReasoning || message.Type == conversation.TypeActivity {

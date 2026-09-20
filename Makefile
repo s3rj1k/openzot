@@ -21,7 +21,7 @@ help:
 	@echo "  make test       Run the test suite"
 	@echo "  make race       Run the test suite under the race detector"
 	@echo "  make cover      Report per-package test coverage"
-	@echo "  make vet        Run go vet"
+	@echo "  make vet        Run go vet, and refuse code go fix would modernise"
 	@echo "  make fmt        Format the tree"
 	@echo "  make lint       Alias for vet"
 	@echo "  make clean      Remove built binaries"
@@ -44,8 +44,11 @@ race:
 cover:
 	@go test -cover ./... -count=1 | grep coverage | sed 's|github.com/openzot/openzot||'
 
+# go fix carries the modernizers: a loop, a min/max or a helper that the
+# standard library now spells is reported here rather than left to review.
 vet:
 	go vet ./...
+	@out="$$(go fix -diff ./... 2>&1)"; if [ -n "$$out" ]; then echo "$$out"; echo "go fix would change the tree: run 'go fix ./...'"; exit 1; fi
 
 lint: vet
 	@echo "lint ok"
