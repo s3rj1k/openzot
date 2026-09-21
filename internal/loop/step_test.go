@@ -1,4 +1,4 @@
-package loop
+package loop_test
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -46,18 +47,18 @@ func countTool(calls *int) fantasy.AgentTool {
 func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, &Options{
+	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
-			[3]string{"c2", SuccessTool, `{"summary":"all done"}`},
+			[3]string{"c2", loop.SuccessTool, `{"summary":"all done"}`},
 		)}),
 		Tools:      []fantasy.AgentTool{countTool(&ran)},
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
-	assert.Equal(t, StopSettled, result.Reason)
+	assert.Equal(t, loop.StopSettled, result.Reason)
 	assert.Equal(t, "all done", result.Message)
 
 	assert.Equal(t, 0, ran, "want it not to run at all")
@@ -72,7 +73,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 	ran := 0
 
-	result := run(t, &Options{
+	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		Client: stub(t, []string{toolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
@@ -83,7 +84,7 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 		MaxCalls: 1,
 	})
 
-	require.Equal(t, StopCalls, result.Reason, "want the call budget to stop the run")
+	require.Equal(t, loop.StopCalls, result.Reason, "want the call budget to stop the run")
 
 	assert.Equal(t, 1, ran, "want just the one call within the budget")
 
@@ -98,7 +99,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 	for _, finish := range []string{"stop", "something_new"} {
 		ran := 0
 
-		result := run(t, &Options{
+		result := run(t, &loop.Options{
 			ContextWindow: testWindow,
 			Client: stub(t,
 				[]string{toolCalls(finish, [3]string{"c1", litEcho, `{}`})},
@@ -111,7 +112,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 
 		assert.Equal(t, 1, ran, "finish %q: the tool ran %d times, want 1", finish, ran)
 
-		assert.Equal(t, StopSettled, result.Reason, "want the run to carry on and stop normally")
+		assert.Equal(t, loop.StopSettled, result.Reason, "want the run to carry on and stop normally")
 	}
 }
 
@@ -120,7 +121,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 	ran := 0
 
-	result := run(t, &Options{
+	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("length", [3]string{"c1", litEcho, `{}`})},
@@ -140,7 +141,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 // one it is handed might. Fantasy will not start from it, so it is given a line
 // to continue from rather than failing the run.
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
-	result := run(t, &Options{
+	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{settle("carrying on")}),
 		Messages: []conversation.Message{
@@ -149,14 +150,14 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 		},
 	})
 
-	require.Equal(t, StopSettled, result.Reason, "want the run to go ahead")
+	require.Equal(t, loop.StopSettled, result.Reason, "want the run to go ahead")
 }
 
 // A call to a tool that does not exist, or with input that cannot be read, is
 // answered by fantasy without the tool being touched. It is still a call. It
 // counts, and it is written into the conversation as a request and a failure.
 func TestACallThatNeverReachedATool(t *testing.T) {
-	result := run(t, &Options{
+	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		Client: stub(t,
 			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
@@ -192,7 +193,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ran := 0
 
-			result := run(t, &Options{
+			result := run(t, &loop.Options{
 				ContextWindow: testWindow,
 				Client: stub(t,
 					[]string{toolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
@@ -236,7 +237,7 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 	client, err := provider.NewClient(t.Context(), config)
 	require.NoError(t, err)
 
-	run(t, &Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
+	run(t, &loop.Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
 
 	require.NotNil(t, body, "the server saw no request")
 
@@ -266,7 +267,7 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 	}
 }
 
-func kindsOf(kinds []EventKind) []string {
+func kindsOf(kinds []loop.EventKind) []string {
 	names := make([]string, len(kinds))
 
 	for i, kind := range kinds {
@@ -278,17 +279,17 @@ func kindsOf(kinds []EventKind) []string {
 
 // OnEvent sees every event of a run, alongside whoever is watching it.
 func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
-	var sunk, watched []EventKind
+	var sunk, watched []loop.EventKind
 
-	engine, err := New(&Options{
+	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
 		Client:        stub(t, []string{settle("hi")}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
-		OnEvent:       func(event Event) { sunk = append(sunk, event.Kind) },
+		OnEvent:       func(event loop.Event) { sunk = append(sunk, event.Kind) },
 	})
 	require.NoError(t, err)
 
-	engine.Run(t.Context(), func(event Event) { watched = append(watched, event.Kind) })
+	engine.Run(t.Context(), func(event loop.Event) { watched = append(watched, event.Kind) })
 
 	assert.NotEmpty(t, sunk, "want the same events")
 	assert.Equal(t, strings.Join(kindsOf(watched), ","), strings.Join(kindsOf(sunk), ","), "want the same events")
@@ -298,11 +299,11 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 // The call is announced with an empty object, not with nothing.
 func TestAnEmptyInputIsAnEmptyObject(t *testing.T) {
 	for _, input := range []string{"", "  ", "{}"} {
-		arguments := decodeInput(input)
+		arguments := loop.DecodeInput(input)
 		assert.NotNil(t, arguments, "want an empty object")
 		assert.Empty(t, arguments, "want an empty object")
 	}
 
-	arguments := decodeInput("[1]")
+	arguments := loop.DecodeInput("[1]")
 	assert.Nil(t, arguments, "input that is not an object decoded to %v, want nil", arguments)
 }

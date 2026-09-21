@@ -129,28 +129,28 @@ func (r *Result) ExitCode() int {
 
 // Engine runs conversations.
 type Engine struct {
-	options Options
+	Options Options
 
-	maxIterations    int
-	maxCalls         int
-	maxDuration      time.Duration
-	maxContinuations int
+	MaxIterations    int
+	MaxCalls         int
+	MaxDuration      time.Duration
+	MaxContinuations int
 
 	// maxRecoveries is the runaway fallback under the consecutive count. See
 	// DefaultMaxRecoveries.
 	maxRecoveries int
-	maxCycles     int
-	maxEmpties    int
-	maxSettles    int
-	retryBackoff  time.Duration
+	MaxCycles     int
+	MaxEmpties    int
+	MaxSettles    int
+	RetryBackoff  time.Duration
 
-	// window is the context window requests are held under. The configured one,
+	// Window is the context window requests are held under. The configured one,
 	// lowered when a provider rejects a request and states its own ceiling.
-	window      int
+	Window      int
 	planEvery   int
 	planTurns   int
-	softPercent int
-	hardPercent int
+	SoftPercent int
+	HardPercent int
 
 	// toolTokens caches the cost of the tool schemas, which are the same on
 	// every request of a run and would otherwise be re-counted each round.
@@ -199,39 +199,39 @@ func New(options *Options) (*Engine, error) {
 	}
 
 	return &Engine{
-		options:       *options,
-		maxIterations: pick(options.MaxIterations, DefaultMaxIterations),
+		Options:       *options,
+		MaxIterations: pick(options.MaxIterations, DefaultMaxIterations),
 		// Calls and time are unbounded unless the caller sets them, and only the iteration count is a hard
 		// default. A non-positive value means no cap, so they are stored raw rather than picked.
-		maxCalls:         max(options.MaxCalls, 0),
-		maxDuration:      options.MaxDuration,
-		maxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
+		MaxCalls:         max(options.MaxCalls, 0),
+		MaxDuration:      options.MaxDuration,
+		MaxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
 		maxRecoveries:    pick(options.MaxRecoveries, DefaultMaxRecoveries),
-		maxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
-		maxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
-		maxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
+		MaxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
+		MaxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
+		MaxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
-		retryBackoff: cmp.Or(options.RetryBackoff, DefaultRetryBackoff),
-		window:       options.ContextWindow,
-		softPercent:  pick(options.ContextSoft, DefaultContextSoft),
+		RetryBackoff: cmp.Or(options.RetryBackoff, DefaultRetryBackoff),
+		Window:       options.ContextWindow,
+		SoftPercent:  pick(options.ContextSoft, DefaultContextSoft),
 		planEvery:    planEvery,
 		planTurns:    pick(options.PlanMinTurns, DefaultPlanMinTurns),
-		hardPercent:  pick(options.ContextHard, DefaultContextHard),
+		HardPercent:  pick(options.ContextHard, DefaultContextHard),
 	}, nil
 }
 
 // canContinue reports whether another recovery attempt is within both bounds, the consecutive run and the total across the
 // run. Both are checked wherever one is spent, so neither can be dodged by a different route into recovery.
 func (e *Engine) canContinue(budget Budget) bool {
-	return budget.Continuations < e.maxContinuations &&
+	return budget.Continuations < e.MaxContinuations &&
 		budget.Recoveries < e.maxRecoveries
 }
 
-// backoffFor is the pause before the attempt'th consecutive retry. It is base, doubling per attempt, capped at
+// BackoffFor is the pause before the attempt'th consecutive retry. It is base, doubling per attempt, capped at
 // MaxRetryBackoff even when base alone exceeds the cap, so no generous RetryBackoff makes the first retry the longest wait.
 // A non-positive base means no wait at all.
-func backoffFor(base time.Duration, attempt int) time.Duration {
+func BackoffFor(base time.Duration, attempt int) time.Duration {
 	if base <= 0 || attempt <= 0 {
 		return 0
 	}
@@ -253,10 +253,10 @@ func backoffFor(base time.Duration, attempt int) time.Duration {
 	return delay
 }
 
-// rateLimitWait is how long to sit out a rate limit, the larger of the provider's advised delay and the ordinary backoff. The
+// RateLimitWait is how long to sit out a rate limit, the larger of the provider's advised delay and the ordinary backoff. The
 // backoff is a floor, so a "Retry-After: 0" cannot become a tight loop. The advice is capped, since an unattended run must not
 // be parked for hours by a mistaken or hostile header.
-func rateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.Duration {
+func RateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.Duration {
 	if !ok {
 		return fallback
 	}
@@ -301,7 +301,7 @@ func firstNonNil(a, b error) error {
 
 // terminalDetail pulls the explanation out of a terminal call's arguments.
 func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
-	if value, ok := decodeInput(call.Input)[key].(string); ok && value != "" {
+	if value, ok := DecodeInput(call.Input)[key].(string); ok && value != "" {
 		return value
 	}
 
@@ -324,13 +324,13 @@ func terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
 
 // handOver gives the conversation as it stands to the OnConversation hook.
 func (e *Engine) handOver(messages []conversation.Message) {
-	if e.options.OnConversation != nil {
-		e.options.OnConversation(messages)
+	if e.Options.OnConversation != nil {
+		e.Options.OnConversation(messages)
 	}
 }
 
-// cycleDetail turns a heuristic name into something the model can act on.
-func cycleDetail(heuristic string) string {
+// CycleDetail turns a heuristic name into something the model can act on.
+func CycleDetail(heuristic string) string {
 	switch heuristic {
 	case "repeated_result_run":
 		return "you have called the same tool with the same arguments and received the same result several times"
@@ -355,10 +355,10 @@ func finish(messages []conversation.Message, budget Budget, reason StopReason, d
 	}
 }
 
-// checkCycle looks for repetition and nudges the model, or stops the run once
+// CheckCycle looks for repetition and nudges the model, or stops the run once
 // nudging has failed enough times.
-func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
-	detected := describeCycle(messages)
+func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
+	detected := DescribeCycle(messages)
 
 	if detected == "" {
 		// A round that is not cyclic breaks the run of repetitions. The budget counts consecutive cycles, so
@@ -368,7 +368,7 @@ func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]
 		return nil, nil
 	}
 
-	if budget.Cycles >= e.maxCycles {
+	if budget.Cycles >= e.MaxCycles {
 		result := finish(messages, *budget, StopCycle,
 			fmt.Sprintf("the model kept repeating itself (%s)", detected), nil)
 
@@ -377,15 +377,15 @@ func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]
 
 	budget.Cycles++
 
-	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
+	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: CycleNotice(CycleDetail(detected))}), nil
 }
 
-// narrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
+// NarrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
 // it went down. The provider's stated window beats the configured one, since a rejection means the configured one was wrong.
 // Without a usable number the window steps down a quarter, to a floor. Only the window changes, not the conversation.
-func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
-	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
-		e.window = limit.SuggestedLimit
+func (e *Engine) NarrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
+	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.Window {
+		e.Window = limit.SuggestedLimit
 
 		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
 			"provider reported a %d token window; retrying under %d",
@@ -394,13 +394,13 @@ func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) boo
 		return true
 	}
 
-	narrowed := e.window * 3 / 4
+	narrowed := e.Window * 3 / 4
 
-	if narrowed < e.options.ContextWindow/narrowFloor {
+	if narrowed < e.Options.ContextWindow/NarrowFloor {
 		return false
 	}
 
-	e.window = narrowed
+	e.Window = narrowed
 
 	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
 		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
@@ -408,9 +408,9 @@ func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) boo
 	return true
 }
 
-// turnsHeld is how many whole turns the window still holds. The turn about to be
+// TurnsHeld is how many whole turns the window still holds. The turn about to be
 // asked for is the last of turnStarts and has not happened yet, so it is not one.
-func turnsHeld(turnStarts []int, forgotten int) int {
+func TurnsHeld(turnStarts []int, forgotten int) int {
 	turns := 0
 
 	for _, start := range turnStarts[:len(turnStarts)-1] {
@@ -422,18 +422,18 @@ func turnsHeld(turnStarts []int, forgotten int) int {
 	return turns
 }
 
-// forgetOldest moves the offset forward as far as the window calls for, and
+// ForgetOldest moves the offset forward as far as the window calls for, and
 // reports whether it moved.
-func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
+func (e *Engine) ForgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
 	// the system prompt and the tool schemas are sent on every request and are
 	// part of what fills the window
-	used := conversation.EstimateTokens(e.options.Instructions) + e.toolSchemaTokens(tools)
+	used := conversation.EstimateTokens(e.Options.Instructions) + e.toolSchemaTokens(tools)
 
 	for _, message := range messages[*forgotten:] {
 		used += conversation.Cost(message)
 	}
 
-	next := conversation.Forget(messages, *forgotten, used, e.window, e.softPercent, e.hardPercent, conversation.Cost)
+	next := conversation.Forget(messages, *forgotten, used, e.Window, e.SoftPercent, e.HardPercent, conversation.Cost)
 	if next == *forgotten {
 		return false
 	}
@@ -446,17 +446,17 @@ func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, t
 	return true
 }
 
-// repostedPlan is the model's latest plan, its last successful plan-tool call, as a fresh call and result to append. It reports
+// RepostedPlan is the model's latest plan, its last successful plan-tool call, as a fresh call and result to append. It reports
 // false when there is no plan or the plan is still in the window and needs no help.
-func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
-	if e.options.PlanTool == "" {
+func (e *Engine) RepostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
+	if e.Options.PlanTool == "" {
 		return nil, false
 	}
 
 	for index, message := range slices.Backward(messages) {
 		activity := message.Activity
 
-		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.options.PlanTool || activity.Failure != "" {
+		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.Options.PlanTool || activity.Failure != "" {
 			continue
 		}
 
@@ -478,20 +478,20 @@ func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([
 	return nil, false
 }
 
-// fitToWindow forgets the oldest messages as the window fills and puts the plan back in front of the model when forgetting left
+// FitToWindow forgets the oldest messages as the window fills and puts the plan back in front of the model when forgetting left
 // it too little to go on. It returns the conversation, grown by the plan when posted. The forgotten offset only moves forward.
-func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
-	if !e.forgetOldest(messages, forgotten, tools, emit) {
+func (e *Engine) FitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
+	if !e.ForgetOldest(messages, forgotten, tools, emit) {
 		return messages
 	}
 
-	turns := turnsHeld(turnStarts, *forgotten)
+	turns := TurnsHeld(turnStarts, *forgotten)
 
 	if turns >= e.planTurns {
 		return messages
 	}
 
-	posted, ok := e.repostedPlan(messages, *forgotten)
+	posted, ok := e.RepostedPlan(messages, *forgotten)
 	if !ok {
 		return messages
 	}
@@ -502,7 +502,7 @@ func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, tu
 	messages = append(messages, posted...)
 
 	// the plan costs something too
-	e.forgetOldest(messages, forgotten, tools, emit)
+	e.ForgetOldest(messages, forgotten, tools, emit)
 
 	return messages
 }
@@ -512,9 +512,9 @@ func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, tu
 // exist and point there.
 const trimmedKickoff = "Continue working on your task as stated in the instructions."
 
-// buildRequest assembles the provider request from what the window still holds.
+// BuildRequest assembles the provider request from what the window still holds.
 // The conversation from the forgotten offset on.
-func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) turnRequest {
+func (e *Engine) BuildRequest(messages []conversation.Message, forgotten int) TurnRequest {
 	chat := conversation.ToPrompt(messages[forgotten:])
 
 	// Forgetting takes the oldest first, which is the opening user message. A conversation with no user
@@ -539,18 +539,18 @@ func (e *Engine) buildRequest(messages []conversation.Message, forgotten int) tu
 		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
 	}
 
-	call := turnRequest{messages: chat}
+	call := TurnRequest{Messages: chat}
 
-	if e.options.MaxTokens != nil {
-		call.maxOutput = new(int64(*e.options.MaxTokens))
+	if e.Options.MaxTokens != nil {
+		call.maxOutput = new(int64(*e.Options.MaxTokens))
 	}
 
 	return call
 }
 
-// toolDefinitions renders the tool schemas, with the terminal tools.
-func (e *Engine) toolDefinitions() []fantasy.Tool {
-	offered := slices.Concat(e.options.Tools, terminalTools())
+// ToolDefinitions renders the tool schemas, with the terminal tools.
+func (e *Engine) ToolDefinitions() []fantasy.Tool {
+	offered := slices.Concat(e.Options.Tools, TerminalTools())
 
 	// Map order was random once, and a tool list that reshuffles between requests defeats server-side
 	// prompt caches keyed on the prefix. So the order is fixed by name.
@@ -585,8 +585,8 @@ func (e *Engine) toolDefinitions() []fantasy.Tool {
 // happens and may be nil. Events are delivered synchronously, so a slow consumer throttles the run rather than dropping any.
 func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 	emit := func(event Event) {
-		if e.options.OnEvent != nil {
-			e.options.OnEvent(event)
+		if e.Options.OnEvent != nil {
+			e.Options.OnEvent(event)
 		}
 
 		if watch != nil {
@@ -594,7 +594,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		}
 	}
 
-	messages := append([]conversation.Message(nil), e.options.Messages...)
+	messages := append([]conversation.Message(nil), e.Options.Messages...)
 
 	budget := Budget{}
 
@@ -608,7 +608,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	nudged := 0
 
-	tools := e.toolDefinitions()
+	tools := e.ToolDefinitions()
 
 	state := &step{engine: e}
 	agent := e.newAgent(state)
@@ -634,12 +634,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		// A time cap is checked at the iteration boundary like every budget. One long tool call can overrun by
 		// one operation (the shell timeout bounds it), but no new iteration starts past the deadline.
-		if e.maxDuration > 0 && time.Since(started) >= e.maxDuration {
+		if e.MaxDuration > 0 && time.Since(started) >= e.MaxDuration {
 			return finish(messages, budget, StopTime,
-				fmt.Sprintf("stopped after %s", e.maxDuration), nil)
+				fmt.Sprintf("stopped after %s", e.MaxDuration), nil)
 		}
 
-		if budget.Iterations >= e.maxIterations {
+		if budget.Iterations >= e.MaxIterations {
 			return finish(messages, budget, StopIterations,
 				fmt.Sprintf("stopped after %d iterations", budget.Iterations), nil)
 		}
@@ -648,10 +648,10 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		emit(Event{Kind: EventIteration, Iteration: budget.Iterations})
 
-		if e.options.PlanTool != "" && e.planEvery > 0 && budget.Iterations%e.planEvery == 0 && nudged != budget.Iterations {
+		if e.Options.PlanTool != "" && e.planEvery > 0 && budget.Iterations%e.planEvery == 0 && nudged != budget.Iterations {
 			nudged = budget.Iterations
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: planNudge(e.options.PlanTool)})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: PlanNudge(e.Options.PlanTool)})
 		}
 
 		// a failed call is retried from the same place. It is one turn, not two
@@ -659,9 +659,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			turnStarts = append(turnStarts, len(messages))
 		}
 
-		messages = e.fitToWindow(messages, &forgotten, turnStarts, tools, emit)
+		messages = e.FitToWindow(messages, &forgotten, turnStarts, tools, emit)
 
-		request := e.buildRequest(messages, forgotten)
+		request := e.BuildRequest(messages, forgotten)
 
 		turn, err := e.runStep(ctx, agent, state, request, &messages, &budget, emit)
 
@@ -700,7 +700,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			if limit, ok := provider.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
-				if e.narrowWindow(limit, emit) {
+				if e.NarrowWindow(limit, emit) {
 					continue
 				}
 			}
@@ -718,13 +718,13 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 				// Space the retries out. Otherwise the continuation budget is spent in milliseconds and the run dies
 				// to an outage it would have outlived by waiting. Cancellation cuts the wait short.
-				delay := backoffFor(e.retryBackoff, retries)
+				delay := BackoffFor(e.RetryBackoff, retries)
 
 				if limited {
 					// The advised delay is honored, but the backoff stays a floor under it, so "Retry-After: 0" cannot
 					// become the instant-retry loop the backoff exists to prevent.
 					advised, ok := provider.RetryAfter(err)
-					delay = rateLimitWait(advised, ok, delay)
+					delay = RateLimitWait(advised, ok, delay)
 				}
 
 				wait(ctx, delay)
@@ -761,9 +761,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
 				"answer cut off at the output limit; asking the model to continue (%d/%d)",
-				budget.Continuations, e.maxContinuations)})
+				budget.Continuations, e.MaxContinuations)})
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: truncationNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: TruncationNotice()})
 
 			continue
 		}
@@ -789,7 +789,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			// the loop only checks for repetition once tools have run, because
 			// a repetition is a repetition of *actions*
-			if next, stop := e.checkCycle(messages, &budget); stop != nil {
+			if next, stop := e.CheckCycle(messages, &budget); stop != nil {
 				return *stop
 			} else if next != nil {
 				messages = next
@@ -802,7 +802,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// empty budget, not the larger settle budget. The nudge still points at the terminal tools.
 
 		if turn.Text == "" && turn.Reasoning == "" {
-			if budget.Empties >= e.maxEmpties {
+			if budget.Empties >= e.MaxEmpties {
 				return finish(messages, budget, StopEmpty,
 					"the model repeatedly produced nothing", nil)
 			}
@@ -813,17 +813,17 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// nudged back to life looked exactly like a hang.
 			emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
 				"the model returned an empty turn; nudging it to continue (%d/%d)",
-				budget.Empties, e.maxEmpties)})
+				budget.Empties, e.MaxEmpties)})
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: settleNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: SettleNotice()})
 
 			continue
 		}
 
 		// The model produced content but did not act. That is not an ending. Nudge
-		// it toward success / failure, up to maxSettles.
+		// it toward success / failure, up to MaxSettles.
 
-		if budget.Settles >= e.maxSettles {
+		if budget.Settles >= e.MaxSettles {
 			return finish(messages, budget, StopUnsettled,
 				"the model stopped without recording an outcome", nil)
 		}
@@ -832,9 +832,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
 			"the model stopped without recording an outcome; nudging it to settle (%d/%d)",
-			budget.Settles, e.maxSettles)})
+			budget.Settles, e.MaxSettles)})
 
-		messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: settleNotice()})
+		messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: SettleNotice()})
 	}
 }
 

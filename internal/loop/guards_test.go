@@ -1,4 +1,4 @@
-package loop
+package loop_test
 
 import (
 	"strings"
@@ -7,6 +7,8 @@ import (
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // Every notice must be recognizable as an injected instruction rather than the
@@ -14,39 +16,39 @@ import (
 // without it would break loop detection.
 func TestNoticesCarryThePrefix(t *testing.T) {
 	notices := map[string]string{
-		"cycle":      cycleNotice("you keep calling the same tool"),
-		"settle":     settleNotice(),
-		"truncation": truncationNotice(),
+		"cycle":      loop.CycleNotice("you keep calling the same tool"),
+		"settle":     loop.SettleNotice(),
+		"truncation": loop.TruncationNotice(),
 	}
 
 	for name, notice := range notices {
-		assert.True(t, strings.HasPrefix(notice, noticePrefix), "%s notice does not carry the prefix", name)
+		assert.True(t, strings.HasPrefix(notice, loop.NoticePrefix), "%s notice does not carry the prefix", name)
 
-		assert.NotEmpty(t, strings.TrimSpace(strings.TrimPrefix(notice, noticePrefix)), "%s notice has no content", name)
+		assert.NotEmpty(t, strings.TrimSpace(strings.TrimPrefix(notice, loop.NoticePrefix)), "%s notice has no content", name)
 	}
 }
 
 // A nudge that only says "you seem stuck" produces another lap. Naming the
 // behavior is what makes the model change approach.
 func TestCycleNoticeNamesTheBehaviour(t *testing.T) {
-	notice := cycleNotice("you have called the same tool with the same arguments")
+	notice := loop.CycleNotice("you have called the same tool with the same arguments")
 
 	assert.Contains(t, notice, "same tool with the same arguments", "the specific behavior must survive into the notice")
 
 	// an unattributed cycle still produces something actionable
-	assert.Contains(t, cycleNotice(""), "repeating", "a detail-less cycle notice must still be actionable")
+	assert.Contains(t, loop.CycleNotice(""), "repeating", "a detail-less cycle notice must still be actionable")
 }
 
 func TestSettleNoticeNamesBothTerminalTools(t *testing.T) {
-	notice := settleNotice()
+	notice := loop.SettleNotice()
 
-	for _, tool := range []string{SuccessTool, FailureTool} {
+	for _, tool := range []string{loop.SuccessTool, loop.FailureTool} {
 		assert.Contains(t, notice, tool)
 	}
 }
 
 func TestTerminalToolsAreWellFormed(t *testing.T) {
-	tools := terminalTools()
+	tools := loop.TerminalTools()
 
 	require.Len(t, tools, 2)
 
@@ -56,7 +58,7 @@ func TestTerminalToolsAreWellFormed(t *testing.T) {
 		byName[tool.Info().Name] = tool
 	}
 
-	for name, required := range map[string]string{SuccessTool: "summary", FailureTool: "reason"} {
+	for name, required := range map[string]string{loop.SuccessTool: "summary", loop.FailureTool: "reason"} {
 		tool, ok := byName[name]
 
 		require.True(t, ok, "terminal tool %q missing", name)
@@ -82,30 +84,30 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 		"repeated_result_run",
 		"repeated_message_text_run",
 	} {
-		assert.NotEmpty(t, cycleDetail(heuristic), "heuristic %q has no explanation for the model", heuristic)
+		assert.NotEmpty(t, loop.CycleDetail(heuristic), "heuristic %q has no explanation for the model", heuristic)
 	}
 
-	detail := cycleDetail("something-new")
+	detail := loop.CycleDetail("something-new")
 	assert.Empty(t, detail, "an unknown heuristic should fall back to the generic notice, got %q", detail)
 }
 
 // A caller scripting against zot tells success from everything else by the exit
 // code. Only a run that settled is a success.
 func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
-	for reason, want := range map[StopReason]int{
-		StopSettled:       0,
-		StopFailed:        1,
-		StopUnsettled:     1,
-		StopIterations:    1,
-		StopCalls:         1,
-		StopTime:          1,
-		StopContinuations: 1,
-		StopCycle:         1,
-		StopEmpty:         1,
-		StopAborted:       1,
-		StopError:         1,
+	for reason, want := range map[loop.StopReason]int{
+		loop.StopSettled:       0,
+		loop.StopFailed:        1,
+		loop.StopUnsettled:     1,
+		loop.StopIterations:    1,
+		loop.StopCalls:         1,
+		loop.StopTime:          1,
+		loop.StopContinuations: 1,
+		loop.StopCycle:         1,
+		loop.StopEmpty:         1,
+		loop.StopAborted:       1,
+		loop.StopError:         1,
 	} {
-		result := Result{Reason: reason}
+		result := loop.Result{Reason: reason}
 
 		assert.Equal(t, want, result.ExitCode(), "%s: exit code", reason)
 	}

@@ -1,4 +1,4 @@
-package loop
+package loop_test
 
 import (
 	"os"

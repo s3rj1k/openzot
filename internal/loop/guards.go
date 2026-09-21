@@ -77,7 +77,7 @@ const (
 	// MaxRateLimitWait caps how long a run will sit out a provider-advised
 	// Retry-After. Sitting out a real rate-limit window is the right thing for an
 	// unattended run - it is why a 429 no longer ends one - but no legitimate
-	// window needs longer than this, and a mistaken or hostile header must not be
+	// Window needs longer than this, and a mistaken or hostile header must not be
 	// able to park a run for hours.
 	MaxRateLimitWait = 5 * time.Minute
 
@@ -93,7 +93,7 @@ const (
 	// The share of the configured window a rejection can narrow
 	// the effective window down to, as a divisor. A provider that keeps saying
 	// "too long" is wrong about its own ceiling only so far.
-	narrowFloor = 4
+	NarrowFloor = 4
 
 	// DefaultContextSoft is the share of the context window, in percent, at which
 	// the oldest message starts being forgotten on every request.

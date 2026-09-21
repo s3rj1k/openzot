@@ -1,4 +1,4 @@
-package loop
+package loop_test
 
 import (
 	"fmt"
@@ -9,17 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/loop"
 )
 
 // requestFor is what the engine would send for a conversation it has not seen
 // before. Forgetting applied from scratch, then the request built. It also
 // returns how many messages were forgotten.
-func requestFor(engine *Engine, messages []conversation.Message) (turnRequest, int) {
+func requestFor(engine *loop.Engine, messages []conversation.Message) (loop.TurnRequest, int) {
 	forgotten := 0
 
-	messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
+	messages = engine.FitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(loop.Event) {})
 
-	return engine.buildRequest(messages, forgotten), forgotten
+	return engine.BuildRequest(messages, forgotten), forgotten
 }
 
 // The heuristics must see what the engine actually records. A model repeating one
@@ -34,7 +35,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	assert.NotEmpty(t, describeCycle(messages), "four identical call/result pairs must read as a cycle")
+	assert.NotEmpty(t, loop.DescribeCycle(messages), "four identical call/result pairs must read as a cycle")
 
 	// a different answer each time is progress
 	polling := make([]conversation.Message, 0, 8)
@@ -46,7 +47,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	got := describeCycle(polling)
+	got := loop.DescribeCycle(polling)
 	assert.NotEqual(t, "repeated_result_run", got, "polling an endpoint until it changes is not a loop, got %q", got)
 	assert.NotEqual(t, "repeated_activity_tail", got, "polling an endpoint until it changes is not a loop, got %q", got)
 }
@@ -57,14 +58,14 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	const window = 20_000
 
-	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: window})
+	engine, err := loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: window})
 	require.NoError(t, err)
 
 	var (
 		messages  = []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
 		forgotten int
 		firstLoss = -1
-		hard      = window * DefaultContextHard / 100
+		hard      = window * loop.DefaultContextHard / 100
 	)
 
 	for round := range 120 {
@@ -80,7 +81,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 
 		before := forgotten
 
-		messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
+		messages = engine.FitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(loop.Event) {})
 
 		require.GreaterOrEqual(t, forgotten, before, "round %d: the offset moved back from %d to %d", round, before, forgotten)
 
@@ -89,7 +90,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		}
 
 		// what the request carries is what is left after the offset
-		used := conversation.EstimateTokens(engine.options.Instructions)
+		used := conversation.EstimateTokens(engine.Options.Instructions)
 
 		for _, message := range messages[forgotten:] {
 			used += conversation.Cost(message)
@@ -112,15 +113,15 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 		told    []string
 	)
 
-	engine, err := New(&Options{
+	engine, err := loop.New(&loop.Options{
 		Client:        stub(t, []string{tool("c", litEcho, "{}")}),
 		Tools:         echoTool(new(int)),
 		ContextWindow: 3_000,
 		MaxIterations: 60,
 		MaxCycles:     100000,
 		RetryBackoff:  -1,
-		OnEvent: func(event Event) {
-			if event.Kind == EventNotice && strings.Contains(event.Text, "forgot") {
+		OnEvent: func(event loop.Event) {
+			if event.Kind == loop.EventNotice && strings.Contains(event.Text, "forgot") {
 				notices++
 			}
 		},
@@ -129,7 +130,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	require.Equal(t, StopIterations, result.Reason, "want the run to reach its iteration cap")
+	require.Equal(t, loop.StopIterations, result.Reason, "want the run to reach its iteration cap")
 
 	assert.NotEqual(t, 0, notices, "the viewer was never told messages were forgotten")
 

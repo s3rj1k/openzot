@@ -42,10 +42,10 @@ func safeStringify(value any) string {
 	return string(encoded)
 }
 
-// hasRepeatedSuffix reports whether the conversation ends in a repeating block of messages, the plainest form of a loop.
+// HasRepeatedSuffix reports whether the conversation ends in a repeating block of messages, the plainest form of a loop.
 // Messages are fingerprinted by (type, text, activity) and patterns tried shortest-first, since tight loops are more common
 // and urgent. The repeats must be byte-for-byte the same and adjacent, so one interleaved reasoning message defeats it.
-func hasRepeatedSuffix(messages []conversation.Message) bool {
+func HasRepeatedSuffix(messages []conversation.Message) bool {
 	if len(messages) < cycleMinPatternLength*cycleMinRepetitions {
 		return false
 	}
@@ -99,10 +99,10 @@ func distinct(values []string) int {
 	return len(seen)
 }
 
-// hasRepeatedActivityTail reports whether the conversation ends in tool calls that keep re-treading the same small set of
+// HasRepeatedActivityTail reports whether the conversation ends in tool calls that keep re-treading the same small set of
 // signatures. It compresses the trailing activities to (kind, name, input, output), so it tolerates varying text around the
 // calls. A request whose repeats produce really different outputs is spared, since polling until it changes is progress.
-func hasRepeatedActivityTail(messages []conversation.Message) bool {
+func HasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
 
 	for _, message := range slices.Backward(messages) {
@@ -207,10 +207,10 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 		!progressing
 }
 
-// hasRepeatedResultRun reports whether the last few tool results are the same, the model issuing the same call and learning
+// HasRepeatedResultRun reports whether the last few tool results are the same, the model issuing the same call and learning
 // nothing. It walks only the tool results, so an interleaved reasoning message cannot defeat it. Arguments are part of the
 // signature, and synthetic "_"-prefixed activities are skipped so an injected notice cannot mask the loop.
-func hasRepeatedResultRun(messages []conversation.Message) bool {
+func HasRepeatedResultRun(messages []conversation.Message) bool {
 	var signatures []string
 
 	for _, message := range slices.Backward(messages) {
@@ -261,7 +261,7 @@ func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
 			continue
 		}
 
-		if hasRepeatedTextRun(message.Text, textRunOptions{}) {
+		if HasRepeatedTextRun(message.Text, TextRunOptions{}) {
 			return true
 		}
 	}
@@ -274,15 +274,15 @@ var cycleHeuristics = []struct {
 	name   string
 	detect func([]conversation.Message) bool
 }{
-	{"repeated_suffix", hasRepeatedSuffix},
-	{"repeated_activity_tail", hasRepeatedActivityTail},
-	{"repeated_result_run", hasRepeatedResultRun},
+	{"repeated_suffix", HasRepeatedSuffix},
+	{"repeated_activity_tail", HasRepeatedActivityTail},
+	{"repeated_result_run", HasRepeatedResultRun},
 	{"repeated_message_text_run", hasRepeatedMessageTextRun},
 }
 
-// describeCycle names the first heuristic to fire, or returns the empty string
+// DescribeCycle names the first heuristic to fire, or returns the empty string
 // when the conversation is progressing.
-func describeCycle(messages []conversation.Message) string {
+func DescribeCycle(messages []conversation.Message) string {
 	for _, heuristic := range cycleHeuristics {
 		if heuristic.detect(messages) {
 			return heuristic.name

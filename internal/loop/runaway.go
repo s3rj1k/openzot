@@ -27,9 +27,9 @@ func clamp(value *int, minimum, fallback int) int {
 // inspects, so its cost does not grow with message length.
 const runawayTextRunTailLimit = 4000
 
-// textRunOptions tunes hasRepeatedTextRun. The zero value is the production
+// TextRunOptions tunes HasRepeatedTextRun. The zero value is the production
 // default.
-type textRunOptions struct {
+type TextRunOptions struct {
 	// The trailing sentence-like units required before a runaway is even considered. Short repetitive
 	// snippets end on their own. Clamped to at least 2.
 	MinUnits *int
@@ -43,11 +43,11 @@ type textRunOptions struct {
 	MaxUniqueRatio *float64
 }
 
-func (o textRunOptions) minUnits() int {
+func (o TextRunOptions) minUnits() int {
 	return clamp(o.MinUnits, 2, 8)
 }
 
-func (o textRunOptions) window() int {
+func (o TextRunOptions) window() int {
 	minUnits := o.minUnits()
 
 	fallback := max(minUnits, 64)
@@ -55,7 +55,7 @@ func (o textRunOptions) window() int {
 	return clamp(o.Window, minUnits, fallback)
 }
 
-func (o textRunOptions) maxUniqueRatio() float64 {
+func (o TextRunOptions) maxUniqueRatio() float64 {
 	if o.MaxUniqueRatio != nil && *o.MaxUniqueRatio > 0 && *o.MaxUniqueRatio <= 1 {
 		return *o.MaxUniqueRatio
 	}
@@ -94,9 +94,9 @@ func segmentNormalizedUnits(text string) []string {
 	return units
 }
 
-// hasRepeatedTextRun reports a runaway repetition inside a single block of text. Unlike the conversation-level heuristics it
+// HasRepeatedTextRun reports a runaway repetition inside a single block of text. Unlike the conversation-level heuristics it
 // works within one message, so it catches a turn looping in its own reasoning without ever emitting a tool call.
-func hasRepeatedTextRun(text string, options textRunOptions) bool {
+func HasRepeatedTextRun(text string, options TextRunOptions) bool {
 	if text == "" {
 		return false
 	}
@@ -155,9 +155,9 @@ const (
 	minDistinctLineLeads = 3
 )
 
-// guardOptions tunes the incremental repetition guard. The zero value is the
+// GuardOptions tunes the incremental repetition guard. The zero value is the
 // production default.
-type guardOptions struct {
+type GuardOptions struct {
 	// Ngram is how many consecutive words make a tracked phrase. Longer phrases
 	// recur by chance less often. Clamped to at least 2.
 	Ngram *int
@@ -179,8 +179,8 @@ type guardOptions struct {
 	MinChars *int
 }
 
-// guardReason explains a trip.
-type guardReason struct {
+// GuardReason explains a trip.
+type GuardReason struct {
 	// Phrase is the normalised form that recurred - stable for grouping.
 	Phrase string `json:"phrase"`
 
@@ -197,10 +197,10 @@ type guardReason struct {
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
 
-// runawayGuard is an incremental runaway-repetition detector. It keeps a rolling window of normalized words and a count of
+// RunawayGuard is an incremental runaway-repetition detector. It keeps a rolling window of normalized words and a count of
 // every phrase, so each pushed chunk costs O(1) amortized and it can run on every streamed token, latching within a few
 // repeats, long before the heavier fallback would react.
-type runawayGuard struct {
+type RunawayGuard struct {
 	ngram          int
 	window         int
 	maxRepeats     int
@@ -220,11 +220,11 @@ type runawayGuard struct {
 	totalChars    int
 
 	tripped bool
-	reason  guardReason
+	reason  GuardReason
 }
 
-// newRunawayGuard creates a repetition guard.
-func newRunawayGuard(options guardOptions) *runawayGuard {
+// NewRunawayGuard creates a repetition guard.
+func NewRunawayGuard(options GuardOptions) *RunawayGuard {
 	ngram := clamp(options.Ngram, 2, 4)
 
 	windowFallback := max(ngram, 48)
@@ -249,7 +249,7 @@ func newRunawayGuard(options guardOptions) *runawayGuard {
 
 	minChars := clamp(options.MinChars, 0, 0)
 
-	return &runawayGuard{
+	return &RunawayGuard{
 		ngram:          ngram,
 		window:         window,
 		maxRepeats:     maxRepeats,
@@ -263,7 +263,7 @@ func newRunawayGuard(options guardOptions) *runawayGuard {
 // hapaxRatio is the fraction of the window seen exactly once - the novelty
 // signal separating a progressing list (many distinct keys) from a stuck loop
 // (the same few words). Only ever called at a candidate trip.
-func (g *runawayGuard) hapaxRatio() float64 {
+func (g *RunawayGuard) hapaxRatio() float64 {
 	hapax := 0
 
 	for _, count := range g.wordCount {
@@ -277,7 +277,7 @@ func (g *runawayGuard) hapaxRatio() float64 {
 
 // distinctLineLeads counts distinct line-leading tokens. A stuck loop repeats one line and has one or two, while a progressing
 // enumeration keeps starting lines with new keys, which rescues lists whose long shared suffix sinks the hapax ratio.
-func (g *runawayGuard) distinctLineLeads() int {
+func (g *RunawayGuard) distinctLineLeads() int {
 	leads := map[string]struct{}{}
 
 	for index, word := range g.words {
@@ -289,7 +289,7 @@ func (g *runawayGuard) distinctLineLeads() int {
 	return len(leads)
 }
 
-func (g *runawayGuard) addWord(word, original string, newlines int) {
+func (g *RunawayGuard) addWord(word, original string, newlines int) {
 	g.words = append(g.words, word)
 	g.originals = append(g.originals, original)
 	g.newlinesBefore = append(g.newlinesBefore, newlines)
@@ -319,7 +319,7 @@ func (g *runawayGuard) addWord(word, original string, newlines int) {
 
 			if !enumerated {
 				if !g.tripped {
-					g.reason = guardReason{
+					g.reason = GuardReason{
 						Phrase:      gram,
 						Count:       next,
 						Text:        strings.Join(g.originals[len(g.originals)-g.ngram:], " "),
@@ -409,7 +409,7 @@ func splitKeepingSeparators(text string) []string {
 
 // Push feeds streamed text into the guard and reports whether a runaway has been
 // detected. Once tripped it stays tripped.
-func (g *runawayGuard) Push(text string) bool {
+func (g *RunawayGuard) Push(text string) bool {
 	if g.tripped {
 		return true
 	}
@@ -458,7 +458,7 @@ func (g *runawayGuard) Push(text string) bool {
 }
 
 // Reason returns why the guard tripped, or nil while it has not.
-func (g *runawayGuard) Reason() *guardReason {
+func (g *RunawayGuard) Reason() *GuardReason {
 	if !g.tripped {
 		return nil
 	}

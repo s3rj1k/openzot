@@ -10,11 +10,11 @@ import (
 // The notices the loop injects when it detects a problem. They are instructions, not diagnostics, since the loop has seen something the
 // model cannot see about itself. Each carries a prefix so a reader can tell a notice from the model's own output. The prefix labels
 // rather than filters, and the cycle detector still works because a repeated nudge repeats along with the behavior it answers.
-const noticePrefix = "!NB:"
+const NoticePrefix = "!NB:"
 
-// cycleNotice tells the model it is repeating itself. Naming the specific behavior matters, since "you appear to be stuck"
+// CycleNotice tells the model it is repeating itself. Naming the specific behavior matters, since "you appear to be stuck"
 // produces another lap and "you have called the same tool with the same arguments" produces a different approach.
-func cycleNotice(detail string) string {
+func CycleNotice(detail string) string {
 	if detail == "" {
 		detail = "you appear to be repeating the same steps"
 	}
@@ -22,34 +22,34 @@ func cycleNotice(detail string) string {
 	return fmt.Sprintf(
 		"%s %s. Do not repeat that step again. Either try a materially different "+
 			"approach, or stop and explain what is blocking you.",
-		noticePrefix, detail,
+		NoticePrefix, detail,
 	)
 }
 
-// settleNotice is the nudge to settle. The model stopped talking without
+// SettleNotice is the nudge to settle. The model stopped talking without
 // declaring an outcome, which is not an ending.
-func settleNotice() string {
+func SettleNotice() string {
 	return fmt.Sprintf(
 		"%s the task is not finished until you record an outcome. Call %s when the "+
 			"objective is met, or %s when it cannot be. Do not simply stop.",
-		noticePrefix, SuccessTool, FailureTool,
+		NoticePrefix, SuccessTool, FailureTool,
 	)
 }
 
-// planNudge reminds the model that it has a plan tool. Gentle on purpose. The
+// PlanNudge reminds the model that it has a plan tool. Gentle on purpose. The
 // model may well be on top of it, and the aim is only that it never
 // stops keeping the plan.
-func planNudge(tool string) string {
+func PlanNudge(tool string) string {
 	return fmt.Sprintf(
 		"%s reminder: you have a %s tool for the plan. If a step is done, blocked or the "+
 			"approach has changed, update it now; if you have no plan yet, lay one out.",
-		noticePrefix, tool,
+		NoticePrefix, tool,
 	)
 }
 
-// truncationNotice follows an answer the provider cut off at the token limit.
-func truncationNotice() string {
-	return noticePrefix + " your previous answer was cut off at the output limit. " +
+// TruncationNotice follows an answer the provider cut off at the token limit.
+func TruncationNotice() string {
+	return NoticePrefix + " your previous answer was cut off at the output limit. " +
 		"Continue from exactly where it stopped, without repeating what you already wrote."
 }
 
@@ -59,9 +59,9 @@ func terminalHandler[T any](context.Context, T, fantasy.ToolCall) (fantasy.ToolR
 	return fantasy.NewTextResponse("recorded"), nil
 }
 
-// terminalTools are the tool definitions injected into every run. They are ordinary tools to the model, the mechanism it
+// TerminalTools are the tool definitions injected into every run. They are ordinary tools to the model, the mechanism it
 // already understands, and the loop intercepts them rather than dispatching to a handler.
-func terminalTools() []fantasy.AgentTool {
+func TerminalTools() []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		fantasy.NewAgentTool(SuccessTool,
 			"Record that the objective has been met, and end the run. Call this exactly once, when the task is genuinely complete.",

@@ -33,10 +33,10 @@ type turnResult struct {
 	OutputTokens int
 }
 
-// turnRequest is what one model call is sent. The conversation to show, without the
+// TurnRequest is what one model call is sent. The conversation to show, without the
 // system prompt, which the agent carries.
-type turnRequest struct {
-	messages  []fantasy.Message
+type TurnRequest struct {
+	Messages  []fantasy.Message
 	maxOutput *int64
 }
 
@@ -52,8 +52,8 @@ type step struct {
 	turn      turnResult
 	text      strings.Builder
 	reasoning strings.Builder
-	guard     *runawayGuard
-	runaway   *guardReason
+	guard     *RunawayGuard
+	runaway   *GuardReason
 
 	// Whether the turn's reasoning and words are in the conversation yet. They go in before the turn's first
 	// tool call, and otherwise once the model call is over.
@@ -80,7 +80,7 @@ func (s *step) reset(messages *[]conversation.Message, budget *Budget, emit func
 		messages: messages,
 		budget:   budget,
 		emit:     emit,
-		guard:    newRunawayGuard(guardOptions{MinChars: &minChars}),
+		guard:    NewRunawayGuard(GuardOptions{MinChars: &minChars}),
 		started:  map[string]bool{},
 	}
 }
@@ -88,7 +88,7 @@ func (s *step) reset(messages *[]conversation.Message, budget *Budget, emit func
 // providerOptions is what the model's config asks fantasy to send beyond the
 // conversation itself, or nil when it asks for nothing.
 func (e *Engine) providerOptions() fantasy.ProviderOptions {
-	config := e.options.Client.Config()
+	config := e.Options.Client.Config()
 
 	if config.ReasoningEffort == "" && len(config.ExtraBody) == 0 {
 		return nil
@@ -115,8 +115,8 @@ type guardedTool struct {
 // newAgent builds the agent a run uses. The instructions, and every tool - the
 // terminal ones too - wrapped so the engine sees each call.
 func (e *Engine) newAgent(state *step) fantasy.Agent {
-	offered := append([]fantasy.AgentTool(nil), e.options.Tools...)
-	offered = append(offered, terminalTools()...)
+	offered := append([]fantasy.AgentTool(nil), e.Options.Tools...)
+	offered = append(offered, TerminalTools()...)
 
 	wrapped := make([]fantasy.AgentTool, len(offered))
 
@@ -125,7 +125,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 	}
 
 	options := []fantasy.AgentOption{
-		fantasy.WithSystemPrompt(e.options.Instructions),
+		fantasy.WithSystemPrompt(e.Options.Instructions),
 		fantasy.WithTools(wrapped...),
 
 		// No retries here. The engine retries, on its own schedule and budget.
@@ -136,7 +136,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 		options = append(options, fantasy.WithProviderOptions(provider))
 	}
 
-	return fantasy.NewAgent(e.options.Client.Model(), options...)
+	return fantasy.NewAgent(e.Options.Client.Model(), options...)
 }
 
 // repairToolCall is fantasy's own repair - mend the JSON - except for the tools
@@ -144,7 +144,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 func (e *Engine) repairToolCall(_ context.Context, options fantasy.ToolCallRepairOptions) (*fantasy.ToolCallContent, error) { //nolint:gocritic // hugeParam: the callback type is fantasy's
 	call := options.OriginalToolCall
 
-	if slices.Contains(e.options.Unrepaired, call.ToolName) {
+	if slices.Contains(e.Options.Unrepaired, call.ToolName) {
 		return nil, options.ValidationError
 	}
 
@@ -236,7 +236,7 @@ func (s *step) onToolCall(call fantasy.ToolCallContent) error {
 // spendCall counts a tool call against the budget, or reports that there is none
 // left. The call that would go over it is not made and leaves nothing behind.
 func (s *step) spendCall() bool {
-	if s.engine.maxCalls > 0 && s.budget.Calls >= s.engine.maxCalls {
+	if s.engine.MaxCalls > 0 && s.budget.Calls >= s.engine.MaxCalls {
 		s.callsExhausted = true
 
 		return false
@@ -257,10 +257,10 @@ func (s *step) callOf(id string) fantasy.ToolCallContent {
 	return fantasy.ToolCallContent{ToolCallID: id}
 }
 
-// decodeInput reads a call's JSON input for the event that announces it. An empty
+// DecodeInput reads a call's JSON input for the event that announces it. An empty
 // input is an empty object, and input that is not an object is nil. The raw text
 // travels with the event either way.
-func decodeInput(input string) map[string]any {
+func DecodeInput(input string) map[string]any {
 	input = strings.TrimSpace(input)
 
 	if input == "" {
@@ -281,7 +281,7 @@ func decodeInput(input string) map[string]any {
 func (s *step) begin(call fantasy.ToolCallContent, handOver bool) {
 	*s.messages = append(*s.messages, activityMessage(conversation.ActivityRequest, call, nil, ""))
 
-	s.emit(Event{Kind: EventToolCallStart, Tool: call.ToolName, Args: decodeInput(call.Input), Text: call.Input})
+	s.emit(Event{Kind: EventToolCallStart, Tool: call.ToolName, Args: DecodeInput(call.Input), Text: call.Input})
 
 	if handOver {
 		s.engine.handOver(*s.messages)
@@ -336,7 +336,7 @@ func (e *Engine) runStep(
 	ctx context.Context,
 	agent fantasy.Agent,
 	state *step,
-	call turnRequest,
+	call TurnRequest,
 	messages *[]conversation.Message, budget *Budget,
 	emit func(Event),
 ) (turnResult, error) {
@@ -348,7 +348,7 @@ func (e *Engine) runStep(
 	state.reset(messages, budget, emit)
 
 	_, err := agent.Stream(ctx, fantasy.AgentStreamCall{
-		Messages:        call.messages,
+		Messages:        call.Messages,
 		MaxOutputTokens: call.maxOutput,
 
 		// one step and no more. Whether to go round again is the engine's call
