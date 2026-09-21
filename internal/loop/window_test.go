@@ -60,7 +60,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	const window = 20_000
 
-	engine, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: window})
+	engine, err := loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: window})
 	require.NoError(t, err)
 
 	var (
@@ -116,7 +116,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 	)
 
 	engine, err := loop.New(&loop.Options{
-		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c", litEcho, "{}")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c", litEcho, "{}")}),
 		Tools:         echoTool(new(int)),
 		ContextWindow: 3_000,
 		MaxIterations: 60,

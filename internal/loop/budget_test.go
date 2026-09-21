@@ -32,7 +32,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		// a stub that calls a tool forever
-		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxDuration:   time.Millisecond,
 		MaxIterations: 100000, // high, so time is what stops it, not iterations
@@ -49,7 +49,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 func TestTimeIsUnboundedByDefault(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("done")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Settle("done")}),
 		MaxIterations: 5,
 	})
 
@@ -62,7 +62,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Tool("call_1", litEcho, "{}")},
 			[]string{testutils.Tool("call_2", litEcho, "{}")},
 			[]string{testutils.Settle("done")},
@@ -84,7 +84,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Text("half an ans"), testutils.Truncated()},
 			[]string{testutils.Settle("wer")},
 		),
@@ -102,7 +102,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	// tool calls forever, with a continuation budget of one
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
+		Model:            testutils.ScriptedModel(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:            echoTool(&calls),
 		MaxIterations:    4,
 		MaxContinuations: 1,
@@ -116,7 +116,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	// and the other way round. Truncated forever, with plenty of iterations
 	result = run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           testutils.ScriptedClient(t, []string{testutils.Text("more"), testutils.Truncated()}),
+		Model:            testutils.ScriptedModel(t, []string{testutils.Text("more"), testutils.Truncated()}),
 		MaxIterations:    50,
 		MaxContinuations: 3,
 	})
@@ -154,7 +154,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result := run(t, &loop.Options{
 				ContextWindow:    testWindow,
-				Client:           testutils.ScriptedClient(t, test.turns...),
+				Model:            testutils.ScriptedModel(t, test.turns...),
 				Tools:            test.tools,
 				MaxIterations:    3,
 				MaxCalls:         100,
@@ -176,7 +176,7 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 1,
 		MaxCycles:     1000,
@@ -195,7 +195,7 @@ func TestBudgetDefaults(t *testing.T) {
 	for _, value := range []int{0, -1, -1000} {
 		engine, err := loop.New(&loop.Options{
 			ContextWindow: testWindow,
-			Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
+			Model:         testutils.ScriptedModel(t, []string{testutils.Stop()}),
 			MaxCalls:      value,
 			MaxIterations: value,
 			MaxCycles:     value,
@@ -222,7 +222,7 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 500,
 		MaxCalls:      500,
@@ -259,7 +259,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Tool("call_1", litEcho, `not json at all`)},
 			[]string{testutils.Settle("let me try that again")},
 		),
@@ -288,7 +288,7 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Tool("call_1", litEcho, `{"value": "abc`)},
 			[]string{testutils.Settle("done")},
 		),
@@ -323,7 +323,7 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Tool("call_1", litEcho, "{}")},
 			[]string{testutils.Settle("understood")},
 		),
@@ -367,7 +367,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Tool("call_1", litEcho, "{}")},
 			[]string{testutils.Settle("done")},
 		),
@@ -386,7 +386,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{
 				testutils.Text("I cannot help with that"),
 				`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`,
@@ -409,7 +409,7 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t, []string{
+		Model: testutils.ScriptedModel(t, []string{
 			`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
 		}),
 		MaxIterations: 3,
@@ -424,13 +424,13 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 // A retriable provider failure has to be waited out, not hammered. Retrying instantly spends the whole continuation budget
 // inside one outage in a few milliseconds, so a run dies to a blip that a short pause would have outlived.
 func TestRetriableFailuresAreSpacedOut(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Model(t)
 
 	started := time.Now()
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
@@ -456,11 +456,11 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 // Canceling a run must cut a backoff short rather than making the caller wait
 // out a pause that no longer has a retry at the end of it.
 func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Model(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 5,
 		RetryBackoff:     time.Hour,
@@ -492,13 +492,13 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 // restore the tight retry loop. Asserted on the constructed engine because
 // reaching it behaviourally costs a second of wall clock per retry.
 func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: testutils.ScriptedModel(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	assert.Positive(t, engine.RetryBackoff, "want a positive pause")
 
 	// and a caller can still opt out, which is what keeps these tests fast
-	engine, err = loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), RetryBackoff: -1})
+	engine, err = loop.New(&loop.Options{ContextWindow: testWindow, Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), RetryBackoff: -1})
 	require.NoError(t, err)
 
 	got := loop.BackoffFor(engine.RetryBackoff, 1)
@@ -535,13 +535,13 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusTooManyRequests, `{"error":{"message":"slow down"}}`).WithHeader("Retry-After", "1"),
 		testutils.Frames(testutils.Tool("c1", loop.SuccessTool, `{"summary":"done anyway"}`)),
-	).Client(t)
+	).Model(t)
 
 	started := time.Now()
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
@@ -585,13 +585,13 @@ func TestAZeroRetryAfterIsFlooredByTheBackoff(t *testing.T) {
 func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusTooManyRequests, `{"error":{"message":"slow down"}}`).WithHeader("Retry-After", "0"),
-	).Client(t)
+	).Model(t)
 
 	started := time.Now()
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
@@ -619,7 +619,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		testutils.Frames(testutils.Tool("c1", litEcho, `{}`)),
 		testutils.Reject(http.StatusInternalServerError, ""),
 		testutils.Frames(testutils.Tool("c2", loop.SuccessTool, `{"summary":"done"}`)),
-	).Client(t)
+	).Model(t)
 
 	calls := 0
 
@@ -629,7 +629,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Tools:            echoTool(&calls),
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 10,
@@ -664,7 +664,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 		truncatedTurn, truncatedTurn, truncatedTurn,
 		testutils.Reject(http.StatusInternalServerError, ""),
 		testutils.Frames(testutils.Settle("done")),
-	).Client(t)
+	).Model(t)
 
 	base := 300 * time.Millisecond
 
@@ -672,7 +672,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 10,
 		MaxIterations:    20,
@@ -699,7 +699,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Stop()},
 			[]string{testutils.Settle("recovered")},
 		),
@@ -744,13 +744,13 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		default:
 			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
 		}
-	}).Client(t)
+	}).Model(t)
 
 	calls := 0
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Tools:            echoTool(&calls),
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 2,
@@ -772,11 +772,11 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 // The other side of the reset. Consecutive failures still end the run, and at
 // the bound rather than somewhere past it.
 func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Model(t)
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 3,
 		MaxIterations:    50,
@@ -800,7 +800,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		}
 
 		return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
-	}).Client(t)
+	}).Model(t)
 
 	calls := 0
 
@@ -808,7 +808,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		// generous, so a consecutive bound cannot be what fires
@@ -843,14 +843,14 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		default:
 			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
 		}
-	}).Client(t)
+	}).Model(t)
 
 	calls := 0
 
 	// the tightest useful consecutive bound - fail fast on a stuck provider
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Tools:            echoTool(&calls),
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 1,

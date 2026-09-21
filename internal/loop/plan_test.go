@@ -27,7 +27,7 @@ func planCall(id, args, answer string) []conversation.Message {
 func planEngine(t *testing.T, options *loop.Options) *loop.Engine {
 	t.Helper()
 
-	options.Client = testutils.ScriptedClient(t, []string{testutils.Stop()})
+	options.Model = testutils.ScriptedModel(t, []string{testutils.Stop()})
 
 	if options.ContextWindow == 0 {
 		options.ContextWindow = testWindow
@@ -106,7 +106,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("without a plan tool there is no plan", func(t *testing.T) {
-		bare, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: testWindow})
+		bare, err := loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: testWindow})
 		require.NoError(t, err)
 
 		_, ok := bare.RepostedPlan(messages, 5)
@@ -252,7 +252,7 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 func planRun(t *testing.T, options *loop.Options, iterations int) *loop.Result {
 	t.Helper()
 
-	options.Client = testutils.ScriptedClient(t,
+	options.Model = testutils.ScriptedModel(t,
 		[]string{testutils.Tool("p", litTasks, planArgs)},
 		[]string{testutils.Tool("c", litEcho, "{}")},
 	)

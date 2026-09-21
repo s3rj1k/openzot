@@ -1,7 +1,6 @@
 package provider_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -81,16 +80,5 @@ func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 
 	for _, want := range []string{"acme", "gw.example.com"} {
 		assert.Contains(t, err.Error(), want)
-	}
-}
-
-// The effort is normalised and forwarded. Which values exist is the config's
-// rule and the endpoint's, not the connection's.
-func TestResolveNormalisesTheReasoningEffort(t *testing.T) {
-	for _, effort := range []string{"", "low", "HIGH", " medium ", "somethingnew"} {
-		resolved, err := (provider.ClientConfig{Model: "m", BaseURL: "http://127.0.0.1/v1", ReasoningEffort: effort}).Resolve()
-		require.NoError(t, err, "effort %q", effort)
-
-		assert.Equal(t, strings.ToLower(strings.TrimSpace(effort)), resolved.ReasoningEffort)
 	}
 }

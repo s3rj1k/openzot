@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/fantasy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -22,7 +22,7 @@ import (
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
-func contextLimitOnce(t *testing.T) (*provider.Client, func() int) {
+func contextLimitOnce(t *testing.T) (fantasy.LanguageModel, func() int) {
 	t.Helper()
 
 	server := testutils.Script(t,
@@ -30,7 +30,7 @@ func contextLimitOnce(t *testing.T) (*provider.Client, func() int) {
 		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"recovered"}`)),
 	)
 
-	return server.Client(t), server.Requests
+	return server.Model(t), server.Requests
 }
 
 // longConversation builds enough history to be worth trimming.
@@ -58,7 +58,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Messages:      longConversation(40),
 	})
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 
 	original := longConversation(40)
 
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: client, Messages: original})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: client, Messages: original})
 	require.NoError(t, err)
 
 	engine.Window = 40_000
@@ -109,7 +109,7 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: client, Messages: longConversation(4)})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: client, Messages: longConversation(4)})
 	require.NoError(t, err)
 
 	floor := testWindow / loop.NarrowFloor
@@ -126,7 +126,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Client: client})
+	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client})
 	require.NoError(t, err)
 
 	require.True(t, engine.NarrowWindow(failure.ContextLimit{}, func(loop.Event) {}))
@@ -137,11 +137,11 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 // A context limit that persists is eventually a real failure rather than an
 // infinite retry loop.
 func TestPersistentContextLimitGivesUp(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusBadRequest, `{"error":{"message":"maximum context length exceeded"}}`)).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusBadRequest, `{"error":{"message":"maximum context length exceeded"}}`)).Model(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow:    testWindow,
-		Client:           client,
+		Model:            client,
 		Messages:         longConversation(40),
 		MaxContinuations: 3,
 	})
@@ -161,11 +161,11 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusServiceUnavailable, `{"error":{"message":"Service temporarily unavailable"}}`),
 		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"second time lucky"}`)),
-	).Client(t)
+	).Model(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		RetryBackoff:  -1, // the retry itself is under test, not its pacing
 	})
@@ -187,11 +187,11 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 // A 4xx that is not a context limit is terminal. Retrying a bad key or a missing
 // model only burns the budget.
 func TestNonRetriableErrorEndsTheRun(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusUnauthorized, `{"error":{"message":"invalid api key"}}`)).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusUnauthorized, `{"error":{"message":"invalid api key"}}`)).Model(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	require.NoError(t, err)
@@ -210,11 +210,11 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens."}}`),
 		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"fits now"}`)),
-	).Client(t)
+	).Model(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        client,
+		Model:         client,
 		Messages:      longConversation(40),
 	})
 	require.NoError(t, err)
@@ -232,9 +232,9 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"prompt is too long"}}`),
 		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"ok"}`)),
-	).Client(t)
+	).Model(t)
 
-	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
+	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client, Messages: longConversation(40)})
 	require.NoError(t, err)
 
 	assert.Equal(t, loop.StopSettled, engine.Run(t.Context(), nil).Reason)

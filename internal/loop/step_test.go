@@ -12,7 +12,6 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -32,7 +31,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t, []string{testutils.ToolCalls("tool_calls",
+		Model: testutils.ScriptedModel(t, []string{testutils.ToolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
 			[3]string{"c2", loop.SuccessTool, `{"summary":"all done"}`},
 		)}),
@@ -58,7 +57,7 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t, []string{testutils.ToolCalls("tool_calls",
+		Model: testutils.ScriptedModel(t, []string{testutils.ToolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
 			[3]string{"c2", litEcho, `{}`},
 		)}),
@@ -84,7 +83,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 
 		result := run(t, &loop.Options{
 			ContextWindow: testWindow,
-			Client: testutils.ScriptedClient(t,
+			Model: testutils.ScriptedModel(t,
 				[]string{testutils.ToolCalls(finish, [3]string{"c1", litEcho, `{}`})},
 				[]string{testutils.Settle("done")},
 			),
@@ -106,7 +105,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.ToolCalls("length", [3]string{"c1", litEcho, `{}`})},
 			[]string{testutils.Settle("done")},
 		),
@@ -126,7 +125,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("carrying on")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Settle("carrying on")}),
 		Messages: []conversation.Message{
 			{Type: conversation.TypeUser, Text: "go"},
 			{Type: conversation.TypeBot, Text: "I began"},
@@ -142,7 +141,7 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 func TestACallThatNeverReachedATool(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.ToolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
 			[]string{testutils.Settle("noted")},
 		),
@@ -178,7 +177,7 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 
 			result := run(t, &loop.Options{
 				ContextWindow: testWindow,
-				Client: testutils.ScriptedClient(t,
+				Model: testutils.ScriptedModel(t,
 					[]string{testutils.ToolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
 					[]string{testutils.Settle("done")},
 				),
@@ -196,13 +195,16 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 }
 
 // bodyOfTheFirstRequest runs one turn against a server that keeps what it was
-// sent, with the given model settings.
-func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map[string]any {
+// sent, with the given engine options on top of the defaults.
+func bodyOfTheFirstRequest(t *testing.T, tweak func(*loop.Options)) map[string]any {
 	t.Helper()
 
 	server := testutils.Script(t, testutils.Frames(testutils.Text("hi"), testutils.Stop()))
 
-	run(t, &loop.Options{ContextWindow: testWindow, Client: server.Client(t, tweak), Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
+	options := loop.Options{ContextWindow: testWindow, Model: server.Model(t), Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}}
+	tweak(&options)
+
+	run(t, &options)
 
 	bodies := server.Bodies()
 	require.NotEmpty(t, bodies, "the server saw no request")
@@ -217,9 +219,9 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 // A model's reasoning_effort and extra_body go out with every request. A model
 // with neither sends a request without them.
 func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
-	body := bodyOfTheFirstRequest(t, func(c *provider.ClientConfig) {
-		c.ReasoningEffort = "low"
-		c.ExtraBody = map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
+	body := bodyOfTheFirstRequest(t, func(o *loop.Options) {
+		o.ReasoningEffort = "low"
+		o.ExtraBody = map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
 	})
 
 	assert.Equal(t, "low", body["reasoning_effort"], "reasoning_effort = %v, want low", body["reasoning_effort"])
@@ -229,7 +231,7 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 	assert.True(t, ok, "want the extra body merged in")
 	assert.False(t, thinking, "want the extra body merged in")
 
-	plain := bodyOfTheFirstRequest(t, func(*provider.ClientConfig) {})
+	plain := bodyOfTheFirstRequest(t, func(*loop.Options) {})
 
 	for _, key := range []string{"reasoning_effort", "chat_template_kwargs"} {
 		_, sent := plain[key]
@@ -253,7 +255,7 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("hi")}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Settle("hi")}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		OnEvent:       func(event loop.Event) { sunk = append(sunk, event.Kind) },
 	})

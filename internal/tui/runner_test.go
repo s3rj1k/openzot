@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/fantasy"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -103,12 +103,12 @@ func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (*recordingModel) View() string { return "" }
 
-// engineFor is an engine over the client for a run of "do the thing".
-func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Options)) *loop.Engine {
+// engineFor is an engine over the model for a run of "do the thing".
+func engineFor(t *testing.T, model fantasy.LanguageModel, tweak ...func(*loop.Options)) *loop.Engine {
 	t.Helper()
 
 	options := loop.Options{
-		Client:        client,
+		Model:         model,
 		ContextWindow: testWindow,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "do the thing"}},
 
@@ -128,7 +128,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 }
 
 func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
-	client := testutils.ScriptedClient(t,
+	client := testutils.ScriptedModel(t,
 		[]string{
 			`{"choices":[{"delta":{"content":"working on it"}}]}`,
 			`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
@@ -168,7 +168,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 // A run that cannot reach its provider must surface the failure rather than
 // leaving a spinner turning forever.
 func TestRunAgentRelaysAFailure(t *testing.T) {
-	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, `{"error":{"message":"upstream is down"}}`)).Client(t)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, `{"error":{"message":"upstream is down"}}`)).Model(t)
 
 	program, seen, stop := headless(t)
 
@@ -186,7 +186,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 // A canceled run still has to end cleanly. The pump drains and the done
 // message arrives, or the viewer never comes back.
 func TestRunAgentEndsOnCancellation(t *testing.T) {
-	client := testutils.ScriptedClient(t, []string{
+	client := testutils.ScriptedModel(t, []string{
 		`{"choices":[{"delta":{"content":"thinking"}}]}`,
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
 	})
@@ -231,7 +231,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 			close(canceled)
 		case <-time.After(20 * time.Second):
 		}
-	})).Client(t)
+	})).Model(t)
 
 	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 
@@ -278,7 +278,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		case <-r.Context().Done():
 		case <-time.After(20 * time.Second):
 		}
-	})).Client(t)
+	})).Model(t)
 
 	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 

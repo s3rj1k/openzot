@@ -322,7 +322,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 
 // A declared provider resolves to its own endpoint and credential, with the
 // model name passed through untouched, and its own name is what the client
-// reports.
+// reports. The effort is sent as the config wrote it, apart from case and spacing.
 func TestResolveSelectsTheModelFromTheOneProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("AGENT_CONFIG", "")
@@ -342,7 +342,7 @@ provider:
     smart:
       model: alpha-pro
       context: 200000
-      reasoning_effort: high
+      reasoning_effort: " High "
 `))
 	require.NoError(t, err)
 
@@ -363,7 +363,7 @@ provider:
 		got := client.Config()
 
 		assert.Equal(t, want.model, got.Model, "%s resolved to model", name)
-		assert.Equal(t, want.effort, got.ReasoningEffort, "%s resolved to model", name)
+		assert.Equal(t, want.effort, opts.ReasoningEffort, "%s resolved to model", name)
 		assert.Equal(t, want.window, opts.ContextWindow, "%s resolved to model", name)
 		assert.Equal(t, want.iterations, opts.MaxIterations, "%s resolved to model", name)
 

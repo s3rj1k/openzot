@@ -207,9 +207,7 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 		APIKey:   providerConfig.APIKey,
 		BaseURL:  providerConfig.BaseURL,
 
-		ContentArray:    contentArray,
-		ReasoningEffort: mc.ReasoningEffort,
-		ExtraBody:       mc.ExtraBody,
+		ContentArray: contentArray,
 	})
 	if err != nil {
 		return nil, empty, fmt.Errorf("provider %s: %w", cfg.Provider.Label(), err)
@@ -224,6 +222,10 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	toolOutput := conversation.BytesForTokens(contextWindow * cmp.Or(cfg.Agent.MaxToolOutputPercent, tools.DefaultOutputPercent) / 100)
 
 	opts := loop.Options{
+		Model:           client.Model(),
+		ReasoningEffort: strings.ToLower(strings.TrimSpace(mc.ReasoningEffort)),
+		ExtraBody:       mc.ExtraBody,
+
 		Tools: tools.New(toolOutput, offered),
 
 		// shell acts on the machine, so a command the model did not finish
@@ -278,7 +280,6 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
 	}
 
-	opts.Client = client
 	opts.Instructions = prompt
 	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: TaskKickoff}}
 

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"charm.land/fantasy"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/loop"
@@ -189,6 +190,13 @@ func (s *Server) Client(t *testing.T, tweak ...func(*provider.ClientConfig)) *pr
 	return client
 }
 
+// Model is the endpoint's language model, for a test that runs the engine on it.
+func (s *Server) Model(t *testing.T, tweak ...func(*provider.ClientConfig)) fantasy.LanguageModel {
+	t.Helper()
+
+	return s.Client(t, tweak...).Model()
+}
+
 // Text is a frame that streams some content.
 func Text(s string) string {
 	return fmt.Sprintf(`{"choices":[{"delta":{"content":%q}}]}`, s)
@@ -240,9 +248,9 @@ func Settle(summary string) string {
 	return Tool("done", loop.SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
 }
 
-// ScriptedClient is a provider client whose nth request is answered with the nth set of frames, and every later request
+// ScriptedModel is a language model whose nth request is answered with the nth set of frames, and every later request
 // with the last set.
-func ScriptedClient(t *testing.T, turns ...[]string) *provider.Client {
+func ScriptedModel(t *testing.T, turns ...[]string) fantasy.LanguageModel {
 	t.Helper()
 
 	replies := make([]Turn, len(turns))
@@ -251,7 +259,7 @@ func ScriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 		replies[i] = Frames(frames...)
 	}
 
-	return Script(t, replies...).Client(t)
+	return Script(t, replies...).Model(t)
 }
 
 // Serve starts an endpoint served by the handler and returns a client pointed at it. The tweaks change the client's

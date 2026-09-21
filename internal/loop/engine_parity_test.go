@@ -17,7 +17,7 @@ import (
 // must reset it, so two unrelated repetitions far apart in a long run do not add
 // up to a false StopCycle. (Regressed once. The counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: testutils.ScriptedModel(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	budget := &loop.Budget{}
@@ -54,7 +54,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 // call (writing a big file) must be counted, or a request the estimate thinks fits gets rejected by the provider.
 func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	// a window the huge call alone overflows, and the two recent turns fit in
-	engine, err := loop.New(&loop.Options{ContextWindow: 8000, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: 8000, Model: testutils.ScriptedModel(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	// varied text so BPE cannot merge it away - this must really exceed the
@@ -98,7 +98,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// empty budget is tighter than the settle budget
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Stop()}),
 		MaxSettles:    5,
 		MaxEmpties:    2,
 	})
@@ -125,9 +125,9 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 // so a viewer or the session summary can show real usage. Each call bills its
 // whole prompt, so per-turn counts sum.
 func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
-	client := testutils.ScriptedClient(t, []string{testutils.Settle("all done"), testutils.Usage(100, 40)})
+	client := testutils.ScriptedModel(t, []string{testutils.Settle("all done"), testutils.Usage(100, 40)})
 
-	result := run(t, &loop.Options{ContextWindow: testWindow, Client: client})
+	result := run(t, &loop.Options{ContextWindow: testWindow, Model: client})
 
 	assert.Equal(t, 100, result.Budget.InputTokens, "run must accumulate provider usage, got in=%d out=%d", result.Budget.InputTokens, result.Budget.OutputTokens)
 	assert.Equal(t, 40, result.Budget.OutputTokens, "run must accumulate provider usage, got in=%d out=%d", result.Budget.InputTokens, result.Budget.OutputTokens)
@@ -138,7 +138,7 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: testutils.ScriptedClient(t,
+		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Stop()},                        // empty. 1/3
 			[]string{testutils.Tool("call_1", litEcho, "{}")}, // productive - resets
 			[]string{testutils.Stop()},                        // empty. 1/3 again

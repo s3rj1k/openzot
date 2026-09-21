@@ -89,16 +89,14 @@ func (s *step) reset(messages *[]conversation.Message, budget *Budget, emit func
 // providerOptions is what the model's config asks fantasy to send beyond the
 // conversation itself, or nil when it asks for nothing.
 func (e *Engine) providerOptions() fantasy.ProviderOptions {
-	config := e.Options.Client.Config()
-
-	if config.ReasoningEffort == "" && len(config.ExtraBody) == 0 {
+	if e.Options.ReasoningEffort == "" && len(e.Options.ExtraBody) == 0 {
 		return nil
 	}
 
-	options := &openaicompat.ProviderOptions{ExtraBody: config.ExtraBody}
+	options := &openaicompat.ProviderOptions{ExtraBody: e.Options.ExtraBody}
 
-	if config.ReasoningEffort != "" {
-		effort := openai.ReasoningEffort(config.ReasoningEffort)
+	if e.Options.ReasoningEffort != "" {
+		effort := openai.ReasoningEffort(e.Options.ReasoningEffort)
 
 		options.ReasoningEffort = &effort
 	}
@@ -137,7 +135,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 		options = append(options, fantasy.WithProviderOptions(provider))
 	}
 
-	return fantasy.NewAgent(e.Options.Client.Model(), options...)
+	return fantasy.NewAgent(e.Options.Model, options...)
 }
 
 // repairToolCall is fantasy's own repair - mend the JSON - except for the tools

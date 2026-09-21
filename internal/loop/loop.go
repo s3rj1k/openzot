@@ -15,14 +15,21 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/repeat"
 )
 
 // Options configures a run.
 type Options struct {
-	// Client is the provider connection.
-	Client *provider.Client
+	// Model is the language model the run talks to.
+	Model fantasy.LanguageModel
+
+	// ReasoningEffort is sent as reasoning_effort with every request. Empty sends nothing and leaves the model's
+	// own default.
+	ReasoningEffort string
+
+	// ExtraBody is merged into every request body as written, for whatever the server takes that has no key of
+	// its own here.
+	ExtraBody map[string]any
 
 	// Instructions is the system prompt.
 	Instructions string
@@ -178,8 +185,8 @@ func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 
 // New creates an engine, applying defaults.
 func New(options *Options) (*Engine, error) {
-	if options.Client == nil {
-		return nil, errors.New("loop: no provider client")
+	if options.Model == nil {
+		return nil, errors.New("loop: no language model")
 	}
 
 	if options.ContextWindow <= 0 {
