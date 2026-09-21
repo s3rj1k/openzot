@@ -10,17 +10,9 @@ import (
 	"time"
 )
 
-// The bounds on a turn.
-//
-// None of them is a wall-clock cap on the exchange, and that is on purpose. An
-// http.Client.Timeout covers the body read as well, so it kills a stream that is
-// actively producing tokens - and it does so with "Client.Timeout exceeded while
-// reading body", which no retry classifier recognizes, ending the run. A
-// reasoning model can think for minutes before its first token and stream for
-// many more after it. A turn that is still producing is working, not hung.
-//
-// What is bounded instead is silence. How long to wait for a connection, for the
-// response head, and - see stallReader - between two reads of the body.
+// The bounds on a turn. None is a wall-clock cap on the exchange, on purpose, since http.Client.Timeout would kill a
+// stream that is still producing tokens. What is bounded is silence - waiting for a connection, for the response head,
+// and between two reads of the body (see stallReader). A turn that is still producing is working, not hung.
 const (
 	dialTimeout           = 30 * time.Second
 	responseHeaderTimeout = 10 * time.Minute
@@ -49,14 +41,9 @@ type stallTransport struct {
 	base http.RoundTripper
 }
 
-// stallReader fails a stream that has gone silent, without bounding one that is
-// still producing.
-//
-// The deadline moves forward on every read that returns data, so a turn is only
-// ever cut off once it stops saying anything at all. Firing closes the body,
-// which unblocks the read the consumer is parked in. The error that surfaces is
-// replaced with one naming the stall, because "use of closed network connection"
-// is neither true nor recognizable as transient.
+// stallReader fails a stream that has gone silent, without bounding one that is still producing. The deadline moves
+// on every read that returns data. Firing closes the body, and the error is replaced with one naming the stall,
+// since "use of closed network connection" is neither true nor recognizable as transient.
 type stallReader struct {
 	inner   io.ReadCloser
 	timeout time.Duration

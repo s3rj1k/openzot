@@ -25,34 +25,17 @@ func providerError(err error) (*fantasy.ProviderError, bool) {
 	return errors.AsType[*fantasy.ProviderError](err)
 }
 
-// IsProviderError reports whether err is a failure the endpoint returned, as
-// opposed to a local one (a cancellation, a context deadline). It is how an
-// abort tells the exchange worth preserving from the bare cancellation that
-// ended it.
+// IsProviderError reports whether err is a failure the endpoint returned, as opposed to a local one such as a
+// cancellation. An abort uses it to tell the exchange worth preserving from the bare cancellation that ended it.
 func IsProviderError(err error) bool {
 	_, ok := providerError(err)
 
 	return ok
 }
 
-// IsRetriable reports whether an error is a transient provider failure worth
-// retrying.
-//
-// It goes by what the error is, never by what it says. Gateways word the same
-// condition differently, and matching prose turns a wording nobody anticipated
-// into a run that ends on a blip. For an error the provider answered with, that is
-// fantasy's own rule (ProviderError.IsRetryable). A 5xx, 408 or 409, an in-band
-// error frame, a stream that ended mid-turn, an HTTP/2 reset, or a response that
-// says so with x-should-retry. Anything else - a 4xx caused by the request itself,
-// such as a bad key or a model the provider does not have - would only burn the
-// budget. What fantasy's errors do not cover are the failures that never became a
-// provider answer. A connection reset or closed under the request (however far
-// the request had got - a peer that hangs up mid-write surfaces as a broken pipe
-// or a closed connection, not a reset), a bare EOF, and zot's own stall.
-//
-// 429 is by design excluded, though fantasy would retry it. A rate limit needs
-// Retry-After backoff, not a tight retry loop, and retrying it aggressively makes
-// the throttling worse. The caller checks IsRateLimited first.
+// IsRetriable reports whether an error is a transient provider failure worth retrying. It goes by what the error is,
+// never what it says, using fantasy's rule for provider answers plus resets, broken pipes, EOF and zot's own stall.
+// 429 is excluded on purpose, since a rate limit needs a Retry-After wait. The caller checks IsRateLimited first.
 func IsRetriable(err error) bool {
 	if err == nil {
 		return false
@@ -119,12 +102,9 @@ func parseRetryAfter(header string) (time.Duration, bool) {
 	return 0, true
 }
 
-// RetryAfter reports the delay the provider advised before trying again, and
-// whether it advised one at all.
-//
-// This is the half of the rate-limit contract that makes excluding 429 from
-// IsRetriable defensible. The caller does not loop, it waits for as long as the
-// provider asked. A delay of zero with ok true means "now" rather than "no advice".
+// RetryAfter reports the delay the provider advised before trying again, and whether it advised one. It is the half of
+// the rate-limit contract that makes excluding 429 from IsRetriable defensible. A delay of zero with ok true means
+// "now", not "no advice".
 func RetryAfter(err error) (time.Duration, bool) {
 	found, ok := providerError(err)
 	if !ok {
@@ -140,11 +120,8 @@ func RetryAfter(err error) (time.Duration, bool) {
 	return 0, false
 }
 
-// contextLimitPatterns identify a prompt that exceeded the model's window.
-//
-// This is recoverable in a way most 4xx are not. The run can trim harder and try
-// again rather than failing. Detecting it needs prose because providers report
-// it as a generic 400 with no distinguishing code.
+// contextLimitPatterns identify a prompt that exceeded the model's window, which is recoverable. The run can trim
+// harder and retry. Providers report it as a generic 400, so detecting it needs prose.
 var contextLimitPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)context[ _-]?length`),
 	regexp.MustCompile(`(?i)context window`),

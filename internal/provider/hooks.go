@@ -8,19 +8,12 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 )
 
-// The rules that shape a request to what OpenAI-compatible servers accept.
-//
-// Fantasy's provider builds the request and offers a hook at each point where zot
-// needs it to come out differently. Each hook here wraps fantasy's own compat
-// function rather than replacing it, so what that does - reasoning effort, extra
-// body, tool-result media - still happens.
+// The rules that shape a request to what OpenAI-compatible servers accept. Each hook wraps fantasy's own compat
+// function rather than replacing it, so reasoning effort, extra body and tool-result media still happen.
 
-// prepareCall is the request parameters, once fantasy has set them.
-//
-// The token limit goes out as max_tokens, the field every OpenAI-compatible
-// server reads. Fantasy sends max_completion_tokens instead for any model whose
-// name looks like a reasoning model, which a compat server behind a gateway alias
-// such as "gpt-5" would never see.
+// prepareCall adjusts the request parameters once fantasy has set them. The token limit goes out as max_tokens, which
+// every OpenAI-compatible server reads. Fantasy sends max_completion_tokens for reasoning-looking model names, which
+// a compat server behind a gateway alias such as "gpt-5" would never see.
 func prepareCall(
 	model fantasy.LanguageModel,
 	params *openaisdk.ChatCompletionNewParams,

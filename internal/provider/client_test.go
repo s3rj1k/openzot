@@ -334,10 +334,8 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 	}
 }
 
-// fantasy sends max_completion_tokens for a model whose name looks like a hosted
-// reasoning model, and a local server may be serving one under such a name. The
-// field every OpenAI-compatible server reads is max_tokens, so that is the one
-// that goes out, whatever the model is called.
+// fantasy sends max_completion_tokens for a model whose name looks like a hosted reasoning model, but a local server
+// serving one under that name reads max_tokens. That is the field that must go out, whatever the model is called.
 func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 	var seen wireRequest
 

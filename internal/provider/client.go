@@ -1,7 +1,6 @@
-// Package provider is zot's connection to a model. An OpenAI-compatible
-// endpoint reached through fantasy, the classification of what goes wrong with
-// it (retriable, rate limited, context too long), and the evidence a failed
-// exchange leaves. It knows nothing of the conversation being had over it.
+// Package provider is zot's connection to a model. An OpenAI-compatible endpoint reached through fantasy, the
+// classification of what goes wrong with it (retriable, rate limited, context too long), and the evidence a
+// failed exchange leaves. It knows nothing of the conversation being had over it.
 package provider
 
 import (
@@ -20,13 +19,9 @@ type Client struct {
 	model  fantasy.LanguageModel
 }
 
-// sdkOptions keep the SDK to the operator's credential.
-//
-// The SDK reads OPENAI_API_KEY, OPENAI_ORG_ID and OPENAI_PROJECT_ID from the
-// environment as defaults. The key is the operator's, scoped to the endpoint they
-// named, or there is none. An empty key here overrides the environment's, so no
-// Authorization header goes out, and the organization and project headers the
-// environment would add are removed.
+// sdkOptions keeps the SDK to the operator's credential. The SDK would default to OPENAI_API_KEY, ORG_ID and
+// PROJECT_ID from the environment, so an empty key here overrides it, no Authorization header goes out, and the
+// organization and project headers are removed. The key is the operator's, scoped to its endpoint, or there is none.
 func sdkOptions(config ClientConfig) []option.RequestOption {
 	return []option.RequestOption{
 		option.WithAPIKey(config.APIKey),
@@ -74,14 +69,9 @@ func (c *Client) Model() fantasy.LanguageModel {
 	return c.model
 }
 
-// toolCallsModel makes a turn that asks for tools a tool turn, whatever the
-// provider called its ending.
-//
-// Fantasy runs the tools of a turn only when it finished as "tool_calls", but
-// endpoints in the wild finish a turn that carries tool calls as "stop", or as
-// something unrecognized. The calls are what the model asked for, and they are
-// run. Only a turn cut short - by length, a content filter or an error - has
-// calls that cannot be trusted, and those stay as fantasy reports them.
+// toolCallsModel makes a turn that asks for tools a tool turn, whatever the provider called its ending. Fantasy runs
+// tools only when a turn finished as "tool_calls", but endpoints finish such turns as "stop" or something else. Only a
+// turn cut short by length, a content filter or an error has calls that cannot be trusted.
 type toolCallsModel struct {
 	fantasy.LanguageModel
 }
