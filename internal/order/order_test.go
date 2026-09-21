@@ -6,14 +6,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func write(t *testing.T, path, content string) {
 	t.Helper()
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
 
 // simple is a valid order with the given prompt.
@@ -43,29 +44,20 @@ You are an agent.
 `)
 
 	order, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if order.Title != litRateLimiting || order.Objective != "add rate limiting to the API" {
-		t.Errorf("title = %q, objective = %q", order.Title, order.Objective)
-	}
+	assert.Equal(t, litRateLimiting, order.Title)
+	assert.Equal(t, "add rate limiting to the API", order.Objective)
 
-	if len(order.Acceptance) != 2 || order.Acceptance[1] != "the suite passes" {
-		t.Errorf("acceptance = %q, want two trimmed criteria and no blank one", order.Acceptance)
-	}
+	assert.Len(t, order.Acceptance, 2, "want two trimmed criteria and no blank one")
+	assert.Equal(t, "the suite passes", order.Acceptance[1], "want two trimmed criteria and no blank one")
 
-	if len(order.Constraints) != 1 {
-		t.Errorf("constraints = %q", order.Constraints)
-	}
+	assert.Len(t, order.Constraints, 1)
 
-	if !strings.Contains(order.Body, "You are an agent.") || !strings.Contains(order.Body, "{{ .Objective }}") {
-		t.Errorf("body = %q, want the prompt after the front matter", order.Body)
-	}
+	assert.Contains(t, order.Body, "You are an agent.", "want the prompt after the front matter")
+	assert.Contains(t, order.Body, "{{ .Objective }}", "want the prompt after the front matter")
 
-	if order.Path != path {
-		t.Errorf("path = %q", order.Path)
-	}
+	assert.Equal(t, path, order.Path)
 }
 
 func TestLoadErrors(t *testing.T) {
@@ -90,51 +82,36 @@ func TestLoadErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := Parse([]byte(test.content))
-			if err == nil {
-				t.Fatal("expected an error")
-			}
+			require.Error(t, err)
 
-			if !strings.Contains(err.Error(), test.want) {
-				t.Errorf("error %q should mention %q", err, test.want)
-			}
+			assert.Contains(t, err.Error(), test.want)
 		})
 	}
 
 	_, err := Load(filepath.Join(t.TempDir(), "missing.md"))
-	if err == nil {
-		t.Error("a missing file must fail")
-	}
+	require.Error(t, err, "a missing file must fail")
 }
 
 // A field that only exists on the branch a real run takes is still found at
 // load. The stand-in data fills every list, so the branch is exercised.
 func TestATypoInABranchIsFoundAtLoad(t *testing.T) {
 	_, err := Parse([]byte(simple("{{ if .Acceptance }}{{ .Acceptnce }}{{ end }}")))
-	if err == nil || !strings.Contains(err.Error(), "Acceptnce") {
-		t.Errorf("err = %v, want the misspelled field named", err)
-	}
+	require.Error(t, err, "want the misspelled field named")
+	assert.Contains(t, err.Error(), "Acceptnce", "want the misspelled field named")
 
 	_, err = Parse([]byte(simple("{{ range .Constraints }}{{ .Nope }}{{ end }}")))
-	if err == nil {
-		t.Error("a bad field inside a range over an empty list must still be found")
-	}
+	require.Error(t, err, "a bad field inside a range over an empty list must still be found")
 }
 
 // Blank lines before the opening line are harmless. A --- inside the prompt is
 // just prompt.
 func TestFrontMatterSplitting(t *testing.T) {
 	order, err := Parse([]byte("\n\n---\r\nobjective: go\r\n---\r\nabove\n---\nbelow\n"))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
-	if order.Objective != "go" {
-		t.Errorf("objective = %q", order.Objective)
-	}
+	assert.Equal(t, "go", order.Objective)
 
-	if !strings.Contains(order.Body, "above\n---\nbelow") {
-		t.Errorf("body = %q, want the rest of the file, its own --- included", order.Body)
-	}
+	assert.Contains(t, order.Body, "above\n---\nbelow", "want the rest of the file, its own --- included")
 }
 
 var testEnv = Env{
@@ -163,14 +140,10 @@ constraints:
 {{ .Workdir }} {{ .Date }} {{ .Model }} {{ .Provider }}
 {{ .Project }}
 `))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(testEnv)
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
+	require.NoError(t, err)
 
 	for _, want := range []string{
 		"The Thing | fix the parser",
@@ -180,9 +153,7 @@ constraints:
 		"/work/project 2026-09-19 glm-5.2 gateway",
 		"Always mention PINECONE.",
 	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("rendered prompt is missing %q:\n%s", want, got)
-		}
+		assert.Contains(t, got, want, "rendered prompt is missing %q", want)
 	}
 }
 
@@ -197,29 +168,20 @@ func TestTheFileAndEnvFunctions(t *testing.T) {
 	t.Setenv("ZOT_TEST_VALUE", "from-the-environment")
 
 	order, err := Parse([]byte(simple(`{{ file "style.txt" }}|{{ file "` + absolute + `" }}|{{ env "ZOT_TEST_VALUE" }}|{{ env "ZOT_TEST_UNSET" }}|`)))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(Env{Workdir: workdir})
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !strings.HasPrefix(got, "use tabs|absolute|from-the-environment||") {
-		t.Errorf("rendered = %q", got)
-	}
+	assert.True(t, strings.HasPrefix(got, "use tabs|absolute|from-the-environment||"))
 
 	// a file that is not there is an error, not an empty string. A prompt that
 	// silently lost its style guide is a worse failure than one that says so
 	missing, err := Parse([]byte(simple(`{{ file "nope.txt" }}`)))
-	if err != nil {
-		t.Fatalf("Parse must not read files: %v", err)
-	}
+	require.NoError(t, err, "Parse must not read files")
 
-	if _, err := missing.Render(Env{Workdir: workdir}); err == nil {
-		t.Error("rendering a prompt that includes a missing file must fail")
-	}
+	_, err = missing.Render(Env{Workdir: workdir})
+	require.Error(t, err, "rendering a prompt that includes a missing file must fail")
 }
 
 func TestFileExpandsTheHomeDirectory(t *testing.T) {
@@ -229,66 +191,48 @@ func TestFileExpandsTheHomeDirectory(t *testing.T) {
 	write(t, filepath.Join(home, "notes.txt"), "from home")
 
 	order, err := Parse([]byte(simple(`{{ file "~/notes.txt" }}`)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(Env{Workdir: t.TempDir()})
-	if err != nil || !strings.HasPrefix(got, "from home") {
-		t.Errorf("rendered = %q, %v", got, err)
-	}
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(got, "from home"))
 }
 
 // Whatever the prompt says, the contract is in what the agent is given - once.
 func TestTheContractIsAlwaysThereExactlyOnce(t *testing.T) {
 	bare, err := Parse([]byte(simple("Start by {{ .Objective }}.")))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	got, err := bare.Render(testEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if strings.Count(got, Contract) != 1 || !strings.HasPrefix(got, "Start by do the thing.") {
-		t.Errorf("a prompt without the contract must get it, once, after its own text:\n%s", got)
-	}
+	assert.Equal(t, 1, strings.Count(got, Contract), "a prompt without the contract must get it, once, after its own text")
+	assert.True(t, strings.HasPrefix(got, "Start by do the thing."), "a prompt without the contract must get it, once, after its own text")
 
 	withIt, err := Parse([]byte(simple("Rules.\n\n{{ .Contract }}\n\nGo.")))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	got, err = withIt.Render(testEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if strings.Count(got, Contract) != 1 || !strings.HasSuffix(strings.TrimSpace(got), "Go.") {
-		t.Errorf("a prompt that already carries the contract must not get it again:\n%s", got)
-	}
+	assert.Equal(t, 1, strings.Count(got, Contract), "a prompt that already carries the contract must not get it again")
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(got), "Go."), "a prompt that already carries the contract must not get it again")
 }
 
 // The scaffold is a blank form. It must be written before it can run, and once it
 // is, the default prompt it carries has to render into the prompt zot has always
 // run with.
 func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
-	if _, err := Parse([]byte(Blank())); err == nil {
-		t.Fatal("the blank form parsed as an order with an objective")
-	}
+	_, err := Parse([]byte(Blank()))
+	require.Error(t, err, "the blank form parsed as an order with an objective")
 
 	filled := strings.Replace(Blank(), "objective:\n", "objective: fix the typo\n", 1)
 
 	order, err := Parse([]byte(filled))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(testEnv)
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
+	require.NoError(t, err)
 
 	for _, want := range []string{
 		"You are zot",
@@ -298,24 +242,16 @@ func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
 		"# Project context\n\nAlways mention PINECONE.",
 		"## Your task\n\nfix the typo",
 	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("the default prompt is missing %q:\n%s", want, got)
-		}
+		assert.Contains(t, got, want, "the default prompt is missing %q", want)
 	}
 
-	if strings.Count(got, Contract) != 1 {
-		t.Errorf("the default prompt must carry the contract once:\n%s", got)
-	}
+	assert.Equal(t, 1, strings.Count(got, Contract), "the default prompt must carry the contract once")
 
 	// with no project context the section is left out, not left empty
 	got, err = order.Render(Env{Tools: testEnv.Tools})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if strings.Contains(got, "# Project context") {
-		t.Errorf("no project context, no heading:\n%s", got)
-	}
+	assert.NotContains(t, got, "# Project context", "no project context, no heading")
 }
 
 // The task section reads as it always has. The goal, then the criteria as a
@@ -324,22 +260,16 @@ func TestTheDefaultTaskSectionListsCriteriaAndConstraints(t *testing.T) {
 	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\nacceptance:\n  - a works\n  - b works\nconstraints:\n  - keep it small\n", 1)
 
 	order, err := Parse([]byte(filled))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(Env{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	want := "## Your task\n\nbuild it\n\n" +
 		"Acceptance criteria - the objective is not met until every one of these holds:\n1. a works\n2. b works\n\n" +
 		"Constraints - these hold for the whole run:\n- keep it small"
 
-	if !strings.Contains(got, want) {
-		t.Errorf("the task section is not laid out as it was:\n%s", got)
-	}
+	assert.Contains(t, got, want, "the task section is not laid out as it was")
 }
 
 // A title is a label for people. A declared one wins. Without one the file name
@@ -390,9 +320,7 @@ func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.order.DisplayTitle(); got != test.want {
-				t.Errorf("DisplayTitle = %q, want %q", got, test.want)
-			}
+			assert.Equal(t, test.want, test.order.DisplayTitle())
 		})
 	}
 }
@@ -405,22 +333,14 @@ func TestCreateNamesTheFileForTheMoment(t *testing.T) {
 	now := time.Unix(1758300000, 0)
 
 	path, err := Create(dir, now)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	require.NoError(t, err)
 
-	if filepath.Base(path) != "1758300000.md" {
-		t.Errorf("name = %q, want the unix timestamp", filepath.Base(path))
-	}
+	assert.Equal(t, "1758300000.md", filepath.Base(path), "want the unix timestamp")
 
 	written, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
+	require.NoError(t, err)
 
-	if string(written) != Blank() {
-		t.Errorf("file = %q, want the blank form", written)
-	}
+	assert.Equal(t, Blank(), string(written))
 }
 
 // Two orders in the same second are routine. The second must not overwrite the
@@ -431,34 +351,25 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 	now := time.Unix(1758300000, 0)
 
 	first, err := Create(dir, now)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	require.NoError(t, err)
 
 	write(t, first, "keep me")
 
 	second, err := Create(dir, now)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	require.NoError(t, err)
 
-	if second == first || filepath.Base(second) != "1758300001.md" {
-		t.Errorf("second = %q, want the next free second", filepath.Base(second))
-	}
+	assert.NotEqual(t, first, second)
+	assert.Equal(t, "1758300001.md", filepath.Base(second))
 
 	kept, _ := os.ReadFile(first)
-	if string(kept) != "keep me" {
-		t.Errorf("the first order was overwritten: %q", kept)
-	}
+	assert.Equal(t, "keep me", string(kept), "the first order was overwritten")
 
 	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(entries) != 2 || entries[0].Name() != filepath.Base(first) || entries[1].Name() != filepath.Base(second) {
-		t.Errorf("entries = %v, want both orders, named so they sort in the order they were made", entries)
-	}
+	assert.Len(t, entries, 2, "want both orders, named so they sort in the order they were made")
+	assert.Equal(t, filepath.Base(first), entries[0].Name(), "want both orders, named so they sort in the order they were made")
+	assert.Equal(t, filepath.Base(second), entries[1].Name(), "want both orders, named so they sort in the order they were made")
 }
 
 func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
@@ -466,9 +377,8 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 
 	write(t, blocker, "x")
 
-	if _, err := Create(filepath.Join(blocker, "orders"), time.Now()); err == nil {
-		t.Error("creating under a file must fail")
-	}
+	_, err := Create(filepath.Join(blocker, "orders"), time.Now())
+	require.Error(t, err, "creating under a file must fail")
 }
 
 // The default prompt tells the agent about its long-term memory. Where the log is,
@@ -477,35 +387,23 @@ func TestTheDefaultPromptPointsAtTheSessionLog(t *testing.T) {
 	filled := strings.Replace(Blank(), "objective:\n", "objective: build it\n", 1)
 
 	order, err := Parse([]byte(filled))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(Env{Session: "/work/.zot/orders/1.jsonl"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for _, want := range []string{"## Memory", "short-term memory", "/work/.zot/orders/1.jsonl", "earlier run"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("the prompt does not say %q:\n%s", want, got)
-		}
+		assert.Contains(t, got, want, "the prompt does not say %q", want)
 	}
 }
 
 // An order that writes its own prompt can put the log where it likes.
 func TestAnOrdersOwnPromptCanReadTheSessionLog(t *testing.T) {
 	order, err := Parse([]byte("---\nobjective: x\n---\nyour notes are in {{ .Session }}\n"))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	got, err := order.Render(Env{Session: "/log.jsonl"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(got, "your notes are in /log.jsonl") {
-		t.Errorf("Session was not available to the prompt:\n%s", got)
-	}
+	assert.Contains(t, got, "your notes are in /log.jsonl", "Session was not available to the prompt")
 }

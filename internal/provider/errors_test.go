@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // rejected is an error as fantasy reports one. A status and the provider's words.
@@ -44,9 +46,7 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if got := IsRetriable(test.err); got != test.want {
-			t.Errorf("%s: IsRetriable = %v, want %v", test.name, got, test.want)
-		}
+		assert.Equal(t, test.want, IsRetriable(test.err))
 	}
 }
 
@@ -65,9 +65,7 @@ func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
 		"a broken pipe":       &url.Error{Op: litPost, URL: litHTTPGw, Err: &net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPIPE)}},
 		"a closed connection": &url.Error{Op: litPost, URL: litHTTPGw, Err: &net.OpError{Op: "write", Err: net.ErrClosed}},
 	} {
-		if !IsRetriable(err) {
-			t.Errorf("%s should be retriable: %v", name, err)
-		}
+		assert.True(t, IsRetriable(err), "%s should be retriable", name)
 	}
 }
 
@@ -86,9 +84,7 @@ func TestIsRetriableIgnoresWhatAnErrorMerelySays(t *testing.T) {
 		"a refused connection":  refused,
 		"a cancellation":        context.Canceled,
 	} {
-		if IsRetriable(err) {
-			t.Errorf("%s should not be retriable: %v", name, err)
-		}
+		assert.False(t, IsRetriable(err), "%s should not be retriable", name)
 	}
 }
 
@@ -97,39 +93,26 @@ func TestIsRetriableIgnoresWhatAnErrorMerelySays(t *testing.T) {
 func TestATransientErrorWithNoStatusIsRetriable(t *testing.T) {
 	err := &fantasy.ProviderError{Message: "the upstream fell over", TransientError: true}
 
-	if !IsRetriable(err) {
-		t.Error("a transient failure with no status should retry")
-	}
+	assert.True(t, IsRetriable(err), "a transient failure with no status should retry")
 }
 
 func TestRateLimitIsNotRetriableButIsRecognised(t *testing.T) {
 	err := refused(429, "slow down")
 
-	if IsRetriable(err) {
-		t.Error("a rate limit must back off rather than retry")
-	}
+	assert.False(t, IsRetriable(err), "a rate limit must back off rather than retry")
 
-	if !IsRateLimited(err) {
-		t.Error("a 429 is a rate limit")
-	}
+	assert.True(t, IsRateLimited(err))
 
-	if IsRateLimited(refused(500, "x")) || IsRateLimited(errors.New("x")) {
-		t.Error("only a 429 is a rate limit")
-	}
+	assert.False(t, IsRateLimited(refused(500, "x")), "only a 429 is a rate limit")
+	assert.False(t, IsRateLimited(errors.New("x")), "only a 429 is a rate limit")
 }
 
 func TestIsProviderErrorTellsARefusalFromACancellation(t *testing.T) {
-	if !IsProviderError(refused(500, "x")) {
-		t.Error("a provider refusal is a provider error")
-	}
+	assert.True(t, IsProviderError(refused(500, "x")), "a provider refusal is a provider error")
 
-	if !IsProviderError(fmt.Errorf("wrapped: %w", refused(500, "x"))) {
-		t.Error("a wrapped provider error is still one")
-	}
+	assert.True(t, IsProviderError(fmt.Errorf("wrapped: %w", refused(500, "x"))), "a wrapped provider error is still one")
 
-	if IsProviderError(errors.New("context canceled")) {
-		t.Error("a local error is not a provider error")
-	}
+	assert.False(t, IsProviderError(errors.New("context canceled")))
 }
 
 func TestRetryAfterReadsBothHeaderForms(t *testing.T) {
@@ -137,30 +120,30 @@ func TestRetryAfterReadsBothHeaderForms(t *testing.T) {
 		return &fantasy.ProviderError{StatusCode: 429, ResponseHeaders: map[string]string{"retry-after": value}}
 	}
 
-	if delay, ok := RetryAfter(withHeader("7")); !ok || delay != 7*time.Second {
-		t.Errorf("seconds form = %v, %v, want 7s", delay, ok)
-	}
+	delay, ok := RetryAfter(withHeader("7"))
+	assert.True(t, ok)
+	assert.Equal(t, 7*time.Second, delay)
 
 	future := time.Now().Add(30 * time.Second).UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")
 
-	if delay, ok := RetryAfter(withHeader(future)); !ok || delay < 25*time.Second || delay > 31*time.Second {
-		t.Errorf("date form = %v, %v, want about 30s", delay, ok)
-	}
+	delay, ok = RetryAfter(withHeader(future))
+	assert.True(t, ok, "date form = %v, %v, want about 30s", delay, ok)
+	assert.GreaterOrEqual(t, delay, 25*time.Second, "date form = %v, %v, want about 30s", delay, ok)
+	assert.LessOrEqual(t, delay, 31*time.Second, "date form = %v, %v, want about 30s", delay, ok)
 
 	// already past, or zero seconds. Advice to retry now, which is not no advice
-	if delay, ok := RetryAfter(withHeader("0")); !ok || delay != 0 {
-		t.Errorf("zero = %v, %v, want 0 with advice", delay, ok)
-	}
+	delay, ok = RetryAfter(withHeader("0"))
+	assert.True(t, ok)
+	assert.EqualValues(t, 0, delay)
 
-	if delay, ok := RetryAfter(withHeader("Mon, 02 Jan 2006 15:04:05 GMT")); !ok || delay != 0 {
-		t.Errorf("past date = %v, %v, want 0 with advice", delay, ok)
-	}
+	delay, ok = RetryAfter(withHeader("Mon, 02 Jan 2006 15:04:05 GMT"))
+	assert.True(t, ok, "past date = %v, %v, want 0 with advice", delay, ok)
+	assert.EqualValues(t, 0, delay, "past date = %v, %v, want 0 with advice", delay, ok)
 
 	// no header, garbage, or not a provider error. No advice at all
 	for _, err := range []error{refused(429, "x"), withHeader("soon"), withHeader(""), errors.New("x")} {
-		if _, ok := RetryAfter(err); ok {
-			t.Errorf("%v should carry no advice", err)
-		}
+		_, ok := RetryAfter(err)
+		assert.False(t, ok, "%v should carry no advice", err)
 	}
 }
 
@@ -171,27 +154,22 @@ func TestAHugeRetryAfterSaturatesRatherThanOverflowing(t *testing.T) {
 	err := &fantasy.ProviderError{StatusCode: 429, ResponseHeaders: map[string]string{"Retry-After": "99999999999999"}}
 
 	delay, ok := RetryAfter(err)
-	if !ok || delay <= 0 {
-		t.Errorf("delay = %v, %v, want a large positive delay", delay, ok)
-	}
+	assert.True(t, ok)
+	assert.Positive(t, delay)
 }
 
 func TestDetectContextLimitExtractsTheRealWindow(t *testing.T) {
 	err := refused(400, "This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.")
 
 	limit, ok := DetectContextLimit(err)
-	if !ok {
-		t.Fatal("a length rejection was not detected")
-	}
+	require.True(t, ok, "a length rejection was not detected")
 
-	if limit.MaxTokens != 8192 || limit.UsedTokens != 9000 {
-		t.Errorf("limit = %+v, want the window and usage the provider stated", limit)
-	}
+	assert.Equal(t, 8192, limit.MaxTokens, "want the window and usage the provider stated")
+	assert.Equal(t, 9000, limit.UsedTokens, "want the window and usage the provider stated")
 
 	// the retry has to leave room for the answer, so it aims below the window
-	if limit.SuggestedLimit <= 0 || limit.SuggestedLimit >= limit.MaxTokens {
-		t.Errorf("suggested = %d, want a positive budget under the %d window", limit.SuggestedLimit, limit.MaxTokens)
-	}
+	assert.Positive(t, limit.SuggestedLimit, "suggested = %d, want a positive budget under the %d window", limit.SuggestedLimit, limit.MaxTokens)
+	assert.Less(t, limit.SuggestedLimit, limit.MaxTokens, "suggested = %d, want a positive budget under the %d window", limit.SuggestedLimit, limit.MaxTokens)
 }
 
 func TestDetectContextLimitTrustsWhatFantasyParsed(t *testing.T) {
@@ -200,29 +178,24 @@ func TestDetectContextLimitTrustsWhatFantasyParsed(t *testing.T) {
 	}
 
 	limit, ok := DetectContextLimit(err)
-	if !ok || limit.MaxTokens != 4096 || limit.UsedTokens != 9000 {
-		t.Errorf("limit = %+v, %v, want the numbers fantasy extracted", limit, ok)
-	}
+	assert.True(t, ok, "want the numbers fantasy extracted")
+	assert.Equal(t, 4096, limit.MaxTokens, "want the numbers fantasy extracted")
+	assert.Equal(t, 9000, limit.UsedTokens, "want the numbers fantasy extracted")
 }
 
 func TestDetectContextLimitRecognisesLlamaCpp(t *testing.T) {
 	err := refused(400, "the request exceeds the available context size, try increasing it")
 
 	limit, ok := DetectContextLimit(err)
-	if !ok {
-		t.Fatal("llama.cpp's wording was not recognized as a length rejection")
-	}
+	require.True(t, ok, "llama.cpp's wording was not recognized as a length rejection")
 
-	if limit.SuggestedLimit != 0 {
-		t.Errorf("suggested = %d, want none when no window was stated", limit.SuggestedLimit)
-	}
+	assert.Equal(t, 0, limit.SuggestedLimit, "want none when no window was stated")
 }
 
 func TestDetectContextLimitIgnoresUnrelatedErrors(t *testing.T) {
 	for _, err := range []error{nil, refused(401, "bad key"), errors.New("connection reset"), refused(400, "model not found")} {
-		if _, ok := DetectContextLimit(err); ok {
-			t.Errorf("%v is not a length rejection", err)
-		}
+		_, ok := DetectContextLimit(err)
+		assert.False(t, ok, "%v is not a length rejection", err)
 	}
 }
 
@@ -234,24 +207,17 @@ func TestFailureOfCarriesTheBodyNotTheDump(t *testing.T) {
 	err := &fantasy.ProviderError{StatusCode: 400, ResponseBody: []byte(dump), RequestBody: []byte(`{"model":"m"}`)}
 
 	failure := FailureOf(fmt.Errorf("run: %w", err))
-	if failure == nil {
-		t.Fatal("a refusal carries evidence")
-	}
+	require.NotNil(t, failure, "a refusal carries evidence")
 
-	if failure.Status != 400 || failure.ResponseBody != `{"error":"nope"}` {
-		t.Errorf("failure = %+v, want the status and only the body", failure)
-	}
+	assert.Equal(t, 400, failure.Status)
+	assert.JSONEq(t, `{"error":"nope"}`, failure.ResponseBody)
 
-	if failure.RequestBytes != len(`{"model":"m"}`) {
-		t.Errorf("request size = %d, want the size of what was refused", failure.RequestBytes)
-	}
+	assert.Equal(t, len(`{"model":"m"}`), failure.RequestBytes, "want the size of what was refused")
 }
 
 func TestFailureOfIsAbsentWithoutAStatus(t *testing.T) {
 	for _, err := range []error{nil, errors.New("canceled"), &fantasy.ProviderError{Message: "cut connection"}} {
-		if FailureOf(err) != nil {
-			t.Errorf("%v carries no wire evidence", err)
-		}
+		assert.Nil(t, FailureOf(err), "%v carries no wire evidence", err)
 	}
 }
 
@@ -260,7 +226,5 @@ func TestFailureOfBoundsWhatItKeeps(t *testing.T) {
 
 	failure := FailureOf(err)
 
-	if len(failure.ResponseBody) > maxDumpBody+len("…") {
-		t.Errorf("kept %d bytes, want the body bounded", len(failure.ResponseBody))
-	}
+	assert.LessOrEqual(t, len(failure.ResponseBody), maxDumpBody+len("…"), "want the body bounded")
 }

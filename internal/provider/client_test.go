@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // wireRequest is what a fake endpoint saw.
@@ -63,13 +65,10 @@ func TestStreamAssemblesText(t *testing.T) {
 		`{"choices":[{"delta":{"content":"lo"},"finish_reason":"stop"}]}`,
 	), hello())
 
-	if result.err != nil {
-		t.Fatalf("stream: %v", result.err)
-	}
+	require.NoError(t, result.err)
 
-	if result.text != "Hello" || result.finish != fantasy.FinishReasonStop {
-		t.Errorf("text = %q, finish = %q", result.text, result.finish)
-	}
+	assert.Equal(t, "Hello", result.text)
+	assert.Equal(t, fantasy.FinishReasonStop, result.finish)
 }
 
 func TestStreamAssemblesFragmentedParallelToolCalls(t *testing.T) {
@@ -79,23 +78,18 @@ func TestStreamAssemblesFragmentedParallelToolCalls(t *testing.T) {
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"pwd\"}"}}]},"finish_reason":"tool_calls"}]}`,
 	), hello())
 
-	if result.err != nil {
-		t.Fatalf("stream: %v", result.err)
-	}
+	require.NoError(t, result.err)
 
-	if len(result.calls) != 2 {
-		t.Fatalf("calls = %+v, want two", result.calls)
-	}
+	require.Len(t, result.calls, 2)
 
 	first, second := result.calls[0], result.calls[1]
 
-	if first.ToolCallID != "a" || first.ToolName != litShell || first.Input != `{"cmd":"pwd"}` {
-		t.Errorf("first call = %+v, want its argument fragments joined", first)
-	}
+	assert.Equal(t, "a", first.ToolCallID, "want its argument fragments joined")
+	assert.Equal(t, litShell, first.ToolName, "want its argument fragments joined")
+	assert.JSONEq(t, `{"cmd":"pwd"}`, first.Input, "want its argument fragments joined")
 
-	if second.ToolCallID != "b" || second.ToolName != "read" {
-		t.Errorf("second call = %+v", second)
-	}
+	assert.Equal(t, "b", second.ToolCallID)
+	assert.Equal(t, "read", second.ToolName)
 }
 
 // A model calling a tool with no parameters often sends "" for the arguments.
@@ -104,13 +98,9 @@ func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"list","arguments":""}}]},"finish_reason":"tool_calls"}]}`,
 	), hello())
 
-	if len(result.calls) != 1 {
-		t.Fatalf("calls = %+v", result.calls)
-	}
+	require.Len(t, result.calls, 1)
 
-	if input := result.calls[0].Input; input != "" && input != "{}" {
-		t.Errorf("input = %q, want empty or an empty object", input)
-	}
+	assert.Contains(t, []string{"", "{}"}, result.calls[0].Input, "want empty or an empty object")
 }
 
 // A turn cut off at the output limit mid tool call must not dispatch the half
@@ -121,13 +111,9 @@ func TestATruncatedTurnReportsLengthAndDropsTheHalfCall(t *testing.T) {
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"shell","arguments":"{\"cmd\":\"l"}}]},"finish_reason":"length"}]}`,
 	), hello())
 
-	if result.finish != fantasy.FinishReasonLength {
-		t.Errorf("finish = %q, want length", result.finish)
-	}
+	assert.Equal(t, fantasy.FinishReasonLength, result.finish)
 
-	if len(result.calls) != 0 {
-		t.Errorf("calls = %+v, want the incomplete call withheld", result.calls)
-	}
+	assert.Empty(t, result.calls, "want the incomplete call withheld")
 }
 
 func TestStreamAcceptsBothReasoningFields(t *testing.T) {
@@ -137,9 +123,8 @@ func TestStreamAcceptsBothReasoningFields(t *testing.T) {
 			`{"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}`,
 		), hello())
 
-		if result.reasoning != want || result.text != "answer" {
-			t.Errorf("%s: reasoning = %q, text = %q, want %q kept apart from the answer", field, result.reasoning, result.text, want)
-		}
+		assert.Equal(t, want, result.reasoning, "%s: reasoning = %q, text = %q, want %q kept apart from the answer", field, result.reasoning, result.text, want)
+		assert.Equal(t, "answer", result.text, "%s: reasoning = %q, text = %q, want %q kept apart from the answer", field, result.reasoning, result.text, want)
 	}
 }
 
@@ -150,30 +135,25 @@ func TestStreamCapturesUsage(t *testing.T) {
 		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}`,
 	), hello())
 
-	if trailing.usage.InputTokens != 10 || trailing.usage.OutputTokens != 3 {
-		t.Errorf("usage = %+v, want the reported counts", trailing.usage)
-	}
+	assert.EqualValues(t, 10, trailing.usage.InputTokens)
+	assert.EqualValues(t, 3, trailing.usage.OutputTokens)
 
 	// a server may leave the total out, and the counts are still real
 	noTotal := collect(frames(t,
 		`{"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1234,"completion_tokens":56}}`,
 	), hello())
 
-	if noTotal.usage.InputTokens != 1234 || noTotal.usage.OutputTokens != 56 {
-		t.Errorf("usage = %+v, want counts read without a total", noTotal.usage)
-	}
+	assert.EqualValues(t, 1234, noTotal.usage.InputTokens, "want counts read without a total")
+	assert.EqualValues(t, 56, noTotal.usage.OutputTokens, "want counts read without a total")
 }
 
 func TestStreamSurfacesAnInBandErrorAsRetriable(t *testing.T) {
 	result := collect(frames(t, `{"error":{"message":"upstream exploded","type":"server_error"}}`), hello())
 
-	if result.err == nil {
-		t.Fatal("an error frame must surface")
-	}
+	require.Error(t, result.err)
 
-	if !IsProviderError(result.err) || !IsRetriable(result.err) {
-		t.Errorf("err = %v, want a retriable provider error", result.err)
-	}
+	assert.True(t, IsProviderError(result.err))
+	assert.True(t, IsRetriable(result.err))
 }
 
 func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
@@ -185,9 +165,8 @@ func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
 
 	result := collect(client, hello())
 
-	if result.err == nil || !IsRetriable(result.err) {
-		t.Errorf("err = %v, want a retriable failure for a stream with no ending", result.err)
-	}
+	require.Error(t, result.err, "want a retriable failure for a stream with no ending")
+	assert.True(t, IsRetriable(result.err), "want a retriable failure for a stream with no ending")
 }
 
 // A connection cut at each point of a turn - after a frame, before any response,
@@ -218,13 +197,9 @@ func TestACutConnectionIsRetriable(t *testing.T) {
 	for name, handler := range tests {
 		t.Run(name, func(t *testing.T) {
 			err := collect(serve(t, handler), hello()).err
-			if err == nil {
-				t.Fatal("a cut connection must surface as an error")
-			}
+			require.Error(t, err, "a cut connection must surface as an error")
 
-			if !IsRetriable(err) {
-				t.Errorf("err = %v, want a retriable failure", err)
-			}
+			assert.True(t, IsRetriable(err))
 		})
 	}
 }
@@ -256,22 +231,19 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 			})
 
 			err := collect(client, hello()).err
-			if err == nil {
-				t.Fatal("expected an error")
-			}
+			require.Error(t, err)
 
-			if IsRetriable(err) != test.retriable || IsRateLimited(err) != test.limited {
-				t.Errorf("retriable = %v, limited = %v, want %v, %v", IsRetriable(err), IsRateLimited(err), test.retriable, test.limited)
-			}
+			assert.Equal(t, test.retriable, IsRetriable(err))
+			assert.Equal(t, test.limited, IsRateLimited(err))
 
-			if failure := FailureOf(err); failure == nil || failure.Status != test.status {
-				t.Errorf("failure = %+v, want the status kept as evidence", failure)
-			}
+			failure := FailureOf(err)
+			assert.NotNil(t, failure)
+			assert.Equal(t, test.status, failure.Status)
 
 			if test.limited {
-				if delay, ok := RetryAfter(err); !ok || delay != 7*time.Second {
-					t.Errorf("Retry-After = %v, %v, want 7s", delay, ok)
-				}
+				delay, ok := RetryAfter(err)
+				assert.True(t, ok)
+				assert.Equal(t, 7*time.Second, delay)
 			}
 		})
 	}
@@ -284,9 +256,8 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 	})
 
 	limit, ok := DetectContextLimit(collect(client, hello()).err)
-	if !ok || limit.MaxTokens != 8192 {
-		t.Errorf("limit = %+v, %v, want the stated window", limit, ok)
-	}
+	assert.True(t, ok)
+	assert.Equal(t, 8192, limit.MaxTokens)
 }
 
 // The shape of everything sent. The credential and model, the endpoint, the
@@ -304,34 +275,23 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 		}},
 	}
 
-	if result := collect(client, call); result.err != nil {
-		t.Fatalf("stream: %v", result.err)
-	}
+	require.NoError(t, collect(client, call).err)
 
-	if seen.path != "/chat/completions" {
-		t.Errorf("path = %q", seen.path)
-	}
+	assert.Equal(t, "/chat/completions", seen.path)
 
-	if got := seen.headers.Get("Authorization"); got != "Bearer test-key" {
-		t.Errorf("Authorization = %q", got)
-	}
+	assert.Equal(t, "Bearer test-key", seen.headers.Get("Authorization"))
 
-	if stream, _ := seen.body["stream"].(bool); seen.body["model"] != litTestModel || !stream {
-		t.Errorf("model = %v, stream = %v", seen.body["model"], seen.body["stream"])
-	}
+	stream, _ := seen.body["stream"].(bool)
+	assert.Equal(t, litTestModel, seen.body["model"])
+	assert.True(t, stream)
 
-	if seen.body["max_tokens"] != float64(321) {
-		t.Errorf("max_tokens = %v, want the limit under the field servers read", seen.body["max_tokens"])
-	}
+	assert.EqualValues(t, 321, seen.body["max_tokens"], "want the limit under the field servers read")
 
-	if _, present := seen.body["max_completion_tokens"]; present {
-		t.Error("max_completion_tokens must not be sent alongside")
-	}
+	_, present := seen.body["max_completion_tokens"]
+	assert.False(t, present, "max_completion_tokens must not be sent alongside")
 
 	tools, _ := seen.body["tools"].([]any)
-	if len(tools) != 1 {
-		t.Fatalf("tools = %v, want the one offered", seen.body["tools"])
-	}
+	require.Len(t, tools, 1, "want the one offered")
 }
 
 // fantasy sends max_completion_tokens for a model whose name looks like a hosted reasoning model, but a local server
@@ -343,13 +303,10 @@ func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 
 	collect(client, &fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
 
-	if seen.body["max_tokens"] != float64(64) {
-		t.Errorf("max_tokens = %v, want the limit", seen.body["max_tokens"])
-	}
+	assert.EqualValues(t, 64, seen.body["max_tokens"], "want the limit")
 
-	if _, present := seen.body["max_completion_tokens"]; present {
-		t.Error("max_completion_tokens leaked through for a reasoning-looking model name")
-	}
+	_, present := seen.body["max_completion_tokens"]
+	assert.False(t, present, "max_completion_tokens leaked through for a reasoning-looking model name")
 }
 
 func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
@@ -358,9 +315,8 @@ func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 	collect(serve(t, seen.capture), hello())
 
 	for _, field := range []string{"max_tokens", "max_completion_tokens"} {
-		if _, present := seen.body[field]; present {
-			t.Errorf("%s was sent with no limit set", field)
-		}
+		_, present := seen.body[field]
+		assert.False(t, present, "%s was sent with no limit set", field)
 	}
 }
 
@@ -371,9 +327,7 @@ func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
 
 	collect(serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" }), hello())
 
-	if seen.path != "/chat/completions" {
-		t.Errorf("path = %q, want chat-completions for any model name", seen.path)
-	}
+	assert.Equal(t, "/chat/completions", seen.path, "want chat-completions for any model name")
 }
 
 // A tool that produced no output still answers its call, and the message
@@ -401,16 +355,14 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 		tool := messages[len(messages)-1]
 
 		content, present := tool["content"]
-		if !present {
-			t.Fatalf("contentArray=%v: the tool message has no content key: %v", contentArray, tool)
-		}
+		require.True(t, present, "contentArray=%v: the tool message has no content key: %v", contentArray, tool)
 
 		if contentArray {
-			if parts, ok := content.([]any); !ok || len(parts) != 0 {
-				t.Errorf("content = %v, want an empty array", content)
-			}
-		} else if content != "" {
-			t.Errorf("content = %v, want an empty string", content)
+			parts, ok := content.([]any)
+			assert.True(t, ok, "want an empty array")
+			assert.Empty(t, parts, "want an empty array")
+		} else {
+			assert.Empty(t, content, "want an empty string")
 		}
 	}
 }
@@ -424,9 +376,8 @@ func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 	}})
 
 	for _, message := range seen.messages() {
-		if _, isString := message["content"].(string); !isString {
-			t.Errorf("content = %v, want a plain string by default", message["content"])
-		}
+		_, isString := message["content"].(string)
+		assert.True(t, isString, "want a plain string by default")
 	}
 }
 
@@ -440,24 +391,18 @@ func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 	}})
 
 	messages := seen.messages()
-	if len(messages) != 2 {
-		t.Fatalf("messages = %v", messages)
-	}
+	require.Len(t, messages, 2)
 
 	for index, want := range []string{"be brief", "hi"} {
 		parts, ok := messages[index]["content"].([]any)
-		if !ok || len(parts) != 1 {
-			t.Fatalf("message %d content = %v, want one part", index, messages[index]["content"])
-		}
+		require.True(t, ok, "want one part")
+		require.Len(t, parts, 1, "want one part")
 
 		part, ok := parts[0].(map[string]any)
-		if !ok {
-			t.Fatalf("message %d part is %T, want an object", index, parts[0])
-		}
+		require.True(t, ok, "message %d part is %T, want an object", index, parts[0])
 
-		if part["type"] != "text" || part["text"] != want {
-			t.Errorf("message %d part = %v", index, part)
-		}
+		assert.Equal(t, "text", part["type"], "message %d part", index)
+		assert.Equal(t, want, part["text"], "message %d part", index)
 	}
 }
 
@@ -471,14 +416,10 @@ func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 	client := serve(t, seen.capture, func(c *ClientConfig) { c.APIKey = "" })
 
 	// loopback, so no key is required, and none may be invented
-	if err := collect(client, hello()).err; err != nil {
-		t.Fatalf("stream: %v", err)
-	}
+	require.NoError(t, collect(client, hello()).err)
 
 	for _, header := range []string{"Authorization", "OpenAI-Organization", "OpenAI-Project"} {
-		if value := seen.headers.Get(header); value != "" {
-			t.Errorf("%s = %q, want nothing the operator did not configure", header, value)
-		}
+		assert.Empty(t, seen.headers.Get(header), "want nothing the operator did not configure")
 	}
 }
 
@@ -489,9 +430,7 @@ func TestAConfiguredKeyIsNotReplacedByTheEnvironment(t *testing.T) {
 
 	collect(serve(t, seen.capture), hello())
 
-	if got := seen.headers.Get("Authorization"); got != "Bearer test-key" {
-		t.Errorf("Authorization = %q, want the configured key", got)
-	}
+	assert.Equal(t, "Bearer test-key", seen.headers.Get("Authorization"), "want the configured key")
 }
 
 func TestClientExposesItsResolvedConfig(t *testing.T) {
@@ -499,15 +438,13 @@ func TestClientExposesItsResolvedConfig(t *testing.T) {
 
 	config := client.Config()
 
-	if config.Model != litTestModel || strings.HasSuffix(config.BaseURL, "/") {
-		t.Errorf("config = %+v", config)
-	}
+	assert.Equal(t, litTestModel, config.Model)
+	assert.False(t, strings.HasSuffix(config.BaseURL, "/"))
 }
 
 func TestNewRefusesAnInvalidConfig(t *testing.T) {
-	if _, err := NewClient(t.Context(), ClientConfig{}); err == nil {
-		t.Error("an empty config must not connect")
-	}
+	_, err := NewClient(t.Context(), ClientConfig{})
+	require.Error(t, err, "an empty config must not connect")
 }
 
 func TestStreamCancellationStopsTheTurn(t *testing.T) {
@@ -547,7 +484,7 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("canceling the context did not end the stream")
+		require.FailNow(t, "canceling the context did not end the stream")
 	}
 }
 
@@ -591,7 +528,7 @@ func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 	select {
 	case <-released:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the server never saw the connection go away")
+		require.FailNow(t, "the server never saw the connection go away")
 	}
 }
 
@@ -616,13 +553,9 @@ func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 
 	result := collect(client, hello())
 
-	if result.err != nil {
-		t.Fatalf("a stream that kept producing was cut off: %v", result.err)
-	}
+	require.NoError(t, result.err, "a stream that kept producing was cut off")
 
-	if result.text != strings.Repeat("x", 20) {
-		t.Errorf("text = %q, want all 20 tokens", result.text)
-	}
+	assert.Equal(t, strings.Repeat("x", 20), result.text)
 }
 
 // What is pathological is a stream that goes quiet and stays quiet. It has to
@@ -653,15 +586,11 @@ func TestAStalledStreamFailsRetriably(t *testing.T) {
 
 	select {
 	case result := <-done:
-		if result.err == nil {
-			t.Fatal("a stream that went silent must not hang forever")
-		}
+		require.Error(t, result.err, "a stream that went silent must not hang forever")
 
-		if !IsRetriable(result.err) {
-			t.Errorf("a stalled stream should be retriable: %v", result.err)
-		}
+		assert.True(t, IsRetriable(result.err), "a stalled stream should be retriable")
 	case <-time.After(5 * time.Second):
-		t.Fatal("a stream that went silent was never cut off")
+		require.FailNow(t, "a stream that went silent was never cut off")
 	}
 }
 
@@ -691,10 +620,8 @@ func TestAnErrorResponseWithAStalledBodyDoesNotWedge(t *testing.T) {
 
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Error("a refused request must report an error")
-		}
+		require.Error(t, err, "a refused request must report an error")
 	case <-time.After(5 * time.Second):
-		t.Fatal("an error response held open wedged the turn")
+		require.FailNow(t, "an error response held open wedged the turn")
 	}
 }

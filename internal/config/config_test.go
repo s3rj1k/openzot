@@ -4,10 +4,10 @@ import (
 	"go/build"
 	"os"
 	"path/filepath"
-	"reflect"
-	"slices"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -15,9 +15,7 @@ func writeConfig(t *testing.T, body string) string {
 	dir := t.TempDir()
 
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 
 	return path
 }
@@ -42,17 +40,12 @@ func validConfig(tweak func(*Config)) *Config {
 // against, so the defaults carry neither and Validate says what is missing.
 func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
 	c := Defaults()
-	if c.Agent.Model != "" {
-		t.Errorf("default model = %q, want none", c.Agent.Model)
-	}
+	assert.Empty(t, c.Agent.Model)
 
-	if c.Provider.BaseURL != "" || len(c.Provider.Models) != 0 {
-		t.Errorf("default provider = %+v, want none", c.Provider)
-	}
+	assert.Empty(t, c.Provider.BaseURL)
+	assert.Empty(t, c.Provider.Models)
 
-	if c.Agent.MaxIterations <= 0 {
-		t.Error("expected a positive default max_iterations")
-	}
+	assert.Positive(t, c.Agent.MaxIterations, "expected a positive default max_iterations")
 }
 
 // Nothing is seeded, and no conventional credential variable is read. A config
@@ -64,18 +57,13 @@ func TestLoadSeedsNoProvider(t *testing.T) {
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 
 	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.Provider.BaseURL != "" || cfg.Provider.APIKey != "" {
-		t.Errorf("provider = %+v, want none", cfg.Provider)
-	}
+	assert.Empty(t, cfg.Provider.BaseURL)
+	assert.Empty(t, cfg.Provider.APIKey)
 
 	err = cfg.Validate()
-	if err == nil {
-		t.Fatal("a config with no provider or model must not validate")
-	}
+	require.Error(t, err, "a config with no provider or model must not validate")
 }
 
 // A provider that names no endpoint gets none, and no ambient key. Nothing is
@@ -91,17 +79,13 @@ provider: {}
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if provider := cfg.Provider; provider.BaseURL != "" || provider.APIKey != "" {
-		t.Errorf("provider = %+v, want no endpoint and no key filled in", provider)
-	}
+	provider := cfg.Provider
+	assert.Empty(t, provider.BaseURL, "want no endpoint and no key filled in")
+	assert.Empty(t, provider.APIKey, "want no endpoint and no key filled in")
 
-	if err := cfg.Validate(); err == nil {
-		t.Error("a provider with no base_url must not validate")
-	}
+	require.Error(t, cfg.Validate(), "a provider with no base_url must not validate")
 }
 
 // Removed configuration vocabulary must fail loudly rather than being ignored
@@ -171,17 +155,15 @@ provider:
 
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := Load(writeConfig(t, body)); err == nil {
-				t.Error("removed provider configuration keys must be rejected")
-			}
+			_, err := Load(writeConfig(t, body))
+			require.Error(t, err, "removed provider configuration keys must be rejected")
 		})
 	}
 }
 
 func TestLoadExplicitMissingIsError(t *testing.T) {
-	if _, err := Load(filepath.Join(t.TempDir(), "nope.yaml")); err == nil {
-		t.Error("expected an error for a missing explicit --config file")
-	}
+	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
+	require.Error(t, err, "expected an error for a missing explicit --config file")
 }
 
 // A credential in the file may name an env var with $VAR, so no secret has to be
@@ -195,13 +177,9 @@ provider:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := cfg.Provider.APIKey; got != "sk-from-env" {
-		t.Errorf("resolved secret = %q, want sk-from-env", got)
-	}
+	assert.Equal(t, "sk-from-env", cfg.Provider.APIKey, "want sk-from-env")
 }
 
 // A braced reference resolves the same as a bare one, through a whole load.
@@ -214,48 +192,30 @@ provider:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := cfg.Provider.APIKey; got != "sk-gateway-default" {
-		t.Errorf("provider key = %q, want sk-gateway-default", got)
-	}
+	assert.Equal(t, "sk-gateway-default", cfg.Provider.APIKey, "want sk-gateway-default")
 }
 
 func TestValidate(t *testing.T) {
-	if err := validConfig(nil).Validate(); err != nil {
-		t.Errorf("unexpected error for a valid config: %v", err)
-	}
+	require.NoError(t, validConfig(nil).Validate(), "unexpected error for a valid config")
 
-	if err := validConfig(func(c *Config) { c.Agent.Model = "" }).Validate(); err == nil {
-		t.Error("expected an error for an empty model")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.Agent.Model = "" }).Validate())
 
-	if err := validConfig(func(c *Config) { c.Agent.MaxIterations = 0 }).Validate(); err == nil {
-		t.Error("expected an error for non-positive max_iterations")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.Agent.MaxIterations = 0 }).Validate(), "expected an error for non-positive max_iterations")
 
-	if err := validConfig(func(c *Config) { c.Provider = ProviderConfig{} }).Validate(); err == nil {
-		t.Error("expected an error when no provider is declared")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.Provider = ProviderConfig{} }).Validate(), "expected an error when no provider is declared")
 
-	if err := validConfig(func(c *Config) { c.Provider.BaseURL = "" }).Validate(); err == nil {
-		t.Error("expected an error for a provider with no base_url")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.Provider.BaseURL = "" }).Validate(), "expected an error for a provider with no base_url")
 
-	if err := validConfig(func(c *Config) {
+	require.Error(t, validConfig(func(c *Config) {
 		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, Models: map[string]ModelConfig{litAllowed: {Model: litGpt54, Context: 100_000}}}
-	}).Validate(); err == nil {
-		t.Error("expected the model list to reject an unlisted model")
-	}
+	}).Validate(), "expected the model list to reject an unlisted model")
 
-	if err := validConfig(func(c *Config) {
+	require.NoError(t, validConfig(func(c *Config) {
 		c.Agent.Model = litAllowed
 		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, Models: map[string]ModelConfig{litAllowed: {Model: litGpt54, Context: 100_000}}}
-	}).Validate(); err != nil {
-		t.Errorf("a declared model was rejected: %v", err)
-	}
+	}).Validate(), "a declared model was rejected")
 }
 
 // Several models on the one provider are the point. Agent.model picks which runs,
@@ -271,23 +231,17 @@ func TestAgentModelSelectsAmongTheProvidersModels(t *testing.T) {
 			c.Agent.Model = name
 			c.Provider.Models = models
 		}).Validate()
-		if err != nil {
-			t.Errorf("model %q is listed and was refused: %v", name, err)
-		}
+		require.NoError(t, err, "model %q is listed and was refused", name)
 	}
 
 	err := validConfig(func(c *Config) {
 		c.Agent.Model = "huge"
 		c.Provider.Models = models
 	}).Validate()
-	if err == nil {
-		t.Fatal("a model the provider does not list was accepted")
-	}
+	require.Error(t, err, "a model the provider does not list was accepted")
 
 	for _, want := range []string{`"huge"`, "provider.models", "fast, smart"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %q", err, want)
-		}
+		assert.Contains(t, err.Error(), want)
 	}
 }
 
@@ -299,14 +253,10 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 		err := validConfig(func(c *Config) {
 			c.Provider.Models = map[string]ModelConfig{"m": {Context: window}}
 		}).Validate()
-		if err == nil {
-			t.Fatalf("a context of %d was accepted", window)
-		}
+		require.Error(t, err, "a context of %d was accepted", window)
 
 		for _, want := range []string{"provider.models.m", "context is required"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error %q should mention %q", err, want)
-			}
+			assert.Contains(t, err.Error(), want)
 		}
 	}
 
@@ -315,9 +265,8 @@ func TestValidateRequiresEveryModelToStateItsContextWindow(t *testing.T) {
 	err := validConfig(func(c *Config) {
 		c.Provider.Models = map[string]ModelConfig{"m": {Context: 100_000}, "spare": {Model: litGpt54}}
 	}).Validate()
-	if err == nil || !strings.Contains(err.Error(), "provider.models.spare") {
-		t.Errorf("an unused model with no context should still be refused, got %v", err)
-	}
+	require.Error(t, err, "an unused model with no context should still be refused, got %v", err)
+	assert.Contains(t, err.Error(), "provider.models.spare", "an unused model with no context should still be refused, got %v", err)
 }
 
 // With no model list there is nowhere to state a window, so the model cannot run
@@ -326,14 +275,10 @@ func TestValidateRefusesAProviderThatDeclaresNoModels(t *testing.T) {
 	err := validConfig(func(c *Config) {
 		c.Provider = ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: "x"}
 	}).Validate()
-	if err == nil {
-		t.Fatal("a provider with no models was accepted")
-	}
+	require.Error(t, err, "a provider with no models was accepted")
 
 	for _, want := range []string{"models is empty", "context window"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %q", err, want)
-		}
+		assert.Contains(t, err.Error(), want)
 	}
 }
 
@@ -342,13 +287,11 @@ func TestModelNamesAreSorted(t *testing.T) {
 		"small": {Model: "gpt-5.4-mini"},
 		"large": {Model: litGpt54},
 	}}
-	if got, want := custom.ModelNames(), []string{"large", "small"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("model names = %v, want %v", got, want)
-	}
+	got, want := custom.ModelNames(), []string{"large", "small"}
+	require.Equal(t, want, got)
 
-	if got := (ProviderConfig{}).ModelNames(); len(got) != 0 {
-		t.Fatalf("no models should mean no names, got %v", got)
-	}
+	got = (ProviderConfig{}).ModelNames()
+	require.Empty(t, got, "no models should mean no names, got %v", got)
 }
 
 // The viewer and the log call the provider by the host of its base_url.
@@ -359,9 +302,7 @@ func TestTheProviderIsLabelledByItsHost(t *testing.T) {
 		"not a url":                      "not a url",
 		"":                               "",
 	} {
-		if got := (ProviderConfig{BaseURL: base}).Label(); got != want {
-			t.Errorf("label of %q = %q, want %q", base, got, want)
-		}
+		assert.Equal(t, want, (ProviderConfig{BaseURL: base}).Label(), "label of %q", base)
 	}
 }
 
@@ -378,23 +319,17 @@ provider:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
 	ScrubProviderSecrets(&cfg)
 
-	if _, ok := os.LookupEnv("ZAI_API_KEY"); ok {
-		t.Error("ZAI_API_KEY should be removed after scrub")
-	}
+	_, ok := os.LookupEnv("ZAI_API_KEY")
+	assert.False(t, ok, "ZAI_API_KEY should be removed after scrub")
 
-	if got := os.Getenv("OPENAI_API_KEY"); got != "sk-openai" {
-		t.Errorf("a variable the config never named was touched: OPENAI_API_KEY = %q", got)
-	}
+	got := os.Getenv("OPENAI_API_KEY")
+	assert.Equal(t, "sk-openai", got, "a variable the config never named was touched: OPENAI_API_KEY = %q", got)
 
-	if got := os.Getenv("ZOT_TEST_UNRELATED"); got != "keep-me" {
-		t.Errorf("ZOT_TEST_UNRELATED = %q, want keep-me", got)
-	}
+	assert.Equal(t, "keep-me", os.Getenv("ZOT_TEST_UNRELATED"), "want keep-me")
 }
 
 // The config path resolves through an explicit override, then XDG, then the
@@ -404,18 +339,14 @@ func TestConfigPathResolution(t *testing.T) {
 		t.Setenv("ZOT_CONFIG", "/custom/zot.yaml")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		if got := DefaultConfigPath(); got != "/custom/zot.yaml" {
-			t.Errorf("DefaultConfigPath = %q", got)
-		}
+		assert.Equal(t, "/custom/zot.yaml", DefaultConfigPath())
 	})
 
 	t.Run("then XDG_CONFIG_HOME", func(t *testing.T) {
 		t.Setenv("ZOT_CONFIG", "")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		if got := DefaultConfigPath(); got != "/xdg/zot/config.yaml" {
-			t.Errorf("DefaultConfigPath = %q", got)
-		}
+		assert.Equal(t, "/xdg/zot/config.yaml", DefaultConfigPath())
 	})
 
 	t.Run("then the home directory", func(t *testing.T) {
@@ -423,18 +354,14 @@ func TestConfigPathResolution(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "")
 		t.Setenv("HOME", "/home/someone")
 
-		if got := DefaultConfigPath(); got != "/home/someone/.config/zot/config.yaml" {
-			t.Errorf("DefaultConfigPath = %q", got)
-		}
+		assert.Equal(t, "/home/someone/.config/zot/config.yaml", DefaultConfigPath())
 	})
 
 	t.Run("whitespace counts as unset", func(t *testing.T) {
 		t.Setenv("ZOT_CONFIG", "   ")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		if got := DefaultConfigPath(); got != "/xdg/zot/config.yaml" {
-			t.Errorf("DefaultConfigPath = %q, want the blank override ignored", got)
-		}
+		assert.Equal(t, "/xdg/zot/config.yaml", DefaultConfigPath(), "want the blank override ignored")
 	})
 }
 
@@ -443,47 +370,35 @@ func TestConfigPathResolution(t *testing.T) {
 func TestHomeDirHasAFallback(t *testing.T) {
 	t.Setenv("HOME", "")
 
-	if got := homeDir(); got == "" {
-		t.Error("homeDir must always return something")
-	}
+	assert.NotEmpty(t, homeDir(), "homeDir must always return something")
 
 	t.Setenv("HOME", "/home/real")
 
-	if got := homeDir(); got != "/home/real" {
-		t.Errorf("homeDir = %q", got)
-	}
+	assert.Equal(t, "/home/real", homeDir())
 }
 
 // ConfigDir is where a global AGENTS.md and skills live, so it has to track
 // whichever config path is in play.
 func TestConfigDir(t *testing.T) {
-	if got := ConfigDir("/somewhere/zot.yaml"); got != "/somewhere" {
-		t.Errorf("ConfigDir = %q", got)
-	}
+	assert.Equal(t, "/somewhere", ConfigDir("/somewhere/zot.yaml"))
 
 	t.Setenv("ZOT_CONFIG", "/fallback/zot.yaml")
 
-	if got := ConfigDir("   "); got != "/fallback" {
-		t.Errorf("ConfigDir with a blank path = %q, want the default's directory", got)
-	}
+	assert.Equal(t, "/fallback", ConfigDir("   "), "want the default's directory")
 }
 
 func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	cfg := Defaults()
 	cfg.Agent.Model = "m"
 
-	if err := cfg.Validate(); err == nil {
-		t.Error("a provider with no base_url must be rejected")
-	}
+	require.Error(t, cfg.Validate(), "a provider with no base_url must be rejected")
 
 	cfg.Provider = ProviderConfig{
 		BaseURL: litHTTPSGwExampleCom,
 		Models:  map[string]ModelConfig{"m": {Context: 100_000}},
 	}
 
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("a provider with its own endpoint is valid: %v", err)
-	}
+	require.NoError(t, cfg.Validate(), "a provider with its own endpoint is valid")
 }
 
 // A `$VAR` reference is the documented way to keep a key out of the config file. It once did not expand, sending
@@ -506,9 +421,7 @@ func TestAnEnvReferenceIsExpanded(t *testing.T) {
 
 			resolveProvider(&cfg)
 
-			if got := cfg.Provider.APIKey; got != "sk-resolved" {
-				t.Errorf("credential = %q, want the expanded value", got)
-			}
+			assert.Equal(t, "sk-resolved", cfg.Provider.APIKey, "want the expanded value")
 		})
 	}
 }
@@ -522,9 +435,7 @@ func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
 
 	resolveProvider(&cfg)
 
-	if got := cfg.Provider.APIKey; got != "" {
-		t.Errorf("credential = %q, want nothing", got)
-	}
+	assert.Empty(t, cfg.Provider.APIKey)
 }
 
 // A literal key is left exactly as written - a provider key that happens to
@@ -534,9 +445,7 @@ func TestALiteralCredentialIsUntouched(t *testing.T) {
 
 	resolveProvider(&cfg)
 
-	if got := cfg.Provider.APIKey; got != "sk-literal-with-$-inside" {
-		t.Errorf("credential = %q, want it untouched", got)
-	}
+	assert.Equal(t, "sk-literal-with-$-inside", cfg.Provider.APIKey)
 }
 
 // The credential is only what the config says. A conventional variable named
@@ -548,9 +457,7 @@ func TestNoConventionalVariableIsRead(t *testing.T) {
 
 	resolveProvider(&cfg)
 
-	if got := cfg.Provider.APIKey; got != "" {
-		t.Errorf("credential = %q, want none: nothing is read on the provider's behalf", got)
-	}
+	assert.Empty(t, cfg.Provider.APIKey, "want none: nothing is read on the provider's behalf")
 }
 
 // max_time is validated at load, so a typo is caught immediately rather than
@@ -569,28 +476,20 @@ func TestMaxTimeIsValidated(t *testing.T) {
 	good := base()
 
 	good.Agent.MaxTime = "45m"
-	if err := good.Validate(); err != nil {
-		t.Errorf("a valid duration must pass: %v", err)
-	}
+	require.NoError(t, good.Validate(), "a valid duration must pass")
 
 	empty := base() // unbounded is valid
-	if err := empty.Validate(); err != nil {
-		t.Errorf("an empty max_time must pass (unbounded): %v", err)
-	}
+	require.NoError(t, empty.Validate(), "an empty max_time must pass (unbounded)")
 
 	bad := base()
 
 	bad.Agent.MaxTime = "half an hour"
-	if err := bad.Validate(); err == nil {
-		t.Error("a malformed max_time must fail validation")
-	}
+	require.Error(t, bad.Validate(), "a malformed max_time must fail validation")
 
 	negative := base()
 
 	negative.Agent.MaxTime = "-5m"
-	if err := negative.Validate(); err == nil {
-		t.Error("a negative max_time must fail validation")
-	}
+	require.Error(t, negative.Validate(), "a negative max_time must fail validation")
 }
 
 // Every budget the run honors is a config key. The two-word ones
@@ -610,9 +509,7 @@ agent:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
 	a := cfg.Agent
 
@@ -625,71 +522,53 @@ agent:
 		"max_cycles":        a.MaxCycles,
 		"max_empties":       a.MaxEmpties,
 	} {
-		if got == 0 {
-			t.Errorf("%s was not read from the file", name)
-		}
+		assert.NotEqual(t, 0, got, "%s was not read from the file", name)
 	}
 
 	// and the string parses through to a real duration
-	if d, err := a.MaxDuration(); err != nil || d.String() != "45m0s" {
-		t.Errorf("MaxDuration = %v (err %v), want 45m", d, err)
-	}
+	d, err := a.MaxDuration()
+	require.NoError(t, err)
+	assert.Equal(t, "45m0s", d.String())
 }
 
 // The thresholds are validated at load, where the operator is looking, not when
 // the run starts.
 func TestContextThresholdsAreReadAndValidated(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "agent:\n  context_soft: 30\n  context_hard: 70\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.Agent.ContextSoft != 30 || cfg.Agent.ContextHard != 70 {
-		t.Errorf("thresholds = %d/%d, want 30/70", cfg.Agent.ContextSoft, cfg.Agent.ContextHard)
-	}
+	assert.Equal(t, 30, cfg.Agent.ContextSoft)
+	assert.Equal(t, 70, cfg.Agent.ContextHard)
 
 	for _, bad := range [][2]int{{95, 0}, {60, 60}, {0, 100}, {-1, 0}} {
 		err := validConfig(func(c *Config) { c.Agent.ContextSoft, c.Agent.ContextHard = bad[0], bad[1] }).Validate()
 
-		if err == nil || !strings.Contains(err.Error(), "context") {
-			t.Errorf("thresholds %v: err = %v, want them refused and named", bad, err)
-		}
+		require.Error(t, err, "want them refused and named")
+		assert.Contains(t, err.Error(), "context", "want them refused and named")
 	}
 }
 
 func TestPlanKnobsAreReadAndValidated(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "agent:\n  plan_nudge_every: -1\n  plan_min_turns: 8\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.Agent.PlanNudgeEvery != -1 || cfg.Agent.PlanMinTurns != 8 {
-		t.Errorf("plan knobs = %d/%d, want -1/8", cfg.Agent.PlanNudgeEvery, cfg.Agent.PlanMinTurns)
-	}
+	assert.Equal(t, -1, cfg.Agent.PlanNudgeEvery)
+	assert.Equal(t, 8, cfg.Agent.PlanMinTurns)
 
-	if err := validConfig(func(c *Config) { c.Agent.PlanNudgeEvery = -1 }).Validate(); err != nil {
-		t.Errorf("a negative plan_nudge_every turns the reminders off, got %v", err)
-	}
+	err = validConfig(func(c *Config) { c.Agent.PlanNudgeEvery = -1 }).Validate()
+	require.NoError(t, err, "a negative plan_nudge_every turns the reminders off, got %v", err)
 
-	if err := validConfig(func(c *Config) { c.Agent.PlanMinTurns = -1 }).Validate(); err == nil {
-		t.Error("a negative plan_min_turns was accepted")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.Agent.PlanMinTurns = -1 }).Validate(), "a negative plan_min_turns was accepted")
 }
 
 func TestToolOutputPercentIsReadAndValidated(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "agent:\n  max_tool_output_percent: 10\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.Agent.MaxToolOutputPercent != 10 {
-		t.Errorf("max_tool_output_percent = %d, want 10", cfg.Agent.MaxToolOutputPercent)
-	}
+	assert.Equal(t, 10, cfg.Agent.MaxToolOutputPercent, "max_tool_output_percent = %d, want 10", cfg.Agent.MaxToolOutputPercent)
 
 	for _, bad := range []int{-1, 101} {
-		if err := validConfig(func(c *Config) { c.Agent.MaxToolOutputPercent = bad }).Validate(); err == nil {
-			t.Errorf("max_tool_output_percent %d was accepted", bad)
-		}
+		require.Error(t, validConfig(func(c *Config) { c.Agent.MaxToolOutputPercent = bad }).Validate(), "max_tool_output_percent %d was accepted", bad)
 	}
 }
 
@@ -706,9 +585,8 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 		t.Run(key, func(t *testing.T) {
 			path := writeConfig(t, "agent:\n  "+key+"\n")
 
-			if _, err := Load(path); err == nil {
-				t.Errorf("agent.%s must be rejected", key)
-			}
+			_, err := Load(path)
+			require.Error(t, err, "agent.%s must be rejected", key)
 		})
 	}
 }
@@ -717,13 +595,9 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 // expanded by the caller, which knows the working directory.
 func TestSkillsDirIsRead(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "skills_dir: ~/skills\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.SkillsDir != "~/skills" {
-		t.Errorf("skills_dir = %q, want it as written", cfg.SkillsDir)
-	}
+	assert.Equal(t, "~/skills", cfg.SkillsDir, "skills_dir = %q, want it as written", cfg.SkillsDir)
 }
 
 // reasoning_effort and extra_body are per-model request settings. Read as
@@ -742,32 +616,26 @@ provider:
         chat_template_kwargs:
           enable_thinking: false
 `))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
 	model := cfg.Provider.Models["local"]
 
-	if model.ReasoningEffort != "Low" {
-		t.Errorf("reasoning_effort = %q, want it as written", model.ReasoningEffort)
-	}
+	assert.Equal(t, "Low", model.ReasoningEffort, "reasoning_effort = %q, want it as written", model.ReasoningEffort)
 
 	kwargs, _ := model.ExtraBody["chat_template_kwargs"].(map[string]any)
-	if thinking, ok := kwargs["enable_thinking"].(bool); !ok || thinking {
-		t.Errorf("extra_body = %v, want the nested settings kept", model.ExtraBody)
-	}
+	thinking, ok := kwargs["enable_thinking"].(bool)
+	assert.True(t, ok, "want the nested settings kept")
+	assert.False(t, thinking, "want the nested settings kept")
 
-	if err := cfg.Validate(); err != nil {
-		t.Errorf("a known effort (any case) must validate: %v", err)
-	}
+	require.NoError(t, cfg.Validate(), "a known effort (any case) must validate")
 
 	cfg.Provider = ProviderConfig{BaseURL: "http://127.0.0.1:8080/v1", Models: map[string]ModelConfig{
 		"local": {Context: 8000, ReasoningEffort: "extreme"},
 	}}
 
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reasoning_effort") {
-		t.Errorf("err = %v, want an unknown effort refused and named", err)
-	}
+	err = cfg.Validate()
+	require.Error(t, err, "want an unknown effort refused and named")
+	assert.Contains(t, err.Error(), "reasoning_effort", "want an unknown effort refused and named")
 }
 
 // The viewer scrollback is a scalar UI field read from the file, and an
@@ -779,17 +647,11 @@ ui:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg.UI.Scrollback != 20000 {
-		t.Errorf("ui.scrollback not read: %d", cfg.UI.Scrollback)
-	}
+	assert.Equal(t, 20000, cfg.UI.Scrollback)
 
-	if err := validConfig(func(c *Config) { c.UI.Scrollback = -1 }).Validate(); err == nil {
-		t.Error("a negative ui.scrollback must fail validation")
-	}
+	require.Error(t, validConfig(func(c *Config) { c.UI.Scrollback = -1 }).Validate(), "a negative ui.scrollback must fail validation")
 }
 
 // The header is fixed, so ui.stats is gone rather than ignored. A config that
@@ -801,9 +663,9 @@ ui:
   stats: [model, iter]
 `)
 
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "stats") {
-		t.Errorf("err = %v, want the removed ui.stats key refused and named", err)
-	}
+	_, err := Load(path)
+	require.Error(t, err, "want the removed ui.stats key refused and named")
+	assert.Contains(t, err.Error(), "stats", "want the removed ui.stats key refused and named")
 }
 
 // A key written for the endpoint is exactly what it uses, and an ambient
@@ -820,30 +682,20 @@ provider:
 `)
 
 	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := cfg.Provider.APIKey; got != "sk-proxy" {
-		t.Errorf("key = %q, want the explicitly configured one", got)
-	}
+	assert.Equal(t, "sk-proxy", cfg.Provider.APIKey, "want the explicitly configured one")
 }
 
 // The config is what everything else reads and validates itself against, so it
 // must not depend on any of it. A rule written here is written once.
 func TestConfigImportsNoOtherPackageOfTheModule(t *testing.T) {
 	pkg, err := build.ImportDir(".", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !slices.Contains(pkg.Imports, "gopkg.in/yaml.v3") {
-		t.Fatalf("the check reads no imports at all: %v", pkg.Imports)
-	}
+	require.Contains(t, pkg.Imports, "gopkg.in/yaml.v3", "the check reads no imports at all")
 
 	for _, path := range pkg.Imports {
-		if strings.Contains(path, "openzot/openzot/") {
-			t.Errorf("config imports %s", path)
-		}
+		assert.NotContains(t, path, "openzot/openzot/")
 	}
 }

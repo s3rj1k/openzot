@@ -1,9 +1,11 @@
 package provider
 
 import (
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveDefaultsAndValidation(t *testing.T) {
@@ -35,20 +37,14 @@ func TestResolveDefaultsAndValidation(t *testing.T) {
 			resolved, err := test.config.Resolve()
 
 			if test.wantErr {
-				if err == nil {
-					t.Fatal("expected an error")
-				}
+				require.Error(t, err)
 
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("Resolve: %v", err)
-			}
+			require.NoError(t, err)
 
-			if resolved.BaseURL != test.wantURL {
-				t.Errorf("base URL = %q, want %q", resolved.BaseURL, test.wantURL)
-			}
+			assert.Equal(t, test.wantURL, resolved.BaseURL)
 		})
 	}
 }
@@ -62,9 +58,8 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 		"http://[::1]:8080/v1",
 		"http://[::1]/v1",
 	} {
-		if _, err := (ClientConfig{Model: "m", BaseURL: url}).Resolve(); err != nil {
-			t.Errorf("%s was not treated as loopback: %v", url, err)
-		}
+		_, err := (ClientConfig{Model: "m", BaseURL: url}).Resolve()
+		require.NoError(t, err, "%s was not treated as loopback", url)
 	}
 
 	for _, url := range []string{
@@ -72,23 +67,18 @@ func TestLoopbackIsRecognisedInEveryForm(t *testing.T) {
 		"http://[2001:db8::1]/v1",
 		"http://localhost.example.com/v1",
 	} {
-		if _, err := (ClientConfig{Model: "m", APIKey: "k", BaseURL: url}).Resolve(); err == nil {
-			t.Errorf("%s was accepted over plaintext", url)
-		}
+		_, err := (ClientConfig{Model: "m", APIKey: "k", BaseURL: url}).Resolve()
+		require.Error(t, err, "%s was accepted over plaintext", url)
 	}
 }
 
 func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 	_, err := (ClientConfig{Provider: "acme", Model: "m", BaseURL: litHTTPSGwExampleCom}).Resolve()
 
-	if !errors.Is(err, ErrMissingCredential) {
-		t.Fatalf("err = %v, want ErrMissingCredential", err)
-	}
+	require.ErrorIs(t, err, ErrMissingCredential)
 
 	for _, want := range []string{"acme", "gw.example.com"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %q", err, want)
-		}
+		assert.Contains(t, err.Error(), want)
 	}
 }
 
@@ -97,12 +87,8 @@ func TestAMissingKeyNamesTheProviderAndTheHost(t *testing.T) {
 func TestResolveNormalisesTheReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"", "low", "HIGH", " medium ", "somethingnew"} {
 		resolved, err := (ClientConfig{Model: "m", BaseURL: "http://127.0.0.1/v1", ReasoningEffort: effort}).Resolve()
-		if err != nil {
-			t.Errorf("effort %q: %v", effort, err)
-		}
+		require.NoError(t, err, "effort %q", effort)
 
-		if resolved.ReasoningEffort != strings.ToLower(strings.TrimSpace(effort)) {
-			t.Errorf("effort %q resolved to %q, want it normalised", effort, resolved.ReasoningEffort)
-		}
+		assert.Equal(t, strings.ToLower(strings.TrimSpace(effort)), resolved.ReasoningEffort)
 	}
 }

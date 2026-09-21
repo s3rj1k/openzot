@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/require"
 )
 
 // serve stands up a fake endpoint and a client pointed at it.
@@ -26,9 +27,7 @@ func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*ClientConfig))
 	}
 
 	client, err := NewClient(t.Context(), config)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
