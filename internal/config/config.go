@@ -7,12 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
-	"net/url"
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,142 +29,12 @@ type Config struct {
 	Provider ProviderConfig `yaml:"provider"`
 }
 
-// ProviderConfig is the model-provider connection agent runs against. It
-// authenticates with a Bearer credential.
-type ProviderConfig struct {
-	// BaseURL is the API endpoint root. Required, and https unless loopback.
-	BaseURL string `yaml:"base_url"`
-	// APIKey is the provider credential. Supports "$ENV_VAR" references, so no
-	// secret need be written to disk. Required unless base_url is loopback.
-	APIKey string `yaml:"api_key"`
-	// The models the provider serves. Required, since every model must state its own context window.
-	// Keys are the selectable names, and an entry may alias or override the real model id.
-	Models map[string]ModelConfig `yaml:"models"`
-}
-
-// ModelConfig is a model definition under the provider. Context is required. Any
-// other field set here overrides the run's defaults when the model is selected.
-type ModelConfig struct {
-	// Model is the underlying model id to send. Lets a custom name alias a real
-	// model. Leave empty to use the selected name as-is.
-	Model string `yaml:"model"`
-	// MaxIterations overrides the global iteration cap for this model.
-	MaxIterations int `yaml:"max_iterations"`
-	// The model's context window, in tokens. Required, and the only source of it. Agent keeps no table
-	// of models, since the endpoint's real ceiling can be below the model's card. It sizes what is kept.
-	Context int `yaml:"context"`
-
-	// ContentArray sends every message's content as an array of parts, for
-	// endpoints whose chat template rejects the bare string.
-	ContentArray bool `yaml:"content_array"`
-
-	// ReasoningEffort is sent as reasoning_effort. None, minimal, low, medium,
-	// high, xhigh or max. Empty sends nothing and leaves the model's default.
-	ReasoningEffort string `yaml:"reasoning_effort"`
-
-	// ExtraBody is merged into every request body for this model, as written.
-	// The escape hatch for what a server takes that has no key of its own here.
-	ExtraBody map[string]any `yaml:"extra_body"`
-}
-
-// ModelNames returns the names of the models the provider serves, sorted.
-func (p ProviderConfig) ModelNames() []string {
-	return slices.Sorted(maps.Keys(p.Models))
-}
-
-// Label is what the viewer and the session log call the provider. The host of
-// its base_url, which says where the run is talking without a second name to
-// keep in step with it.
-func (p ProviderConfig) Label() string {
-	if u, err := url.Parse(p.BaseURL); err == nil && u.Host != "" {
-		return u.Host
-	}
-
-	return p.BaseURL
-}
-
 // UI holds presentation options for the read-only viewer.
 type UI struct {
 	// How many log lines the viewer keeps on screen. Zero uses the built-in default. Raising it keeps
 	// more of a long run visible at more memory. The session log always has the full run.
 	Scrollback int `yaml:"scrollback"`
 }
-
-// Agent holds the knobs that shape an autonomous run.
-type Agent struct {
-	// Model is the model name driving the agent.
-	Model string `yaml:"model"`
-	// MaxIterations caps how many plan/act/observe cycles the agent may run
-	// before it is forced to stop.
-	MaxIterations int `yaml:"max_iterations"`
-	// How many times the agent is nudged to record an outcome (success or failure) before the run is
-	// reported unsettled. Zero uses the built-in default.
-	MaxSettles int `yaml:"max_settles"`
-	// Caps total tool calls across a run, independent of iterations (one can request several).
-	// Zero is unbounded, and max_iterations is the only finite default.
-	MaxCalls int `yaml:"max_calls"`
-	// MaxTime caps the wall-clock time of a run, as a duration string ("30m",
-	// "2h", "90s"). Empty is unbounded.
-	MaxTime string `yaml:"max_time"`
-	// Caps the output tokens of one model response. Zero sends no cap, like max_calls and max_time,
-	// so the model produces its full output.
-	MaxTokens int `yaml:"max_tokens"`
-	// Caps one tool result at this share of the context window, in percent, before it is truncated.
-	// Zero uses the default (25). A share, not a size, so a small-window model gets a tighter bound.
-	MaxToolOutputPercent int `yaml:"max_tool_output_percent"`
-	// Caps CONSECUTIVE recovery attempts (truncated response, retriable provider error) with no
-	// good turn between them. A whole turn resets the count. Zero uses the built-in default.
-	MaxContinuations int `yaml:"max_continuations"`
-	// Caps recovery attempts across a whole run, however spaced. max_continuations catches a provider
-	// failing now, this catches one that answers just often enough to keep resetting it. Zero uses the default.
-	MaxRecoveries int `yaml:"max_recoveries"`
-	// How many times the loop nudges the model out of a detected repetition before giving up. Zero
-	// uses the built-in default. The default encodes a real failure, so raise it with care.
-	MaxCycles int `yaml:"max_cycles"`
-	// MaxEmpties caps consecutive empty turns before the run bails. Zero uses the
-	// built-in default.
-	MaxEmpties int `yaml:"max_empties"`
-	// Percent of the context window where the oldest message starts to be forgotten on every request.
-	// Zero uses the built-in default (50).
-	ContextSoft int `yaml:"context_soft"`
-	// Percent of the window a request may never reach. Past it, as many of the oldest messages are
-	// forgotten as it takes. Must be above context_soft. Zero uses the built-in default (90).
-	ContextHard int `yaml:"context_hard"`
-	// Iterations between reminders that the plan tool exists. Zero uses the built-in default (5).
-	// A negative value turns the reminders off.
-	PlanNudgeEvery int `yaml:"plan_nudge_every"`
-	// How few turns may be left in the window after forgetting before the plan is posted again.
-	// Zero uses the built-in default (5).
-	PlanMinTurns int `yaml:"plan_min_turns"`
-}
-
-// MaxDuration parses Agent.MaxTime into a duration. An empty value is zero
-// (unbounded). A malformed value is an error so a typo in the config is caught
-// at load rather than silently ignored.
-func (a *Agent) MaxDuration() (time.Duration, error) {
-	value := strings.TrimSpace(a.MaxTime)
-	if value == "" {
-		return 0, nil
-	}
-
-	d, err := time.ParseDuration(value)
-	if err != nil {
-		return 0, fmt.Errorf("%q is not a duration (use forms like \"30m\", \"2h\", \"90s\")", a.MaxTime)
-	}
-
-	if d < 0 {
-		return 0, fmt.Errorf("%q is negative", a.MaxTime)
-	}
-
-	return d, nil
-}
-
-// The defaults of the two context thresholds live here because the rule between them is the config's. The
-// engine has its own fallbacks for callers building options by hand, and a test holds the two to the same numbers.
-const (
-	defaultContextSoft = 50
-	defaultContextHard = 90
-)
 
 // Defaults returns the built-in configuration used when nothing else is set. There is no default provider or
 // model, since a pair that cannot talk to each other fails as a hard-to-read provider error. Validate says what is missing.
@@ -179,55 +46,6 @@ func Defaults() Config {
 			ContextHard:   defaultContextHard,
 		},
 	}
-}
-
-// ReasoningEfforts are the values reasoning_effort may take. The ones fantasy
-// knows how to send, in increasing order of effort.
-var ReasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
-
-// validateContext holds the thresholds to 1 <= soft < hard <= 99, percent of the
-// window. Zero is the default.
-func (a *Agent) validateContext() error {
-	soft, hard := a.ContextSoft, a.ContextHard
-
-	if soft == 0 {
-		soft = defaultContextSoft
-	}
-
-	if hard == 0 {
-		hard = defaultContextHard
-	}
-
-	if soft < 1 || hard > 99 || soft >= hard {
-		return fmt.Errorf(
-			"agent.context_soft/context_hard: soft=%d hard=%d: want 1 <= soft < hard <= 99 (percent of the window)", soft, hard)
-	}
-
-	return nil
-}
-
-// resolveSecret expands a "$ENV_VAR" or "${ENV_VAR}" reference and returns a literal unchanged. An unset variable
-// resolves to empty, so a missing credential is reported as missing rather than sent as the text "$MY_KEY".
-func resolveSecret(v string) string {
-	v = strings.TrimSpace(v)
-
-	if v == "" {
-		return ""
-	}
-
-	if after, ok := strings.CutPrefix(v, "$"); ok {
-		name := strings.TrimSuffix(strings.TrimPrefix(after, "{"), "}")
-		return strings.TrimSpace(os.Getenv(strings.TrimSpace(name)))
-	}
-
-	return v
-}
-
-// ResolveProvider resolves the credential from its "$ENV" reference, when it is one. The credential is only what the
-// config says, with no conventional-variable fallback, since a key is scoped to its host. An unexpanded reference
-// would send the literal "$MY_KEY" and come back as a 401 that reads like a bad key.
-func ResolveProvider(cfg *Config) {
-	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
 }
 
 // Load resolves the configuration. Defaults, then the YAML file (if present).
@@ -259,23 +77,6 @@ func Load(path string) (Config, error) {
 	ResolveProvider(&cfg)
 
 	return cfg, nil
-}
-
-// ScrubProviderSecrets removes the resolved provider credential from the process
-// environment. Config keeps the resolved value used by the SDK client, while
-// shell commands launched by the agent no longer inherit it.
-func ScrubProviderSecrets(cfg *Config) {
-	secret := cfg.Provider.APIKey
-	if secret == "" {
-		return
-	}
-
-	for _, entry := range os.Environ() {
-		name, value, ok := strings.Cut(entry, "=")
-		if ok && value == secret {
-			_ = os.Unsetenv(name)
-		}
-	}
 }
 
 // Validate checks the fully-merged configuration.
