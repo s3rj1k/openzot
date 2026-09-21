@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Cases the corpus could not carry, and what replaced them. Anything the capture left out is a hole in the guarantee that
@@ -57,17 +60,13 @@ var notPortableCases = []notPortable{
 // the record still reads as though it were handled.
 func TestEveryNotPortableCaseHasItsReplacement(t *testing.T) {
 	sources, err := filepath.Glob("*_test.go")
-	if err != nil {
-		t.Fatalf("glob: %v", err)
-	}
+	require.NoError(t, err)
 
 	var body strings.Builder
 
 	for _, source := range sources {
 		raw, err := os.ReadFile(source)
-		if err != nil {
-			t.Fatalf("read %s: %v", source, err)
-		}
+		require.NoError(t, err, "read %s", source)
 
 		body.Write(raw)
 	}
@@ -76,14 +75,12 @@ func TestEveryNotPortableCaseHasItsReplacement(t *testing.T) {
 
 	for _, entry := range notPortableCases {
 		if entry.Replacement == "" {
-			t.Errorf("%s names no replacement test", entry.ID)
+			assert.Failf(t, "unexpected", "%s names no replacement test", entry.ID)
 
 			continue
 		}
 
-		if !strings.Contains(tests, "func "+entry.Replacement+"(") {
-			t.Errorf("%s points at %s, which does not exist", entry.ID, entry.Replacement)
-		}
+		assert.Contains(t, tests, "func "+entry.Replacement+"(", "%s points at %s, which does not exist", entry.ID, entry.Replacement)
 	}
 }
 
@@ -100,10 +97,7 @@ func TestNotPortableCasesAreAbsentFromTheCorpus(t *testing.T) {
 	}
 
 	for _, entry := range notPortableCases {
-		if present[entry.ID] {
-			t.Errorf("%s is in the corpus but recorded as not portable; the hand-written %s is now "+
-				"a duplicate of it", entry.ID, entry.Replacement)
-		}
+		assert.False(t, present[entry.ID], "%s is in the corpus but recorded as not portable, so the hand-written %s duplicates it", entry.ID, entry.Replacement)
 	}
 }
 
@@ -112,18 +106,12 @@ func TestEveryNotPortableCaseIsExplained(t *testing.T) {
 	seen := map[string]bool{}
 
 	for _, entry := range notPortableCases {
-		if entry.ID == "" {
-			t.Error("a case names no record")
-		}
+		assert.NotEmpty(t, entry.ID, "a case names no record")
 
-		if seen[entry.ID] {
-			t.Errorf("%s is recorded twice", entry.ID)
-		}
+		assert.False(t, seen[entry.ID], "%s is recorded twice", entry.ID)
 
 		seen[entry.ID] = true
 
-		if len(entry.Why) < 120 {
-			t.Errorf("%s: reason is too thin to act on: %q", entry.ID, entry.Why)
-		}
+		assert.GreaterOrEqual(t, len(entry.Why), 120, "%s: reason is too thin to act on", entry.ID)
 	}
 }

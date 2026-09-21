@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
 )
@@ -52,9 +55,7 @@ func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	return client, &requests
 }
@@ -87,31 +88,21 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 		Client:        client,
 		Messages:      longConversation(40),
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	// the configured window, far above the 8192 the provider states
 	engine.window = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q, want the run to recover and stop normally", result.Reason)
-	}
+	require.Equal(t, StopSettled, result.Reason, "want the run to recover and stop normally")
 
-	if *requests < 2 {
-		t.Errorf("the request was not retried after the rejection (%d requests)", *requests)
-	}
+	assert.GreaterOrEqual(t, *requests, 2, "the request was not retried after the rejection (%d requests)", *requests)
 
-	if result.Budget.Recoveries != 1 {
-		t.Errorf("continuations = %d, want the rejection to count as one", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 1, result.Budget.Recoveries, "want the rejection to count as one")
 
 	// 85% of the stated 8192
-	if engine.window != 6963 {
-		t.Errorf("window = %d, want it narrowed to the stated window", engine.window)
-	}
+	assert.Equal(t, 6963, engine.window)
 }
 
 // Trimming happens on the wire, not in the history. Every message the run
@@ -123,24 +114,19 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	original := longConversation(40)
 
 	engine, err := New(&Options{ContextWindow: testWindow, Client: client, Messages: original})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine.window = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
-	if len(result.Messages) < len(original) {
-		t.Fatalf("the conversation shrank from %d to %d messages", len(original), len(result.Messages))
-	}
+	require.GreaterOrEqual(t, len(result.Messages), len(original), "the conversation shrank from %d to %d messages", len(original), len(result.Messages))
 
 	for index, message := range original {
 		got := result.Messages[index]
 
-		if got.Type != message.Type || got.Text != message.Text {
-			t.Fatalf("message %d was rewritten: %q -> %q", index, message.Text, got.Text)
-		}
+		require.Equal(t, message.Type, got.Type, "message %d was rewritten", index)
+		require.Equal(t, message.Text, got.Text, "message %d was rewritten", index)
 	}
 }
 
@@ -151,22 +137,16 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
 	engine, err := New(&Options{ContextWindow: testWindow, Client: client, Messages: longConversation(4)})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	floor := testWindow / narrowFloor
 
 	engine.window = floor
 
 	// no stated window, so the only move is stepping the window down
-	if engine.narrowWindow(provider.ContextLimit{}, func(Event) {}) {
-		t.Errorf("the window narrowed to %d, below the %d floor", engine.window, floor)
-	}
+	assert.False(t, engine.narrowWindow(provider.ContextLimit{}, func(Event) {}), "the window narrowed to %d, below the %d floor", engine.window, floor)
 
-	if engine.window != floor {
-		t.Errorf("window = %d, want it left at the floor", engine.window)
-	}
+	assert.Equal(t, floor, engine.window)
 }
 
 // A rejection without a stated window steps the budget down by a quarter.
@@ -174,17 +154,11 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
 	engine, err := New(&Options{ContextWindow: 40_000, Client: client})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !engine.narrowWindow(provider.ContextLimit{}, func(Event) {}) {
-		t.Fatal("expected the budget to narrow")
-	}
+	require.True(t, engine.narrowWindow(provider.ContextLimit{}, func(Event) {}))
 
-	if engine.window != 30_000 {
-		t.Errorf("window = %d, want 30000", engine.window)
-	}
+	assert.Equal(t, 30_000, engine.window)
 }
 
 // A context limit that persists is eventually a real failure rather than an
@@ -206,9 +180,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow:    testWindow,
@@ -216,21 +188,15 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 		Messages:         longConversation(40),
 		MaxContinuations: 3,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine.window = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
-	if result.Reason != StopError {
-		t.Errorf("reason = %q, want error once narrowing stops helping", result.Reason)
-	}
+	assert.Equal(t, StopError, result.Reason, "want error once narrowing stops helping")
 
-	if result.Err == nil {
-		t.Error("the underlying provider error must be reported")
-	}
+	require.Error(t, result.Err, "the underlying provider error must be reported")
 }
 
 // A transient provider failure is retried rather than ending the run.
@@ -262,9 +228,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
@@ -272,9 +236,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		RetryBackoff:  -1, // the retry itself is under test, not its pacing
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	var retried bool
 
@@ -284,13 +246,9 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		}
 	})
 
-	if result.Reason != StopSettled {
-		t.Errorf("reason = %q, want the retry to succeed", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason)
 
-	if !retried {
-		t.Error("a retry must be visible to the caller")
-	}
+	assert.True(t, retried, "a retry must be visible to the caller")
 }
 
 // A 4xx that is not a context limit is terminal. Retrying a bad key or a missing
@@ -310,28 +268,20 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	result := engine.Run(t.Context(), nil)
 
-	if result.Reason != StopError {
-		t.Errorf("reason = %q, want error", result.Reason)
-	}
+	assert.Equal(t, StopError, result.Reason)
 
-	if result.Budget.Recoveries != 0 {
-		t.Errorf("continuations = %d, want no retries for a credential problem", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 0, result.Budget.Recoveries, "want no retries for a credential problem")
 }
 
 // When a provider rejects for length it states the real window. That is ground
@@ -369,33 +319,21 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
 		Client:        client,
 		Messages:      longConversation(40),
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	// the configured window is wildly optimistic for this endpoint
-	before := engine.window
+	require.NoError(t, err)
 
 	result := engine.Run(t.Context(), nil)
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q, want the run to recover", result.Reason)
-	}
+	require.Equal(t, StopSettled, result.Reason)
 
 	// 85% of the stated 8192
-	if engine.window != 6963 {
-		t.Errorf("window = %d, want 6963 (85%% of the stated 8192); was %d",
-			engine.window, before)
-	}
+	assert.Equal(t, 6963, engine.window, "window")
 }
 
 // A rejection with no number still recovers, using the engine's own estimate.
@@ -431,11 +369,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 	})
 
 	engine, err := New(&Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
-	if result := engine.Run(t.Context(), nil); result.Reason != StopSettled {
-		t.Errorf("reason = %q, want the run to recover", result.Reason)
-	}
+	assert.Equal(t, StopSettled, engine.Run(t.Context(), nil).Reason)
 }

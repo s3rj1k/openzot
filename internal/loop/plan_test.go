@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -31,9 +34,7 @@ func planEngine(t *testing.T, options *Options) *Engine {
 	options.PlanTool = litTasks
 
 	engine, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return engine
 }
@@ -48,42 +49,38 @@ func TestRepostedPlan(t *testing.T) {
 
 	t.Run("a plan that fell out of the window is posted again", func(t *testing.T) {
 		posted, ok := engine.repostedPlan(messages, 5)
-		if !ok || len(posted) != 2 {
-			t.Fatalf("posted %d messages, ok=%v, want the call and its result", len(posted), ok)
-		}
+		require.True(t, ok, "want the call and its result")
+		require.Len(t, posted, 2, "want the call and its result")
 
 		call, result := posted[0].Activity, posted[1].Activity
 
-		if call.Kind != conversation.ActivityRequest || result.Kind != conversation.ActivityResponse || call.ID != result.ID {
-			t.Errorf("not a paired call and result: %+v %+v", call, result)
-		}
+		assert.Equal(t, conversation.ActivityRequest, call.Kind)
+		assert.Equal(t, conversation.ActivityResponse, result.Kind)
+		assert.Equal(t, result.ID, call.ID)
 
-		if call.ID == "a" || call.ID == "b" {
-			t.Errorf("the id %q is one the model already used", call.ID)
-		}
+		assert.NotEqual(t, "a", call.ID, "the id %q is one the model already used", call.ID)
+		assert.NotEqual(t, "b", call.ID, "the id %q is one the model already used", call.ID)
 
-		if call.Name != litTasks || call.Arguments != planArgs || result.Result != "the plan" || posted[1].Text != "the plan" {
-			t.Errorf("not the latest plan: %+v %+v", call, result)
-		}
+		assert.Equal(t, litTasks, call.Name)
+		assert.JSONEq(t, planArgs, call.Arguments)
+		assert.Equal(t, "the plan", result.Result)
+		assert.Equal(t, "the plan", posted[1].Text)
 	})
 
 	t.Run("a plan still in the window needs no help", func(t *testing.T) {
 		// the plan's result is message 3. At the offset it is the oldest one held
 		for _, forgotten := range []int{2, 3} {
-			if _, ok := engine.repostedPlan(messages, forgotten); ok {
-				t.Errorf("the plan was posted while its result is still in the window (offset %d)", forgotten)
-			}
+			_, ok := engine.repostedPlan(messages, forgotten)
+			assert.False(t, ok, "the plan was posted while its result is still in the window (offset %d)", forgotten)
 		}
 
-		if _, ok := engine.repostedPlan(messages, 4); !ok {
-			t.Error("the plan was not posted with its result one message out of the window")
-		}
+		_, ok := engine.repostedPlan(messages, 4)
+		assert.True(t, ok, "the plan was not posted with its result one message out of the window")
 	})
 
 	t.Run("no plan, nothing to post", func(t *testing.T) {
-		if _, ok := engine.repostedPlan([]conversation.Message{{Type: conversation.TypeUser, Text: "hi"}}, 1); ok {
-			t.Error("a plan was invented")
-		}
+		_, ok := engine.repostedPlan([]conversation.Message{{Type: conversation.TypeUser, Text: "hi"}}, 1)
+		assert.False(t, ok)
 	})
 
 	t.Run("a refused call is not the plan", func(t *testing.T) {
@@ -95,28 +92,23 @@ func TestRepostedPlan(t *testing.T) {
 		)
 
 		posted, ok := engine.repostedPlan(refused, 6)
-		if !ok || posted[0].Activity.Arguments != planArgs {
-			t.Errorf("the plan should be the last one that worked, got %+v (ok=%v)", posted, ok)
-		}
+		assert.True(t, ok, "the plan should be the last one that worked, got %+v (ok=%v)", posted, ok)
+		assert.JSONEq(t, planArgs, posted[0].Activity.Arguments, "want the last plan that worked")
 	})
 
 	t.Run("another tool is not the plan", func(t *testing.T) {
 		other := []conversation.Message{activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: litLater}}
 
-		if _, ok := engine.repostedPlan(other, 1); ok {
-			t.Error("a shell result was taken for the plan")
-		}
+		_, ok := engine.repostedPlan(other, 1)
+		assert.False(t, ok, "a shell result was taken for the plan")
 	})
 
 	t.Run("without a plan tool there is no plan", func(t *testing.T) {
 		bare, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: testWindow})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
-		if _, ok := bare.repostedPlan(messages, 5); ok {
-			t.Error("a plan was posted with no plan tool")
-		}
+		_, ok := bare.repostedPlan(messages, 5)
+		assert.False(t, ok, "a plan was posted with no plan tool")
 	})
 }
 
@@ -159,9 +151,7 @@ func TestForgettingLeavesTooFewTurnsSoThePlanIsPosted(t *testing.T) {
 
 	grown := engine.fitToWindow(messages, &forgotten, starts(messages), nil, func(Event) {})
 
-	if len(grown) != len(messages)+2 {
-		t.Fatalf("the conversation grew by %d messages, want the 2 of the plan", len(grown)-len(messages))
-	}
+	require.Len(t, grown, len(messages)+2, "the conversation grew by %d messages, want the 2 of the plan", len(grown)-len(messages))
 
 	request := engine.buildRequest(grown, forgotten)
 
@@ -173,9 +163,7 @@ func TestForgettingLeavesTooFewTurnsSoThePlanIsPosted(t *testing.T) {
 		}
 	}
 
-	if !posted {
-		t.Error("the plan is not in the request")
-	}
+	assert.True(t, posted)
 }
 
 // A turn is whole only if none of it was forgotten, and the one being asked for
@@ -184,9 +172,8 @@ func TestTurnsHeld(t *testing.T) {
 	starts := []int{0, 4, 8, 12, 16}
 
 	for forgotten, want := range map[int]int{0: 4, 4: 3, 5: 2, 8: 2, 13: 0, 16: 0, 40: 0} {
-		if got := turnsHeld(starts, forgotten); got != want {
-			t.Errorf("offset %d holds %d turns, want %d", forgotten, got, want)
-		}
+		got := turnsHeld(starts, forgotten)
+		assert.Equal(t, want, got, "offset %d holds %d turns, want %d", forgotten, got, want)
 	}
 }
 
@@ -203,9 +190,7 @@ func TestThePlanGoesBackOnlyBelowTheMinimumTurns(t *testing.T) {
 	probe.forgetOldest(messages, &forgotten, nil, func(Event) {})
 
 	held := turnsHeld(marks, forgotten)
-	if held == 0 {
-		t.Fatal("test setup: no turns held")
-	}
+	require.NotEqual(t, 0, held, "test setup: no turns held")
 
 	for min, wantPosted := range map[int]bool{held - 1: false, held: false, held + 1: true} {
 		engine := planEngine(t, &Options{ContextWindow: 4_000, PlanMinTurns: min})
@@ -213,9 +198,8 @@ func TestThePlanGoesBackOnlyBelowTheMinimumTurns(t *testing.T) {
 
 		grown := engine.fitToWindow(messages, &offset, marks, nil, func(Event) {})
 
-		if posted := len(grown) > len(messages); posted != wantPosted {
-			t.Errorf("with %d turns held and a minimum of %d, posted = %v, want %v", held, min, posted, wantPosted)
-		}
+		posted := len(grown) > len(messages)
+		assert.Equal(t, wantPosted, posted, "with %d turns held and a minimum of %d, posted = %v, want %v", held, min, posted, wantPosted)
 	}
 }
 
@@ -227,13 +211,9 @@ func TestThePlanIsLeftAloneWhenTheWindowStillHoldsEnoughTurns(t *testing.T) {
 
 	grown := engine.fitToWindow(messages, &forgotten, starts(messages), nil, func(Event) {})
 
-	if forgotten == 0 {
-		t.Fatal("test setup: nothing was forgotten")
-	}
+	require.NotEqual(t, 0, forgotten, "test setup: nothing was forgotten")
 
-	if len(grown) != len(messages) {
-		t.Errorf("the plan was posted with plenty of turns left (%d messages added)", len(grown)-len(messages))
-	}
+	assert.Len(t, grown, len(messages), "the plan was posted with plenty of turns left (%d messages added)", len(grown)-len(messages))
 }
 
 func TestNothingIsPostedWhileNothingIsForgotten(t *testing.T) {
@@ -242,9 +222,7 @@ func TestNothingIsPostedWhileNothingIsForgotten(t *testing.T) {
 	messages := history(3, "short")
 	forgotten := 0
 
-	if grown := engine.fitToWindow(messages, &forgotten, starts(messages), nil, func(Event) {}); len(grown) != len(messages) {
-		t.Error("the plan was posted though the whole conversation fits")
-	}
+	assert.Len(t, engine.fitToWindow(messages, &forgotten, starts(messages), nil, func(Event) {}), len(messages), "the plan was posted though the whole conversation fits")
 }
 
 func TestThePlanIsNotPostedTwice(t *testing.T) {
@@ -264,9 +242,7 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 
 	messages = engine.fitToWindow(messages, &forgotten, append(starts(messages[:size]), size, len(messages)), nil, func(Event) {})
 
-	if len(messages) != size+2 {
-		t.Errorf("the plan was posted again while the last copy is in the window (%d extra messages)", len(messages)-size-2)
-	}
+	assert.Len(t, messages, size+2, "the plan was posted again while the last copy is in the window (%d extra messages)", len(messages)-size-2)
 }
 
 // planRun runs an engine that lays out a plan and then keeps working, and
@@ -289,9 +265,7 @@ func planRun(t *testing.T, options *Options, iterations int) *Result {
 	}
 
 	engine, err := New(options)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	result := engine.Run(t.Context(), nil)
 
@@ -312,30 +286,25 @@ func countNudges(result *Result) int {
 
 func TestThePlanToolIsRememberedEveryNthIteration(t *testing.T) {
 	// iterations 3, 6 and 9 of ten
-	if got := countNudges(planRun(t, &Options{PlanTool: litTasks, PlanNudgeEvery: 3}, 10)); got != 3 {
-		t.Errorf("nudged %d times, want 3", got)
-	}
+	assert.Equal(t, 3, countNudges(planRun(t, &Options{PlanTool: litTasks, PlanNudgeEvery: 3}, 10)))
 
 	// the default is every fifth
-	if got := countNudges(planRun(t, &Options{PlanTool: litTasks}, 11)); got != 2 {
-		t.Errorf("nudged %d times with the default, want 2 (iterations 5 and 10)", got)
-	}
+	got := countNudges(planRun(t, &Options{PlanTool: litTasks}, 11))
+	assert.Equal(t, 2, got, "nudged %d times with the default, want 2 (iterations 5 and 10)", got)
 }
 
 func TestPlanRemindersCanBeSwitchedOffAndNeedAPlanTool(t *testing.T) {
-	if got := countNudges(planRun(t, &Options{PlanTool: litTasks, PlanNudgeEvery: -1}, 12)); got != 0 {
-		t.Errorf("nudged %d times with the reminders off", got)
-	}
+	got := countNudges(planRun(t, &Options{PlanTool: litTasks, PlanNudgeEvery: -1}, 12))
+	assert.Equal(t, 0, got, "nudged %d times with the reminders off", got)
 
-	if got := countNudges(planRun(t, &Options{PlanNudgeEvery: 2}, 12)); got != 0 {
-		t.Errorf("nudged %d times with no plan tool to point at", got)
-	}
+	got = countNudges(planRun(t, &Options{PlanNudgeEvery: 2}, 12))
+	assert.Equal(t, 0, got, "nudged %d times with no plan tool to point at", got)
 }
 
 func TestPlanNudgeIsANotice(t *testing.T) {
-	if got := planNudge(litTasks); !strings.HasPrefix(got, noticePrefix) || !strings.Contains(got, litTasks) {
-		t.Errorf("the nudge must carry the notice prefix and name the tool: %q", got)
-	}
+	got := planNudge(litTasks)
+	assert.True(t, strings.HasPrefix(got, noticePrefix), "the nudge must carry the notice prefix and name the tool")
+	assert.Contains(t, got, litTasks, "the nudge must carry the notice prefix and name the tool")
 }
 
 // End to end. A long run in a small window loses the model's own plan call to
@@ -355,13 +324,9 @@ func TestALongRunKeepsThePlanInView(t *testing.T) {
 		if a := message.Activity; a != nil && a.Kind == conversation.ActivityRequest && a.Name == litTasks && strings.HasPrefix(a.ID, "plan-") {
 			posted++
 
-			if a.Arguments != planArgs {
-				t.Errorf("the reposted plan differs from the model's: %q", a.Arguments)
-			}
+			assert.JSONEq(t, planArgs, a.Arguments, "the reposted plan differs from the model's")
 		}
 	}
 
-	if posted == 0 {
-		t.Error("the plan was never posted again")
-	}
+	assert.NotEqual(t, 0, posted, "the plan was never posted again")
 }

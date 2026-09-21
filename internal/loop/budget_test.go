@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
@@ -37,14 +39,10 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 		MaxCycles:     100000, // high, so cycle detection is not what stops it
 	})
 
-	if result.Reason != StopTime {
-		t.Errorf("Reason = %q, want %q", result.Reason, StopTime)
-	}
+	assert.Equal(t, StopTime, result.Reason)
 
 	// it did some work before the deadline, and nowhere near the iteration cap
-	if result.Budget.Iterations >= 100000 {
-		t.Errorf("Iterations = %d, want the time cap to bite first", result.Budget.Iterations)
-	}
+	assert.Less(t, result.Budget.Iterations, 100000, "want the time cap to bite first")
 }
 
 // With no time cap, a run is never stopped for time - the default is unbounded.
@@ -55,9 +53,7 @@ func TestTimeIsUnboundedByDefault(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if result.Reason == StopTime {
-		t.Error("a run with no time cap must never stop for time")
-	}
+	assert.NotEqual(t, StopTime, result.Reason, "a run with no time cap must never stop for time")
 }
 
 // A tool round is progress. It costs an iteration and a call, and nothing else.
@@ -76,17 +72,11 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 		MaxContinuations: 1,
 	})
 
-	if result.Budget.Recoveries != 0 {
-		t.Errorf("tool rounds spent %d continuations, want 0", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 0, result.Budget.Recoveries, "tool rounds spent %d continuations, want 0", result.Budget.Recoveries)
 
-	if result.Budget.Calls != 2 {
-		t.Errorf("Calls = %d, want 2", result.Budget.Calls)
-	}
+	assert.Equal(t, 2, result.Budget.Calls)
 
-	if result.Reason != StopSettled {
-		t.Errorf("Reason = %q, want the run to finish normally", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason, "want the run to finish normally")
 }
 
 // Being cut off mid-answer is not progress, and it is the only thing the
@@ -101,9 +91,7 @@ func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
 		MaxIterations: 10,
 	})
 
-	if result.Budget.Recoveries != 1 {
-		t.Errorf("Continuations = %d, want 1", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 1, result.Budget.Recoveries)
 }
 
 // The two budgets are independent. A run can exhaust one while the other is
@@ -121,13 +109,9 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 		MaxCycles:        1000,
 	})
 
-	if result.Reason != StopIterations {
-		t.Errorf("Reason = %q, want the iteration budget to be what stops it", result.Reason)
-	}
+	assert.Equal(t, StopIterations, result.Reason, "want the iteration budget to be what stops it")
 
-	if result.Budget.Recoveries != 0 {
-		t.Errorf("Continuations = %d, want the continuation budget untouched", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 0, result.Budget.Recoveries, "want the continuation budget untouched")
 
 	// and the other way round. Truncated forever, with plenty of iterations
 	result = run(t, &Options{
@@ -137,13 +121,9 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 		MaxContinuations: 3,
 	})
 
-	if result.Reason != StopContinuations {
-		t.Errorf("Reason = %q, want the continuation budget to be what stops it", result.Reason)
-	}
+	assert.Equal(t, StopContinuations, result.Reason, "want the continuation budget to be what stops it")
 
-	if result.Budget.Iterations >= 50 {
-		t.Errorf("Iterations = %d, want the continuation budget to bite first", result.Budget.Iterations)
-	}
+	assert.Less(t, result.Budget.Iterations, 50, "want the continuation budget to bite first")
 }
 
 // Everything that goes round the loop costs an iteration - tool rounds,
@@ -182,13 +162,9 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 				MaxEmpties:       100,
 			})
 
-			if result.Budget.Iterations != 3 {
-				t.Errorf("Iterations = %d, want the budget spent", result.Budget.Iterations)
-			}
+			assert.Equal(t, 3, result.Budget.Iterations)
 
-			if result.Reason != StopIterations {
-				t.Errorf("Reason = %q, want %q", result.Reason, StopIterations)
-			}
+			assert.Equal(t, StopIterations, result.Reason)
 		})
 	}
 }
@@ -206,17 +182,11 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 		MaxCycles:     1000,
 	})
 
-	if result.Budget.Iterations != 1 {
-		t.Errorf("Iterations = %d, want 1", result.Budget.Iterations)
-	}
+	assert.Equal(t, 1, result.Budget.Iterations)
 
-	if calls != 1 {
-		t.Errorf("the tool ran %d times, want once", calls)
-	}
+	assert.Equal(t, 1, calls, "the tool ran %d times, want once", calls)
 
-	if result.Reason != StopIterations {
-		t.Errorf("Reason = %q, want %q", result.Reason, StopIterations)
-	}
+	assert.Equal(t, StopIterations, result.Reason)
 }
 
 // A non-positive budget means "unset", not "zero". The iteration count and the no-progress guards (cycles, empties) are hard
@@ -231,25 +201,16 @@ func TestBudgetDefaults(t *testing.T) {
 			MaxCycles:     value,
 			MaxEmpties:    value,
 		})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
+		require.NoError(t, err)
 
 		// fallbacks fall back to their finite defaults
-		if engine.maxIterations != DefaultMaxIterations {
-			t.Errorf("a budget of %d left iterations at %d, want the default backstop",
-				value, engine.maxIterations)
-		}
+		assert.Equal(t, DefaultMaxIterations, engine.maxIterations, "want the default backstop")
 
-		if engine.maxCycles <= 0 || engine.maxEmpties <= 0 {
-			t.Errorf("a budget of %d left a guard unbounded: cycles=%d empties=%d",
-				value, engine.maxCycles, engine.maxEmpties)
-		}
+		assert.Positive(t, engine.maxCycles, "a budget of %d left a guard unbounded: cycles=%d empties=%d", value, engine.maxCycles, engine.maxEmpties)
+		assert.Positive(t, engine.maxEmpties, "a budget of %d left a guard unbounded: cycles=%d empties=%d", value, engine.maxCycles, engine.maxEmpties)
 
 		// calls stays unbounded - a non-positive value is "no cap", not a default
-		if engine.maxCalls != 0 {
-			t.Errorf("a budget of %d gave maxCalls=%d, want 0 (unbounded)", value, engine.maxCalls)
-		}
+		assert.Equal(t, 0, engine.maxCalls, "a budget of %d gave maxCalls=%d, want 0 (unbounded)", value, engine.maxCalls)
 	}
 }
 
@@ -268,13 +229,9 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 		MaxCycles:     1000,
 	})
 
-	if result.Budget.Iterations != 500 {
-		t.Errorf("Iterations = %d, want the full 500 rounds", result.Budget.Iterations)
-	}
+	assert.Equal(t, 500, result.Budget.Iterations)
 
-	if calls < 400 {
-		t.Errorf("the tool ran %d times over 500 rounds", calls)
-	}
+	assert.GreaterOrEqual(t, calls, 400, "the tool ran %d times over 500 rounds", calls)
 }
 
 // mentionsAFailure reports whether any tool result carries an error.
@@ -310,17 +267,11 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if invoked != 0 {
-		t.Errorf("the handler ran %d times on undecodable arguments", invoked)
-	}
+	assert.Equal(t, 0, invoked, "the handler ran %d times on undecodable arguments", invoked)
 
-	if !mentionsAFailure(result.Messages) {
-		t.Error("the decode failure must be fed back so the model can correct it")
-	}
+	assert.True(t, mentionsAFailure(result.Messages), "the decode failure must be fed back so the model can correct it")
 
-	if result.Reason != StopSettled {
-		t.Errorf("Reason = %q, want the run to carry on", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason)
 }
 
 // fantasy repairs what it can before a call is run - a missing closing brace or
@@ -345,17 +296,11 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if invoked != 1 {
-		t.Errorf("the handler ran %d times, want the repaired call to run once", invoked)
-	}
+	assert.Equal(t, 1, invoked, "want the repaired call to run once")
 
-	if mentionsAFailure(result.Messages) {
-		t.Error("a call that could be repaired must not be reported as a failure")
-	}
+	assert.False(t, mentionsAFailure(result.Messages), "a call that could be repaired must not be reported as a failure")
 
-	if result.Reason != StopSettled {
-		t.Errorf("Reason = %q", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason)
 }
 
 // containsText reports whether any message holds the given text.
@@ -386,13 +331,9 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if result.Reason != StopSettled {
-		t.Errorf("Reason = %q, want the run to survive a failing tool", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason, "want the run to survive a failing tool")
 
-	if !containsText(result.Messages, "permission denied") {
-		t.Error("the failure must be visible to the model")
-	}
+	assert.True(t, containsText(result.Messages, "permission denied"), "the failure must be visible to the model")
 }
 
 // countActivities counts each half of the tool-call pairs.
@@ -436,9 +377,8 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 
 	requests, responses := countActivities(result.Messages)
 
-	if requests != responses || requests == 0 {
-		t.Errorf("got %d calls and %d results, want them paired", requests, responses)
-	}
+	assert.Equal(t, responses, requests, "want them paired")
+	assert.NotEqual(t, 0, requests, "want them paired")
 }
 
 // A finish reason zot has no special handling for - content_filter is the one
@@ -458,13 +398,10 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 
 	// the filtered turn is answered like any turn that stops without acting. A
 	// nudge to settle, and the run carries on
-	if result.Reason != StopSettled || result.Budget.Settles != 1 {
-		t.Errorf("Reason = %q after %d nudges, want the run to carry on and settle after one", result.Reason, result.Budget.Settles)
-	}
+	assert.Equal(t, StopSettled, result.Reason, "want the run to carry on and settle after one")
+	assert.Equal(t, 1, result.Budget.Settles, "want the run to carry on and settle after one")
 
-	if result.Err != nil {
-		t.Errorf("Err = %v, want none", result.Err)
-	}
+	require.NoError(t, result.Err)
 }
 
 // A turn that claims tool calls and carries none is a provider bug. It has to
@@ -479,13 +416,9 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 		MaxEmpties:    2,
 	})
 
-	if result.Err != nil {
-		t.Errorf("Err = %v, want none", result.Err)
-	}
+	require.NoError(t, result.Err)
 
-	if result.Reason != StopEmpty && result.Reason != StopIterations {
-		t.Errorf("Reason = %q, want the turn treated as empty", result.Reason)
-	}
+	assert.Contains(t, []StopReason{StopEmpty, StopIterations}, result.Reason, "want the turn treated as empty")
 }
 
 // A retriable provider failure has to be waited out, not hammered. Retrying instantly spends the whole continuation budget
@@ -503,9 +436,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	started := time.Now()
 
@@ -520,25 +451,18 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopError {
-		t.Fatalf("reason = %q, want the run to end on the provider failure", result.Reason)
-	}
+	require.Equal(t, StopError, result.Reason, "want the run to end on the provider failure")
 
-	if result.Budget.Recoveries != 3 {
-		t.Fatalf("continuations = %d, want the budget spent", result.Budget.Recoveries)
-	}
+	require.Equal(t, 3, result.Budget.Recoveries)
 
 	// 20ms, then 40ms, then 80ms. The doubling means three retries cannot fit
 	// into anything close to the zero delay they used to take.
-	if want := 100 * time.Millisecond; elapsed < want {
-		t.Errorf("three retries took %s, want at least %s of backoff between them", elapsed, want)
-	}
+	want := 100 * time.Millisecond
+	assert.GreaterOrEqual(t, elapsed, want, "three retries took %s, want at least %s of backoff between them", elapsed, want)
 
 	// A failed model call is not an agentic round. Continuations bound recovery, so charging the
 	// iteration budget too would make an outage cost the run twice.
-	if result.Budget.Iterations != 0 {
-		t.Errorf("Iterations = %d, want 0 - no round ever completed", result.Budget.Iterations)
-	}
+	assert.Equal(t, 0, result.Budget.Iterations, "want 0 - no round ever completed")
 }
 
 // Canceling a run must cut a backoff short rather than making the caller wait
@@ -556,9 +480,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  failing.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow:    testWindow,
@@ -567,9 +489,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 		MaxContinuations: 5,
 		RetryBackoff:     time.Hour,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -581,19 +501,15 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	started := time.Now()
 	result := engine.Run(ctx, nil)
 
-	if elapsed := time.Since(started); elapsed > 30*time.Second {
-		t.Fatalf("cancellation took %s to end an hour-long backoff", elapsed)
-	}
+	elapsed := time.Since(started)
+	require.LessOrEqual(t, elapsed, 30*time.Second, "cancellation took %s to end an hour-long backoff", elapsed)
 
-	if result.Reason != StopAborted {
-		t.Errorf("reason = %q, want the cancellation to end the run", result.Reason)
-	}
+	assert.Equal(t, StopAborted, result.Reason, "want the cancellation to end the run")
 
 	// The abort landed during a backoff wait, but the provider failure before it travels with it as
 	// evidence. A bare "context canceled" would discard the exchange the operator quit to read.
-	if result.Err == nil || !provider.IsProviderError(result.Err) {
-		t.Errorf("aborted result carries %v, want the last provider failure preserved", result.Err)
-	}
+	require.Error(t, result.Err, "want the last provider failure preserved")
+	assert.True(t, provider.IsProviderError(result.Err), "want the last provider failure preserved")
 }
 
 // The default backoff must be a real pause. A zero default would silently
@@ -601,23 +517,16 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 // reaching it behaviourally costs a second of wall clock per retry.
 func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
 	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
-	if engine.retryBackoff <= 0 {
-		t.Errorf("default retry backoff = %s, want a positive pause", engine.retryBackoff)
-	}
+	assert.Positive(t, engine.retryBackoff, "want a positive pause")
 
 	// and a caller can still opt out, which is what keeps these tests fast
 	engine, err = New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), RetryBackoff: -1})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := backoffFor(engine.retryBackoff, 1); got != 0 {
-		t.Errorf("opted-out backoff = %s, want none", got)
-	}
+	got := backoffFor(engine.retryBackoff, 1)
+	assert.EqualValues(t, 0, got, "opted-out backoff = %s, want none", got)
 }
 
 // The pause doubles per consecutive retry so a persistent outage is not retried
@@ -626,27 +535,22 @@ func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
 func TestBackoffDoublesAndIsCapped(t *testing.T) {
 	base := time.Second
 
-	if got := backoffFor(base, 1); got != base {
-		t.Errorf("first retry waits %s, want %s", got, base)
-	}
+	got := backoffFor(base, 1)
+	assert.Equal(t, base, got, "first retry waits %s, want %s", got, base)
 
-	if got := backoffFor(base, 2); got != 2*base {
-		t.Errorf("second retry waits %s, want %s", got, 2*base)
-	}
+	got = backoffFor(base, 2)
+	assert.Equal(t, 2*base, got, "second retry waits %s, want %s", got, 2*base)
 
-	if got := backoffFor(base, 3); got != 4*base {
-		t.Errorf("third retry waits %s, want %s", got, 4*base)
-	}
+	got = backoffFor(base, 3)
+	assert.Equal(t, 4*base, got, "third retry waits %s, want %s", got, 4*base)
 
-	if got := backoffFor(base, 40); got != MaxRetryBackoff {
-		t.Errorf("a long outage waits %s, want the cap %s", got, MaxRetryBackoff)
-	}
+	got = backoffFor(base, 40)
+	assert.Equal(t, MaxRetryBackoff, got, "a long outage waits %s, want the cap %s", got, MaxRetryBackoff)
 
 	// the cap binds the base too. A caller-configured backoff above it must not
 	// make the first retry the longest wait of the run
-	if got := backoffFor(2*MaxRetryBackoff, 1); got != MaxRetryBackoff {
-		t.Errorf("a base above the cap waits %s on the first retry, want the cap %s", got, MaxRetryBackoff)
-	}
+	got = backoffFor(2*MaxRetryBackoff, 1)
+	assert.Equal(t, MaxRetryBackoff, got, "a base above the cap waits %s on the first retry, want the cap %s", got, MaxRetryBackoff)
 }
 
 // A rate limit must not kill a run. 429 is excluded from IsRetriable because it needs the provider's own schedule, but with
@@ -684,9 +588,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	started := time.Now()
 
@@ -699,51 +601,35 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%v), want the run to survive the rate limit", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason, "want the run to survive the rate limit")
 
-	if result.Budget.Recoveries != 1 {
-		t.Errorf("continuations = %d, want the rate limit to cost exactly one", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 1, result.Budget.Recoveries, "want the rate limit to cost exactly one")
 
 	// the provider asked for a second. Honoring that is the whole point, so a
 	// retry that came back sooner means the advice was ignored
-	if elapsed < time.Second {
-		t.Errorf("retried after %s, want the advised second to be waited out", elapsed)
-	}
+	assert.GreaterOrEqual(t, elapsed, time.Second, "want the advised second to be waited out")
 }
 
 // A provider that advises an absurd Retry-After must not park an unattended run
 // for hours. The advice is honored up to a cap, and no further.
 func TestAnAbsurdRetryAfterIsCapped(t *testing.T) {
-	if got := rateLimitWait(48*time.Hour, true, time.Second); got != MaxRateLimitWait {
-		t.Errorf("wait = %s, want the cap %s", got, MaxRateLimitWait)
-	}
+	assert.Equal(t, MaxRateLimitWait, rateLimitWait(48*time.Hour, true, time.Second))
 
 	// advice inside the cap is followed exactly, rather than rounded to our own
 	// backoff schedule
-	if got := rateLimitWait(90*time.Second, true, time.Second); got != 90*time.Second {
-		t.Errorf("wait = %s, want the advised 90s", got)
-	}
+	assert.Equal(t, 90*time.Second, rateLimitWait(90*time.Second, true, time.Second))
 
 	// and with no advice at all the ordinary backoff applies
-	if got := rateLimitWait(0, false, 4*time.Second); got != 4*time.Second {
-		t.Errorf("wait = %s, want the fallback backoff", got)
-	}
+	assert.Equal(t, 4*time.Second, rateLimitWait(0, false, 4*time.Second), "want the fallback backoff")
 }
 
 // The backoff is a floor under the provider's advice, not only a fallback for its absence. "Retry-After: 0" is advice to
 // retry now, and a provider that keeps sending it would otherwise be hammered with the tight loop the backoff prevents.
 func TestAZeroRetryAfterIsFlooredByTheBackoff(t *testing.T) {
-	if got := rateLimitWait(0, true, 4*time.Second); got != 4*time.Second {
-		t.Errorf("wait = %s, want the 4s backoff floor under \"retry now\"", got)
-	}
+	assert.Equal(t, 4*time.Second, rateLimitWait(0, true, 4*time.Second), "want the 4s backoff floor under \"retry now\"")
 
 	// advice above the floor still wins. The provider knows its own window
-	if got := rateLimitWait(90*time.Second, true, 4*time.Second); got != 90*time.Second {
-		t.Errorf("wait = %s, want the advised 90s over the smaller backoff", got)
-	}
+	assert.Equal(t, 90*time.Second, rateLimitWait(90*time.Second, true, 4*time.Second), "want the advised 90s over the smaller backoff")
 }
 
 // And end to end. Repeated 429s advising "retry now" must still space their
@@ -764,9 +650,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	started := time.Now()
 
@@ -781,18 +665,13 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopError {
-		t.Fatalf("reason = %q, want the run to end once the budget is spent", result.Reason)
-	}
+	require.Equal(t, StopError, result.Reason, "want the run to end once the budget is spent")
 
-	if result.Budget.Recoveries != 3 {
-		t.Fatalf("continuations = %d, want the budget spent", result.Budget.Recoveries)
-	}
+	require.Equal(t, 3, result.Budget.Recoveries)
 
 	// 20ms, then 40ms, then 80ms. The advised zero must not undercut the floor
-	if want := 100 * time.Millisecond; elapsed < want {
-		t.Errorf("three rate-limited retries took %s, want at least %s of backoff between them", elapsed, want)
-	}
+	want := 100 * time.Millisecond
+	assert.GreaterOrEqual(t, elapsed, want, "three rate-limited retries took %s, want at least %s of backoff between them", elapsed, want)
 }
 
 // The backoff paces consecutive failures. Once a turn succeeds the outage is over, and the next blip, hours later, must
@@ -839,9 +718,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	calls := 0
 
@@ -862,23 +739,17 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%v), want the run to finish", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason)
 
-	if result.Budget.Recoveries != 3 {
-		t.Fatalf("continuations = %d, want 3", result.Budget.Recoveries)
-	}
+	require.Equal(t, 3, result.Budget.Recoveries)
 
 	// The wait is base + 2x base + base = 4x base when the counter resets on success. A counter that
 	// kept escalating would wait 7x base. The bound sits between, with slack for a loaded machine.
-	if floor := 4 * base; elapsed < floor {
-		t.Fatalf("the retries took %s, want at least %s of backoff", elapsed, floor)
-	}
+	floor := 4 * base
+	require.GreaterOrEqual(t, elapsed, floor, "the retries took %s, want at least %s of backoff", elapsed, floor)
 
-	if ceiling := 6 * base; elapsed > ceiling {
-		t.Errorf("the retries took %s, want under %s - the backoff must restart from the base after a successful turn", elapsed, ceiling)
-	}
+	ceiling := 6 * base
+	assert.LessOrEqual(t, elapsed, ceiling, "the retries took %s, want under %s - the backoff must restart from the base after a successful turn", elapsed, ceiling)
 }
 
 // The consecutive-failure counter is the backoff's own, not the continuation budget, which truncation recoveries and
@@ -922,9 +793,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	base := 300 * time.Millisecond
 
@@ -941,23 +810,17 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%v), want the run to finish", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason)
 
-	if result.Budget.Recoveries != 4 {
-		t.Fatalf("continuations = %d, want 3 truncations plus 1 retry", result.Budget.Recoveries)
-	}
+	require.Equal(t, 4, result.Budget.Recoveries, "want 3 truncations plus 1 retry")
 
 	// one failure, one wait of base. Keyed off the shared budget it would have
 	// been 8x base. The bound leaves generous slack for a loaded machine.
-	if floor := base; elapsed < floor {
-		t.Fatalf("the retry took %s, want at least the %s base backoff", elapsed, floor)
-	}
+	floor := base
+	require.GreaterOrEqual(t, elapsed, floor, "the retry took %s, want at least the %s base backoff", elapsed, floor)
 
-	if ceiling := 4 * base; elapsed > ceiling {
-		t.Errorf("the retry took %s, want under %s - truncation recoveries must not escalate the failure backoff", elapsed, ceiling)
-	}
+	ceiling := 4 * base
+	assert.LessOrEqual(t, elapsed, ceiling, "the retry took %s, want under %s - truncation recoveries must not escalate the failure backoff", elapsed, ceiling)
 }
 
 // A stalling provider that returns an empty turn renders as bare iteration dividers unless the nudge is surfaced. A run being
@@ -973,9 +836,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 		MaxEmpties:    3,
 		RetryBackoff:  -1,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	var notices []string
 
@@ -985,9 +846,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 		}
 	})
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%s)", result.Reason, result.Message)
-	}
+	require.Equal(t, StopSettled, result.Reason)
 
 	var noticed bool
 
@@ -997,9 +856,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 		}
 	}
 
-	if !noticed {
-		t.Errorf("the empty-turn nudge must be visible; silence reads as a hang (notices: %v)", notices)
-	}
+	assert.True(t, noticed, "the empty-turn nudge must be visible; silence reads as a hang (notices: %v)", notices)
 }
 
 // The continuation bound asks whether this run can get going again, not how much has gone wrong since it started. Blips that
@@ -1043,9 +900,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	calls := 0
 
@@ -1063,17 +918,11 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		RetryBackoff: -1,
 	})
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%v), want the run to finish - no two failures were consecutive", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason, "want the run to finish - no two failures were consecutive")
 
-	if result.Budget.Recoveries != 6 {
-		t.Fatalf("total continuations = %d, want all 6 blips recorded", result.Budget.Recoveries)
-	}
+	require.Equal(t, 6, result.Budget.Recoveries, "want all 6 blips recorded")
 
-	if result.Budget.Continuations != 0 {
-		t.Errorf("consecutive continuations = %d, want the count reset by the last good turn", result.Budget.Continuations)
-	}
+	assert.Equal(t, 0, result.Budget.Continuations, "want the count reset by the last good turn")
 }
 
 // The other side of the reset. Consecutive failures still end the run, and at
@@ -1091,9 +940,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	result := run(t, &Options{
 		ContextWindow:    testWindow,
@@ -1104,13 +951,9 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 		RetryBackoff:     -1,
 	})
 
-	if result.Reason != StopError {
-		t.Fatalf("reason = %q, want the run to end once the consecutive budget is spent", result.Reason)
-	}
+	require.Equal(t, StopError, result.Reason, "want the run to end once the consecutive budget is spent")
 
-	if result.Budget.Recoveries != 3 {
-		t.Fatalf("continuations = %d, want exactly the bound", result.Budget.Recoveries)
-	}
+	require.Equal(t, 3, result.Budget.Recoveries, "want exactly the bound")
 }
 
 // The shape MaxContinuations cannot see. A provider answering just often enough to keep resetting the consecutive count,
@@ -1149,9 +992,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	calls := 0
 
@@ -1172,19 +1013,13 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		RetryBackoff:  -1,
 	})
 
-	if result.Reason != StopError {
-		t.Fatalf("reason = %q (%v), want the recovery bound to end it", result.Reason, result.Err)
-	}
+	require.Equal(t, StopError, result.Reason, "want the recovery bound to end it")
 
 	// the run ends naming the provider failure it kept papering over, not a
 	// bare "budget spent" - the last error is what an operator needs
-	if result.Err == nil {
-		t.Error("the run must carry the provider failure that ended it")
-	}
+	require.Error(t, result.Err, "the run must carry the provider failure that ended it")
 
-	if result.Budget.Recoveries != recoveries {
-		t.Fatalf("recoveries = %d, want the backstop at %d", result.Budget.Recoveries, recoveries)
-	}
+	require.Equal(t, recoveries, result.Budget.Recoveries)
 }
 
 // The recovery bound is absolute rather than a multiple of MaxContinuations. Tying them would let a caller who lowers the
@@ -1227,9 +1062,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	calls := 0
 
@@ -1246,11 +1079,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		RetryBackoff:     -1,
 	})
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q (%v), want 20 recovered blips not to end a run that fails fast in a row", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason, "want 20 recovered blips not to end a run that fails fast in a row")
 
-	if result.Budget.Recoveries != 20 {
-		t.Errorf("recoveries = %d, want all 20 recorded", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 20, result.Budget.Recoveries)
 }

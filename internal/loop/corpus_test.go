@@ -6,6 +6,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -32,19 +35,13 @@ func loadCorpus(t *testing.T) corpusFile {
 	t.Helper()
 
 	raw, err := os.ReadFile("testdata/corpus.json")
-	if err != nil {
-		t.Fatalf("read corpus: %v", err)
-	}
+	require.NoError(t, err)
 
 	var corpus corpusFile
 
-	if err := json.Unmarshal(raw, &corpus); err != nil {
-		t.Fatalf("parse corpus: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &corpus))
 
-	if len(corpus.Records) == 0 {
-		t.Fatal("corpus is empty")
-	}
+	require.NotEmpty(t, corpus.Records)
 
 	return corpus
 }
@@ -182,9 +179,7 @@ func typedMessages(t *testing.T, raw json.RawMessage) ([]conversation.Message, b
 
 	var maps []map[string]any
 
-	if err := json.Unmarshal(raw, &maps); err != nil {
-		t.Fatalf("decode messages: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &maps))
 
 	messages := make([]conversation.Message, 0, len(maps))
 	forms := argumentForms{}
@@ -218,9 +213,7 @@ func expectBool(t *testing.T, record corpusRecord) bool {
 
 	var expected bool
 
-	if err := json.Unmarshal(record.Expected, &expected); err != nil {
-		t.Fatalf("%s: expected a boolean: %v", record.ID, err)
-	}
+	require.NoError(t, json.Unmarshal(record.Expected, &expected), "%s: expected a boolean", record.ID)
 
 	return expected
 }
@@ -241,9 +234,7 @@ var corpusFloors = map[string]int{
 func expectEqual(t *testing.T, fn string, got, want bool) {
 	t.Helper()
 
-	if got != want {
-		t.Errorf("%s = %v, want %v", fn, got, want)
-	}
+	assert.Equal(t, want, got, "%s", fn)
 }
 
 func closeEnough(got, want float64) bool {
@@ -289,42 +280,34 @@ func runGuardRecord(t *testing.T, record corpusRecord) {
 		want = *record.TrippedAt
 	}
 
-	if trippedAt != want {
-		t.Fatalf("tripped at %d, want %d", trippedAt, want)
-	}
+	require.Equal(t, want, trippedAt)
 
 	var expected *guardReason
 
 	if len(record.Expected) > 0 && string(record.Expected) != "null" {
 		expected = &guardReason{}
 
-		if err := json.Unmarshal(record.Expected, expected); err != nil {
-			t.Fatalf("decode reason: %v", err)
-		}
+		require.NoError(t, json.Unmarshal(record.Expected, expected))
 	}
 
 	got := guard.Reason()
 
 	switch {
 	case expected == nil && got != nil:
-		t.Fatalf("reason = %+v, want none", *got)
+		require.FailNowf(t, "want no reason", "got %+v", *got)
 	case expected == nil:
 		return
 	case got == nil:
-		t.Fatalf("reason = none, want %+v", *expected)
+		require.FailNowf(t, "want a reason", "expected %+v", *expected)
 	}
 
-	if got.Phrase != expected.Phrase || got.Count != expected.Count || got.Text != expected.Text {
-		t.Errorf("reason = %+v, want %+v", *got, *expected)
-	}
+	assert.Equal(t, expected.Phrase, got.Phrase)
+	assert.Equal(t, expected.Count, got.Count)
+	assert.Equal(t, expected.Text, got.Text)
 
-	if !closeEnough(got.UniqueRatio, expected.UniqueRatio) {
-		t.Errorf("uniqueRatio = %v, want %v", got.UniqueRatio, expected.UniqueRatio)
-	}
+	assert.True(t, closeEnough(got.UniqueRatio, expected.UniqueRatio))
 
-	if !closeEnough(got.HapaxRatio, expected.HapaxRatio) {
-		t.Errorf("hapaxRatio = %v, want %v", got.HapaxRatio, expected.HapaxRatio)
-	}
+	assert.True(t, closeEnough(got.HapaxRatio, expected.HapaxRatio))
 }
 
 // runRecord runs one record, reporting false when its shape is one the typed
@@ -359,9 +342,7 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 		case litDescribeThreadCycle:
 			var want *string
 
-			if err := json.Unmarshal(record.Expected, &want); err != nil {
-				t.Fatalf("decode expected: %v", err)
-			}
+			require.NoError(t, json.Unmarshal(record.Expected, &want))
 
 			got := describeCycle(messages)
 
@@ -369,17 +350,13 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 				want = new(string)
 			}
 
-			if got != *want {
-				t.Errorf("describeCycle = %q, want %q", got, *want)
-			}
+			assert.Equal(t, *want, got)
 		}
 
 	case "hasRepeatedTextRun":
 		var text string
 
-		if err := json.Unmarshal(record.Args[0], &text); err != nil {
-			t.Fatalf("decode text: %v", err)
-		}
+		require.NoError(t, json.Unmarshal(record.Args[0], &text))
 
 		options := textRunOptions{}
 
@@ -403,7 +380,7 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 		runGuardRecord(t, record)
 
 	default:
-		t.Fatalf("unhandled corpus function %q", record.Fn)
+		require.FailNowf(t, "unhandled corpus function %q", record.Fn)
 	}
 
 	return true
@@ -439,8 +416,6 @@ func TestCorpus(t *testing.T) {
 	for fn, floor := range corpusFloors {
 		t.Logf("%-26s checked %3d, skipped %3d", fn, checked[fn], skipped[fn])
 
-		if checked[fn] < floor {
-			t.Errorf("%s: %d records checked, want at least %d", fn, checked[fn], floor)
-		}
+		assert.GreaterOrEqual(t, checked[fn], floor)
 	}
 }

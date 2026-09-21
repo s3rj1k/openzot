@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
@@ -55,17 +57,14 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 		MaxSettles: 5,
 	})
 
-	if result.Reason != StopSettled || result.Message != "all done" {
-		t.Errorf("reason = %q, message = %q, want settled with the summary", result.Reason, result.Message)
-	}
+	assert.Equal(t, StopSettled, result.Reason)
+	assert.Equal(t, "all done", result.Message)
 
-	if ran != 0 {
-		t.Errorf("the sibling tool ran %d times, want it not to run at all", ran)
-	}
+	assert.Equal(t, 0, ran, "want it not to run at all")
 
-	if requests, responses := countActivities(result.Messages); requests != 0 || responses != 0 {
-		t.Errorf("the conversation holds %d requests and %d responses, want none", requests, responses)
-	}
+	requests, responses := countActivities(result.Messages)
+	assert.Equal(t, 0, requests, "the conversation holds %d requests and %d responses, want none", requests, responses)
+	assert.Equal(t, 0, responses, "the conversation holds %d requests and %d responses, want none", requests, responses)
 }
 
 // The call that would overrun the budget is not made, and does not leave a
@@ -84,17 +83,13 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 		MaxCalls: 1,
 	})
 
-	if result.Reason != StopCalls {
-		t.Fatalf("reason = %q, want the call budget to stop the run", result.Reason)
-	}
+	require.Equal(t, StopCalls, result.Reason, "want the call budget to stop the run")
 
-	if ran != 1 {
-		t.Errorf("the tool ran %d times, want just the one call within the budget", ran)
-	}
+	assert.Equal(t, 1, ran, "want just the one call within the budget")
 
-	if requests, responses := countActivities(result.Messages); requests != 1 || responses != 1 {
-		t.Errorf("the conversation holds %d requests and %d responses, want one answered pair", requests, responses)
-	}
+	requests, responses := countActivities(result.Messages)
+	assert.Equal(t, 1, requests, "want one answered pair")
+	assert.Equal(t, 1, responses, "want one answered pair")
 }
 
 // Endpoints in the wild end a turn that carries tool calls with "stop". The calls
@@ -114,13 +109,9 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 			MaxIterations: 5,
 		})
 
-		if ran != 1 {
-			t.Errorf("finish %q: the tool ran %d times, want 1", finish, ran)
-		}
+		assert.Equal(t, 1, ran, "finish %q: the tool ran %d times, want 1", finish, ran)
 
-		if result.Reason != StopSettled {
-			t.Errorf("finish %q: reason = %q, want the run to carry on and stop normally", finish, result.Reason)
-		}
+		assert.Equal(t, StopSettled, result.Reason, "want the run to carry on and stop normally")
 	}
 }
 
@@ -140,13 +131,9 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if ran != 0 {
-		t.Errorf("the tool ran %d times, want the cut-off call not to run", ran)
-	}
+	assert.Equal(t, 0, ran, "want the cut-off call not to run")
 
-	if result.Budget.Continuations == 0 && result.Budget.Recoveries == 0 {
-		t.Error("a truncated turn must be continued, not accepted")
-	}
+	assert.Positive(t, result.Budget.Continuations+result.Budget.Recoveries, "a truncated turn must be continued, not accepted")
 }
 
 // The engine never leaves a conversation ending on the model's own words, but
@@ -162,9 +149,7 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 		},
 	})
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q, err = %v, want the run to go ahead", result.Reason, result.Err)
-	}
+	require.Equal(t, StopSettled, result.Reason, "want the run to go ahead")
 }
 
 // A call to a tool that does not exist, or with input that cannot be read, is
@@ -181,17 +166,13 @@ func TestACallThatNeverReachedATool(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	if result.Budget.Calls != 1 {
-		t.Errorf("calls = %d, want the refused call counted", result.Budget.Calls)
-	}
+	assert.Equal(t, 1, result.Budget.Calls, "want the refused call counted")
 
-	if requests, responses := countActivities(result.Messages); requests != 1 || responses != 1 {
-		t.Errorf("the conversation holds %d requests and %d responses, want one pair", requests, responses)
-	}
+	requests, responses := countActivities(result.Messages)
+	assert.Equal(t, 1, requests, "want one pair")
+	assert.Equal(t, 1, responses, "want one pair")
 
-	if !mentionsAFailure(result.Messages) {
-		t.Error("the refusal must be written down as a failure")
-	}
+	assert.True(t, mentionsAFailure(result.Messages), "the refusal must be written down as a failure")
 }
 
 // A tool the engine was told never to repair is given no input the model did not
@@ -223,13 +204,9 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 				MaxIterations: 5,
 			})
 
-			if ran != test.wantRan {
-				t.Errorf("the tool ran %d times, want %d", ran, test.wantRan)
-			}
+			assert.Equal(t, test.wantRan, ran)
 
-			if refused := mentionsAFailure(result.Messages); refused != (test.wantRan == 0) {
-				t.Errorf("a failure was recorded = %v, want %v", refused, test.wantRan == 0)
-			}
+			assert.Equal(t, (test.wantRan == 0), mentionsAFailure(result.Messages))
 		})
 	}
 }
@@ -257,15 +234,11 @@ func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map
 	tweak(&config)
 
 	client, err := provider.NewClient(t.Context(), config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	run(t, &Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
 
-	if body == nil {
-		t.Fatal("the server saw no request")
-	}
+	require.NotNil(t, body, "the server saw no request")
 
 	return body
 }
@@ -278,21 +251,18 @@ func TestAModelsRequestSettingsReachTheWire(t *testing.T) {
 		c.ExtraBody = map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
 	})
 
-	if body["reasoning_effort"] != "low" {
-		t.Errorf("reasoning_effort = %v, want low", body["reasoning_effort"])
-	}
+	assert.Equal(t, "low", body["reasoning_effort"], "reasoning_effort = %v, want low", body["reasoning_effort"])
 
 	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
-	if thinking, ok := kwargs["enable_thinking"].(bool); !ok || thinking {
-		t.Errorf("chat_template_kwargs = %v, want the extra body merged in", body["chat_template_kwargs"])
-	}
+	thinking, ok := kwargs["enable_thinking"].(bool)
+	assert.True(t, ok, "want the extra body merged in")
+	assert.False(t, thinking, "want the extra body merged in")
 
 	plain := bodyOfTheFirstRequest(t, func(*provider.ClientConfig) {})
 
 	for _, key := range []string{"reasoning_effort", "chat_template_kwargs"} {
-		if _, sent := plain[key]; sent {
-			t.Errorf("%s was sent by a model that asked for nothing", key)
-		}
+		_, sent := plain[key]
+		assert.False(t, sent, "%s was sent by a model that asked for nothing", key)
 	}
 }
 
@@ -316,27 +286,23 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		OnEvent:       func(event Event) { sunk = append(sunk, event.Kind) },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	engine.Run(t.Context(), func(event Event) { watched = append(watched, event.Kind) })
 
-	if len(sunk) == 0 || strings.Join(kindsOf(sunk), ",") != strings.Join(kindsOf(watched), ",") {
-		t.Errorf("sink saw %v, watcher saw %v, want the same events", sunk, watched)
-	}
+	assert.NotEmpty(t, sunk, "want the same events")
+	assert.Equal(t, strings.Join(kindsOf(watched), ","), strings.Join(kindsOf(sunk), ","), "want the same events")
 }
 
 // A model calling a tool with no parameters often sends "" for the arguments.
 // The call is announced with an empty object, not with nothing.
 func TestAnEmptyInputIsAnEmptyObject(t *testing.T) {
 	for _, input := range []string{"", "  ", "{}"} {
-		if arguments := decodeInput(input); arguments == nil || len(arguments) != 0 {
-			t.Errorf("decodeInput(%q) = %v, want an empty object", input, arguments)
-		}
+		arguments := decodeInput(input)
+		assert.NotNil(t, arguments, "want an empty object")
+		assert.Empty(t, arguments, "want an empty object")
 	}
 
-	if arguments := decodeInput("[1]"); arguments != nil {
-		t.Errorf("input that is not an object decoded to %v, want nil", arguments)
-	}
+	arguments := decodeInput("[1]")
+	assert.Nil(t, arguments, "input that is not an object decoded to %v, want nil", arguments)
 }

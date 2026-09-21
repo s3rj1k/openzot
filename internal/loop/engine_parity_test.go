@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -13,9 +16,7 @@ import (
 // up to a false StopCycle. (Regressed once. The counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	budget := &Budget{}
 
@@ -28,13 +29,11 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 		{Type: conversation.TypeUser, Text: "ok"},
 	}
 
-	if next, stop := engine.checkCycle(cyclic, budget); stop != nil || next == nil {
-		t.Fatal("a detected cycle must nudge (not stop yet, not ignore)")
-	}
+	next, stop := engine.checkCycle(cyclic, budget)
+	require.Nil(t, stop, "a detected cycle must nudge (not stop yet, not ignore)")
+	require.NotNil(t, next, "a detected cycle must nudge (not stop yet, not ignore)")
 
-	if budget.Cycles != 1 {
-		t.Fatalf("a detected cycle must be counted once, got %d", budget.Cycles)
-	}
+	require.Equal(t, 1, budget.Cycles, "a detected cycle must be counted once, got %d", budget.Cycles)
 
 	// a clean, non-cyclic round breaks the run and must zero the counter
 	clean := []conversation.Message{
@@ -42,13 +41,11 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 		{Type: conversation.TypeBot, Text: "sure, here is a fresh approach"},
 	}
 
-	if next, stop := engine.checkCycle(clean, budget); stop != nil || next != nil {
-		t.Fatal("a clean round must neither stop nor nudge")
-	}
+	next, stop = engine.checkCycle(clean, budget)
+	require.Nil(t, stop, "a clean round must neither stop nor nudge")
+	require.Nil(t, next, "a clean round must neither stop nor nudge")
 
-	if budget.Cycles != 0 {
-		t.Errorf("a broken cycle must reset the counter to 0, got %d", budget.Cycles)
-	}
+	assert.Equal(t, 0, budget.Cycles, "a broken cycle must reset the counter to 0, got %d", budget.Cycles)
 }
 
 // Forgetting must price a tool call by its whole payload, not just its text. A request half has no text, so an argument-heavy
@@ -56,9 +53,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	// a window the huge call alone overflows, and the two recent turns fit in
 	engine, err := New(&Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	// varied text so BPE cannot merge it away - this must really exceed the
 	// window once counted
@@ -74,13 +69,11 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 
 	req, forgotten := requestFor(engine, messages)
 
-	if forgotten == 0 {
-		t.Error("the argument-heavy tool call was kept - its arguments were priced as empty, which is the bug")
-	}
+	assert.NotEqual(t, 0, forgotten, "the argument-heavy tool call was kept - its arguments were priced as empty, which is the bug")
 
 	for _, message := range req.messages {
-		if call, ok := toolCallOf(message); ok && strings.Contains(call.Input, huge) {
-			t.Error("the argument-heavy tool call reached the request")
+		if call, ok := toolCallOf(message); ok {
+			assert.NotContains(t, call.Input, huge, "the argument-heavy tool call reached the request")
 		}
 	}
 
@@ -93,9 +86,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 		}
 	}
 
-	if !keptRecent {
-		t.Error("the recent turns must survive forgetting")
-	}
+	assert.True(t, keptRecent, "the recent turns must survive forgetting")
 }
 
 // An empty turn stays bounded by the tight empty budget, since a model producing nothing is stuck and must not burn the settle
@@ -111,13 +102,9 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	})
 
 	// bounded by the empty budget, not the settle budget
-	if result.Reason != StopEmpty {
-		t.Errorf("repeated empty turns must stay bounded by the empty budget, got %q", result.Reason)
-	}
+	assert.Equal(t, StopEmpty, result.Reason, "repeated empty turns must stay bounded by the empty budget, got %q", result.Reason)
 
-	if result.Budget.Empties != 2 {
-		t.Errorf("empties must reach max_empties (2), got %d", result.Budget.Empties)
-	}
+	assert.Equal(t, 2, result.Budget.Empties)
 
 	// but the guidance must name the terminal tools (settle notice), not the plain
 	// empty notice - proving the settle-aware nudge fired
@@ -129,9 +116,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 		}
 	}
 
-	if !sawTerminalGuidance {
-		t.Error("an empty turn's nudge must point at success/failure, not the plain empty notice")
-	}
+	assert.True(t, sawTerminalGuidance, "an empty turn's nudge must point at success/failure, not the plain empty notice")
 }
 
 // The run accumulates the provider's own token counts (not the local estimate),
@@ -142,10 +127,8 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 
 	result := run(t, &Options{ContextWindow: testWindow, Client: client})
 
-	if result.Budget.InputTokens != 100 || result.Budget.OutputTokens != 40 {
-		t.Errorf("run must accumulate provider usage, got in=%d out=%d",
-			result.Budget.InputTokens, result.Budget.OutputTokens)
-	}
+	assert.Equal(t, 100, result.Budget.InputTokens, "run must accumulate provider usage, got in=%d out=%d", result.Budget.InputTokens, result.Budget.OutputTokens)
+	assert.Equal(t, 40, result.Budget.OutputTokens, "run must accumulate provider usage, got in=%d out=%d", result.Budget.InputTokens, result.Budget.OutputTokens)
 }
 
 // The empty budget counts consecutive empty turns, so a productive turn between must reset it and scattered stalls do not
@@ -165,11 +148,7 @@ func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 		MaxEmpties: 3,
 	})
 
-	if result.Reason != StopSettled {
-		t.Errorf("reason = %q, want %q - scattered empties must not stop the run", result.Reason, StopSettled)
-	}
+	assert.Equal(t, StopSettled, result.Reason, "reason = %q, want %q - scattered empties must not stop the run", result.Reason, StopSettled)
 
-	if result.Budget.Empties != 0 {
-		t.Errorf("empties = %d, want 0 - the last turns were productive", result.Budget.Empties)
-	}
+	assert.Equal(t, 0, result.Budget.Empties, "want 0 - the last turns were productive")
 }

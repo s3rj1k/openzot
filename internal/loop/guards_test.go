@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Every notice must be recognizable as an injected instruction rather than the
@@ -18,13 +20,9 @@ func TestNoticesCarryThePrefix(t *testing.T) {
 	}
 
 	for name, notice := range notices {
-		if !strings.HasPrefix(notice, noticePrefix) {
-			t.Errorf("%s notice does not carry the prefix: %q", name, notice)
-		}
+		assert.True(t, strings.HasPrefix(notice, noticePrefix), "%s notice does not carry the prefix", name)
 
-		if strings.TrimSpace(strings.TrimPrefix(notice, noticePrefix)) == "" {
-			t.Errorf("%s notice has no content", name)
-		}
+		assert.NotEmpty(t, strings.TrimSpace(strings.TrimPrefix(notice, noticePrefix)), "%s notice has no content", name)
 	}
 }
 
@@ -33,32 +31,24 @@ func TestNoticesCarryThePrefix(t *testing.T) {
 func TestCycleNoticeNamesTheBehaviour(t *testing.T) {
 	notice := cycleNotice("you have called the same tool with the same arguments")
 
-	if !strings.Contains(notice, "same tool with the same arguments") {
-		t.Errorf("the specific behavior must survive into the notice: %q", notice)
-	}
+	assert.Contains(t, notice, "same tool with the same arguments", "the specific behavior must survive into the notice")
 
 	// an unattributed cycle still produces something actionable
-	if got := cycleNotice(""); !strings.Contains(got, "repeating") {
-		t.Errorf("a detail-less cycle notice must still be actionable: %q", got)
-	}
+	assert.Contains(t, cycleNotice(""), "repeating", "a detail-less cycle notice must still be actionable")
 }
 
 func TestSettleNoticeNamesBothTerminalTools(t *testing.T) {
 	notice := settleNotice()
 
 	for _, tool := range []string{SuccessTool, FailureTool} {
-		if !strings.Contains(notice, tool) {
-			t.Errorf("the settle notice must name %s: %q", tool, notice)
-		}
+		assert.Contains(t, notice, tool)
 	}
 }
 
 func TestTerminalToolsAreWellFormed(t *testing.T) {
 	tools := terminalTools()
 
-	if len(tools) != 2 {
-		t.Fatalf("got %d terminal tools, want 2", len(tools))
-	}
+	require.Len(t, tools, 2)
 
 	byName := map[string]fantasy.AgentTool{}
 
@@ -69,23 +59,17 @@ func TestTerminalToolsAreWellFormed(t *testing.T) {
 	for name, required := range map[string]string{SuccessTool: "summary", FailureTool: "reason"} {
 		tool, ok := byName[name]
 
-		if !ok {
-			t.Fatalf("terminal tool %q missing", name)
-		}
+		require.True(t, ok, "terminal tool %q missing", name)
 
 		info := tool.Info()
 
-		if info.Description == "" {
-			t.Errorf("%s has no description; the model needs to know when to call it", name)
-		}
+		assert.NotEmpty(t, info.Description, "%s has no description; the model needs to know when to call it", name)
 
-		if _, ok := info.Parameters[required]; !ok {
-			t.Errorf("%s must accept a %q argument", name, required)
-		}
+		_, ok = info.Parameters[required]
+		assert.True(t, ok, "%s must accept a %q argument", name, required)
 
-		if len(info.Required) != 1 || info.Required[0] != required {
-			t.Errorf("%s must require %q, got %v", name, required, info.Required)
-		}
+		assert.Len(t, info.Required, 1, "%s must require", name)
+		assert.Equal(t, required, info.Required[0], "%s must require", name)
 	}
 }
 
@@ -98,14 +82,11 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 		"repeated_result_run",
 		"repeated_message_text_run",
 	} {
-		if detail := cycleDetail(heuristic); detail == "" {
-			t.Errorf("heuristic %q has no explanation for the model", heuristic)
-		}
+		assert.NotEmpty(t, cycleDetail(heuristic), "heuristic %q has no explanation for the model", heuristic)
 	}
 
-	if detail := cycleDetail("something-new"); detail != "" {
-		t.Errorf("an unknown heuristic should fall back to the generic notice, got %q", detail)
-	}
+	detail := cycleDetail("something-new")
+	assert.Empty(t, detail, "an unknown heuristic should fall back to the generic notice, got %q", detail)
 }
 
 // A caller scripting against zot tells success from everything else by the exit
@@ -126,8 +107,6 @@ func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
 	} {
 		result := Result{Reason: reason}
 
-		if got := result.ExitCode(); got != want {
-			t.Errorf("%s: exit code %d, want %d", reason, got, want)
-		}
+		assert.Equal(t, want, result.ExitCode(), "%s: exit code", reason)
 	}
 }

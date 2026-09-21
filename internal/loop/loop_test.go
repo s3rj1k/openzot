@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/provider"
@@ -53,9 +55,7 @@ func stub(t *testing.T, turns ...[]string) *provider.Client {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
@@ -102,9 +102,7 @@ func run(t *testing.T, options *Options) Result {
 	}
 
 	engine, err := New(options)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	return engine.Run(t.Context(), nil)
 }
@@ -141,43 +139,31 @@ func echoTool(calls *int) []fantasy.AgentTool {
 
 func TestNewAppliesDefaults(t *testing.T) {
 	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
-	if engine.maxIterations != DefaultMaxIterations ||
-		engine.maxContinuations != DefaultMaxContinuations ||
-		engine.maxCycles != DefaultMaxCycles ||
-		engine.maxEmpties != DefaultMaxEmpties {
-		t.Errorf("defaults not applied: %+v", engine)
-	}
+	assert.Equal(t, DefaultMaxIterations, engine.maxIterations)
+	assert.Equal(t, DefaultMaxContinuations, engine.maxContinuations)
+	assert.Equal(t, DefaultMaxCycles, engine.maxCycles)
+	assert.Equal(t, DefaultMaxEmpties, engine.maxEmpties)
 
 	// calls and time are unbounded unless set - only the iteration count is a
 	// hard default fallback
-	if engine.maxCalls != 0 {
-		t.Errorf("maxCalls = %d, want 0 (unbounded) by default", engine.maxCalls)
-	}
+	assert.Equal(t, 0, engine.maxCalls, "want 0 (unbounded) by default")
 
-	if engine.maxDuration != 0 {
-		t.Errorf("maxDuration = %v, want unbounded by default", engine.maxDuration)
-	}
+	assert.EqualValues(t, 0, engine.maxDuration, "want unbounded by default")
 
 	// Settlement cannot be switched off. An unattended run needs an unambiguous
 	// ending, so an unset budget is the default budget, never "no settling".
-	if engine.maxSettles != DefaultMaxSettles {
-		t.Errorf("maxSettles = %d, want the default %d - there is no way to opt out", engine.maxSettles, DefaultMaxSettles)
-	}
+	assert.Equal(t, DefaultMaxSettles, engine.maxSettles, "maxSettles = %d, want the default %d - there is no way to opt out", engine.maxSettles, DefaultMaxSettles)
 
-	if engine.window != testWindow || engine.softPercent != DefaultContextSoft || engine.hardPercent != DefaultContextHard {
-		t.Errorf("window %d, thresholds %d/%d, want the configured window and the default thresholds",
-			engine.window, engine.softPercent, engine.hardPercent)
-	}
+	assert.Equal(t, testWindow, engine.window, "want the configured window and the default thresholds")
+	assert.Equal(t, DefaultContextSoft, engine.softPercent, "want the configured window and the default thresholds")
+	assert.Equal(t, DefaultContextHard, engine.hardPercent, "want the configured window and the default thresholds")
 }
 
 func TestNewRequiresAClient(t *testing.T) {
-	if _, err := New(&Options{ContextWindow: testWindow}); err == nil {
-		t.Fatal("an engine without a client must not be constructed")
-	}
+	_, err := New(&Options{ContextWindow: testWindow})
+	require.Error(t, err, "an engine without a client must not be constructed")
 }
 
 func TestIterationBudgetStopsTheRun(t *testing.T) {
@@ -194,13 +180,9 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 		MaxCycles: 1000,
 	})
 
-	if result.Reason != StopIterations {
-		t.Errorf("reason = %q, want iterations", result.Reason)
-	}
+	assert.Equal(t, StopIterations, result.Reason)
 
-	if result.Budget.Iterations != 3 {
-		t.Errorf("iterations = %d, want 3", result.Budget.Iterations)
-	}
+	assert.Equal(t, 3, result.Budget.Iterations)
 }
 
 func TestCallBudgetStopsTheRun(t *testing.T) {
@@ -216,13 +198,9 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 		MaxCycles:     1000,
 	})
 
-	if result.Reason != StopCalls {
-		t.Errorf("reason = %q, want calls", result.Reason)
-	}
+	assert.Equal(t, StopCalls, result.Reason)
 
-	if calls > 2 {
-		t.Errorf("handler ran %d times, want at most the budget of 2", calls)
-	}
+	assert.LessOrEqual(t, calls, 2, "want at most the budget of 2")
 }
 
 func TestEmptyTurnsAreBounded(t *testing.T) {
@@ -233,13 +211,9 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 		MaxEmpties:    2,
 	})
 
-	if result.Reason != StopEmpty {
-		t.Errorf("reason = %q, want empty", result.Reason)
-	}
+	assert.Equal(t, StopEmpty, result.Reason)
 
-	if result.Budget.Empties != 2 {
-		t.Errorf("empties = %d, want 2", result.Budget.Empties)
-	}
+	assert.Equal(t, 2, result.Budget.Empties)
 }
 
 func TestTruncatedOutputIsContinued(t *testing.T) {
@@ -252,13 +226,9 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
-	if result.Reason != StopSettled {
-		t.Errorf("reason = %q, want stop", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason)
 
-	if result.Budget.Recoveries != 1 {
-		t.Errorf("continuations = %d, want 1", result.Budget.Recoveries)
-	}
+	assert.Equal(t, 1, result.Budget.Recoveries)
 
 	// the continuation notice must be in the thread, telling the model to pick
 	// up where it stopped rather than start again
@@ -270,9 +240,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 		}
 	}
 
-	if !nudged {
-		t.Error("a truncated turn must be followed by a continuation notice")
-	}
+	assert.True(t, nudged, "a truncated turn must be followed by a continuation notice")
 }
 
 func TestTruncationIsBounded(t *testing.T) {
@@ -283,9 +251,7 @@ func TestTruncationIsBounded(t *testing.T) {
 		MaxContinuations: 2,
 	})
 
-	if result.Reason != StopContinuations {
-		t.Errorf("reason = %q, want continuations", result.Reason)
-	}
+	assert.Equal(t, StopContinuations, result.Reason)
 }
 
 func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
@@ -300,14 +266,10 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 		MaxCycles:     1,
 	})
 
-	if result.Reason != StopCycle {
-		t.Errorf("reason = %q, want cycle", result.Reason)
-	}
+	assert.Equal(t, StopCycle, result.Reason)
 
 	// the run must have been nudged before being stopped
-	if result.Budget.Cycles != 1 {
-		t.Errorf("cycles = %d, want 1", result.Budget.Cycles)
-	}
+	assert.Equal(t, 1, result.Budget.Cycles)
 }
 
 func TestSettleModeRequiresATerminalCall(t *testing.T) {
@@ -321,17 +283,11 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 		MaxSettles: 5,
 	})
 
-	if result.Reason != StopSettled {
-		t.Fatalf("reason = %q, want settled", result.Reason)
-	}
+	require.Equal(t, StopSettled, result.Reason)
 
-	if result.Message != "really done" {
-		t.Errorf("message = %q, want the terminal call's summary", result.Message)
-	}
+	assert.Equal(t, "really done", result.Message, "want the terminal call's summary")
 
-	if result.Budget.Settles != 1 {
-		t.Errorf("settles = %d, want 1 nudge before the terminal call", result.Budget.Settles)
-	}
+	assert.Equal(t, 1, result.Budget.Settles, "want 1 nudge before the terminal call")
 }
 
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
@@ -342,13 +298,9 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 		MaxSettles:    5,
 	})
 
-	if result.Reason != StopFailed {
-		t.Errorf("reason = %q, want failed", result.Reason)
-	}
+	assert.Equal(t, StopFailed, result.Reason)
 
-	if result.Message != "cannot reach the host" {
-		t.Errorf("message = %q, want the failure reason", result.Message)
-	}
+	assert.Equal(t, "cannot reach the host", result.Message)
 }
 
 // The two terminal tools mean opposite things, so a caller must tell them apart. Both once ended a run as StopSettled, which
@@ -368,17 +320,11 @@ func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 		MaxSettles:    5,
 	})
 
-	if settled.Reason == failed.Reason {
-		t.Fatalf("both terminal tools ended the run as %q - nothing downstream can tell a failed mission from a finished one", settled.Reason)
-	}
+	require.NotEqual(t, failed.Reason, settled.Reason, "both terminal tools ended the run as %q - nothing downstream can tell a failed mission from a finished one", settled.Reason)
 
-	if settled.Reason != StopSettled {
-		t.Errorf("success reason = %q, want settled", settled.Reason)
-	}
+	assert.Equal(t, StopSettled, settled.Reason)
 
-	if failed.Reason != StopFailed {
-		t.Errorf("failure reason = %q, want failed", failed.Reason)
-	}
+	assert.Equal(t, StopFailed, failed.Reason)
 }
 
 func TestSettleModeGivesUpEventually(t *testing.T) {
@@ -389,9 +335,7 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 		MaxSettles:    2,
 	})
 
-	if result.Reason != StopUnsettled {
-		t.Errorf("reason = %q, want unsettled", result.Reason)
-	}
+	assert.Equal(t, StopUnsettled, result.Reason)
 }
 
 func TestCancellationStopsTheRun(t *testing.T) {
@@ -400,9 +344,7 @@ func TestCancellationStopsTheRun(t *testing.T) {
 		Client:        stub(t, []string{text("hi"), stop()}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -410,9 +352,7 @@ func TestCancellationStopsTheRun(t *testing.T) {
 
 	result := engine.Run(ctx, nil)
 
-	if result.Reason != StopAborted {
-		t.Errorf("reason = %q, want aborted", result.Reason)
-	}
+	assert.Equal(t, StopAborted, result.Reason)
 }
 
 func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
@@ -425,9 +365,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
-	if result.Reason != StopSettled {
-		t.Errorf("reason = %q, want the run to recover and stop normally", result.Reason)
-	}
+	assert.Equal(t, StopSettled, result.Reason, "want the run to recover and stop normally")
 
 	var reported bool
 
@@ -437,9 +375,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 		}
 	}
 
-	if !reported {
-		t.Error("the failure must be fed back to the model")
-	}
+	assert.True(t, reported, "the failure must be fed back to the model")
 }
 
 func TestToolErrorIsFedBackNotFatal(t *testing.T) {
@@ -465,9 +401,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 		}
 	}
 
-	if !reported {
-		t.Error("a tool failure must reach the model so it can adapt")
-	}
+	assert.True(t, reported, "a tool failure must reach the model so it can adapt")
 }
 
 func TestEventsAreEmitted(t *testing.T) {
@@ -476,9 +410,7 @@ func TestEventsAreEmitted(t *testing.T) {
 		Client:        stub(t, []string{text("hello"), tool("c1", SuccessTool, `{"summary":"done"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	var kinds []EventKind
 
@@ -495,9 +427,7 @@ func TestEventsAreEmitted(t *testing.T) {
 	}
 
 	for kind, seen := range want {
-		if !seen {
-			t.Errorf("no %s event was emitted", kind)
-		}
+		assert.True(t, seen, "no %s event was emitted", kind)
 	}
 }
 
@@ -508,9 +438,7 @@ func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
 		Instructions:  "you are an agent",
 		MaxSettles:    5,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	instructions := engine.instructions()
 
@@ -519,9 +447,7 @@ func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
 		SuccessTool,
 		FailureTool,
 	} {
-		if !strings.Contains(instructions, want) {
-			t.Errorf("instructions is missing %q:\n%s", want, instructions)
-		}
+		assert.Contains(t, instructions, want)
 	}
 }
 
@@ -532,9 +458,7 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 		Client:        stub(t, []string{stop()}),
 		Tools:         []fantasy.AgentTool{namedTool(litEcho, nil)},
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	names := map[string]bool{}
 
@@ -543,9 +467,7 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 	}
 
 	for _, want := range []string{litEcho, SuccessTool, FailureTool} {
-		if !names[want] {
-			t.Errorf("tool %q missing from the definitions", want)
-		}
+		assert.True(t, names[want], "tool %q missing from the definitions", want)
 	}
 }
 
@@ -560,9 +482,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 	}
 
 	engine, err := New(&Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Tools: tools})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	for range 20 {
 		names := make([]string, 0, len(engine.toolDefinitions()))
@@ -571,9 +491,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 			names = append(names, tool.GetName())
 		}
 
-		if want := "edit,failure,list,read,shell,success,write"; strings.Join(names, ",") != want {
-			t.Fatalf("tool order = %v, want %s", names, want)
-		}
+		require.Equal(t, "edit,failure,list,read,shell,success,write", strings.Join(names, ","))
 	}
 }
 
@@ -620,9 +538,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
@@ -630,9 +546,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 1,
 	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	var runaway bool
 
@@ -642,14 +556,12 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 		}
 	})
 
-	if !runaway {
-		t.Fatal("the guard never tripped, so this test is not exercising an abandoned stream")
-	}
+	require.True(t, runaway, "the guard never tripped, so this test is not exercising an abandoned stream")
 
 	select {
 	case <-canceled:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the abandoned stream was never canceled: its transport goroutine and response body leak")
+		require.FailNow(t, "the abandoned stream was never canceled: its transport goroutine and response body leak")
 	}
 }
 
@@ -658,36 +570,25 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 // card. Forgetting follows the window that was given.
 func TestTheWindowIsTheConfiguredOne(t *testing.T) {
 	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: 32_000})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if engine.window != 32_000 {
-		t.Errorf("window = %d, want the configured 32000", engine.window)
-	}
+	assert.Equal(t, 32_000, engine.window)
 }
 
 // The thresholds are the operator's, and zero means the default. Whether they
 // make sense together is the config's to say, so the engine takes what it is given.
 func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: 1000})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if engine.softPercent != DefaultContextSoft || engine.hardPercent != DefaultContextHard {
-		t.Errorf("thresholds = %d/%d, want the defaults %d/%d",
-			engine.softPercent, engine.hardPercent, DefaultContextSoft, DefaultContextHard)
-	}
+	assert.Equal(t, DefaultContextSoft, engine.softPercent)
+	assert.Equal(t, DefaultContextHard, engine.hardPercent)
 
 	engine, err = New(&Options{Client: stub(t, []string{stop()}), ContextWindow: 1000, ContextSoft: 30, ContextHard: 60})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if engine.softPercent != 30 || engine.hardPercent != 60 {
-		t.Errorf("thresholds = %d/%d, want the configured 30/60", engine.softPercent, engine.hardPercent)
-	}
+	assert.Equal(t, 30, engine.softPercent)
+	assert.Equal(t, 60, engine.hardPercent)
 }
 
 // A run with no window has nothing to decide how much of a conversation to keep,
@@ -697,9 +598,9 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 
 	for _, window := range []int{0, -1} {
 		if _, err := New(&Options{Client: client, ContextWindow: window}); err == nil {
-			t.Errorf("a context window of %d was accepted", window)
+			assert.Failf(t, "unexpected", "a context window of %d was accepted", window)
 		} else if !strings.Contains(err.Error(), "context") {
-			t.Errorf("the error should say a context window is missing: %v", err)
+			assert.Failf(t, "unexpected", "the error should say a context window is missing: %v", err)
 		}
 	}
 }
@@ -712,9 +613,7 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		// a window small enough that the oldest messages must be forgotten
 		ContextWindow: 20_000,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// an old user kickoff followed by enough tool-round bulk to evict it
 	messages := make([]conversation.Message, 0, 1+2*40)
@@ -731,9 +630,7 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	request, _ := requestFor(engine, messages)
 
 	for _, message := range request.messages {
-		if message.Role == fantasy.MessageRoleSystem {
-			t.Fatal("the system prompt travels with the agent, not in the conversation")
-		}
+		require.NotEqual(t, fantasy.MessageRoleSystem, message.Role, "the system prompt travels with the agent, not in the conversation")
 	}
 
 	var hasUser bool
@@ -748,13 +645,9 @@ func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 		kept++
 	}
 
-	if kept >= 1+2*40 {
-		t.Fatal("nothing was trimmed; the test needs a smaller window to mean anything")
-	}
+	require.Less(t, kept, 1+2*40, "nothing was trimmed; the test needs a smaller window to mean anything")
 
-	if !hasUser {
-		t.Error("a trimmed thread lost its only user turn; strict providers reject the whole request")
-	}
+	assert.True(t, hasUser, "a trimmed thread lost its only user turn; strict providers reject the whole request")
 }
 
 // A run killed inside a tool call still leaves the turn that made it. The
@@ -795,11 +688,11 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 
 	want := []string{"reasoning/the file is probably in src", "bot/looking"}
 
-	if len(got) < len(want)+1 || got[len(got)-3] != want[0] || got[len(got)-2] != want[1] {
-		t.Fatalf("the handler ran when only %v had been handed over", got)
-	}
+	require.GreaterOrEqual(t, len(got), len(want)+1, "the handler ran when only %v had been handed over", got)
+	require.Equal(t, want[0], got[len(got)-3], "the handler ran when only %v had been handed over", got)
+	require.Equal(t, want[1], got[len(got)-2], "the handler ran when only %v had been handed over", got)
 
-	if last := seenByHandler[len(seenByHandler)-1]; last.Activity == nil || last.Activity.Kind != conversation.ActivityRequest {
-		t.Errorf("the request must be handed over with its turn, got %+v", last)
-	}
+	last := seenByHandler[len(seenByHandler)-1]
+	assert.NotNil(t, last.Activity, "the request must be handed over with its turn, got %+v", last)
+	assert.Equal(t, conversation.ActivityRequest, last.Activity.Kind, "the request must be handed over with its turn, got %+v", last)
 }

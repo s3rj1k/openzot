@@ -3,6 +3,8 @@ package loop
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -42,9 +44,7 @@ func TestCycleCircularResult(t *testing.T) {
 
 	// Both cyclic results collapse to the same sentinel, so the two halves fingerprint the same and the
 	// pair reads as a cycle. That is the intended trade in safeStringify. A degraded comparison beats none.
-	if !got {
-		t.Errorf("hasRepeatedSuffix = false, want true (a cyclic result must degrade, not disable)")
-	}
+	assert.True(t, got, "want true (a cyclic result must degrade, not disable)")
 }
 
 func TestRepeatedResultRunCircularResult(t *testing.T) {
@@ -54,9 +54,7 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 		cycleResponse(cyclicValue()),
 	}
 
-	if !hasRepeatedResultRun(messages) {
-		t.Error("hasRepeatedResultRun = false, want true (identical cyclic results are still a loop)")
-	}
+	assert.True(t, hasRepeatedResultRun(messages), "want true (identical cyclic results are still a loop)")
 
 	// a really different result must still break the run, even alongside a
 	// cyclic one
@@ -67,9 +65,7 @@ func TestRepeatedResultRunCircularResult(t *testing.T) {
 		cycleResponse(map[string]any{"records": []any{"something"}}),
 	}
 
-	if hasRepeatedResultRun(mixed) {
-		t.Error("hasRepeatedResultRun = true, want false (a differing result breaks the run)")
-	}
+	assert.False(t, hasRepeatedResultRun(mixed), "want false (a differing result breaks the run)")
 }
 
 // TestDescribeAttributesTheHeuristic pins that attribution reports which check
@@ -82,11 +78,8 @@ func TestDescribeAttributesTheHeuristic(t *testing.T) {
 		{Type: conversation.TypeBot, Text: "hi"},
 	}
 
-	if got, want := describeCycle(messages), "repeated_suffix"; got != want {
-		t.Errorf("describeCycle = %q, want %q", got, want)
-	}
+	got, want := describeCycle(messages), "repeated_suffix"
+	assert.Equal(t, want, got)
 
-	if got := describeCycle(nil); got != "" {
-		t.Errorf("describeCycle = %q, want empty for an empty conversation", got)
-	}
+	assert.Empty(t, describeCycle(nil), "want empty for an empty conversation")
 }

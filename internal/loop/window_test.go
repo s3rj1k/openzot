@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -31,9 +34,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	if got := describeCycle(messages); got == "" {
-		t.Error("four identical call/result pairs must read as a cycle")
-	}
+	assert.NotEmpty(t, describeCycle(messages), "four identical call/result pairs must read as a cycle")
 
 	// a different answer each time is progress
 	polling := make([]conversation.Message, 0, 8)
@@ -45,9 +46,9 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	if got := describeCycle(polling); got == "repeated_result_run" || got == "repeated_activity_tail" {
-		t.Errorf("polling an endpoint until it changes is not a loop, got %q", got)
-	}
+	got := describeCycle(polling)
+	assert.NotEqual(t, "repeated_result_run", got, "polling an endpoint until it changes is not a loop, got %q", got)
+	assert.NotEqual(t, "repeated_activity_tail", got, "polling an endpoint until it changes is not a loop, got %q", got)
 }
 
 // A conversation growing round by round. Nothing is forgotten until the soft
@@ -57,9 +58,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	const window = 20_000
 
 	engine, err := New(&Options{Client: stub(t, []string{stop()}), ContextWindow: window})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var (
 		messages  = []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
@@ -83,9 +82,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 
 		messages = engine.fitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(Event) {})
 
-		if forgotten < before {
-			t.Fatalf("round %d: the offset moved back from %d to %d", round, before, forgotten)
-		}
+		require.GreaterOrEqual(t, forgotten, before, "round %d: the offset moved back from %d to %d", round, before, forgotten)
 
 		if forgotten > before && firstLoss < 0 {
 			firstLoss = round
@@ -98,18 +95,12 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 			used += conversation.Cost(message)
 		}
 
-		if used >= hard {
-			t.Fatalf("round %d: the request costs %d, at or past the hard mark %d", round, used, hard)
-		}
+		require.Less(t, used, hard, "round %d: the request costs %d, at or past the hard mark %d", round, used, hard)
 	}
 
-	if firstLoss < 0 {
-		t.Fatal("nothing was ever forgotten")
-	}
+	require.GreaterOrEqual(t, firstLoss, 0, "nothing was ever forgotten")
 
-	if len(messages) != 1+2*120 {
-		t.Errorf("the conversation was rewritten: %d messages", len(messages))
-	}
+	assert.Len(t, messages, 1+2*120)
 }
 
 // Forgetting is a matter of the wire. A run long enough to fill a small window
@@ -134,19 +125,13 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 			}
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	result := engine.Run(t.Context(), nil)
 
-	if result.Reason != StopIterations {
-		t.Fatalf("reason = %q, want the run to reach its iteration cap", result.Reason)
-	}
+	require.Equal(t, StopIterations, result.Reason, "want the run to reach its iteration cap")
 
-	if notices == 0 {
-		t.Error("the viewer was never told messages were forgotten")
-	}
+	assert.NotEqual(t, 0, notices, "the viewer was never told messages were forgotten")
 
 	requests, responses := 0, 0
 
@@ -167,11 +152,8 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 		}
 	}
 
-	if requests != 60 || responses != 60 {
-		t.Errorf("the conversation holds %d requests and %d responses, want all 60 of each", requests, responses)
-	}
+	assert.Equal(t, 60, requests, "want all 60 of each")
+	assert.Equal(t, 60, responses, "want all 60 of each")
 
-	if len(told) != 0 {
-		t.Errorf("the model was told about forgetting: %q", told)
-	}
+	assert.Empty(t, told, "the model was told about forgetting")
 }
