@@ -15,10 +15,10 @@ import (
 	"charm.land/fantasy"
 )
 
-// maxDumpBody bounds a captured request or response body. Generous, because a
+// MaxDumpBody bounds a captured request or response body. Generous, because a
 // developer dump wants the whole exchange, but capped so a pathological
 // request cannot pin arbitrary memory on the error that ends a run.
-const maxDumpBody = 1 << 20 // 1 MiB
+const MaxDumpBody = 1 << 20 // 1 MiB
 
 // providerError is the error fantasy raises for anything an endpoint did wrong.
 func providerError(err error) (*fantasy.ProviderError, bool) {
@@ -55,7 +55,7 @@ func IsRetriable(err error) bool {
 		errors.Is(err, syscall.ECONNRESET) ||
 		errors.Is(err, syscall.EPIPE) ||
 		errors.Is(err, net.ErrClosed) ||
-		errors.Is(err, errStreamStalled)
+		errors.Is(err, ErrStreamStalled)
 }
 
 // IsRateLimited reports a 429, which the caller should back off from rather than
@@ -257,7 +257,7 @@ func FailureOf(err error) *Failure {
 
 	return &Failure{
 		Status:       found.StatusCode,
-		ResponseBody: clip(bodyOf(found.ResponseBody), maxDumpBody),
+		ResponseBody: clip(bodyOf(found.ResponseBody), MaxDumpBody),
 		RequestBytes: len(found.RequestBody),
 	}
 }

@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 import (
 	"context"
@@ -10,23 +10,25 @@ import (
 
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // serve stands up a fake endpoint and a client pointed at it.
-func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*ClientConfig)) *Client {
+func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*provider.ClientConfig)) *provider.Client {
 	t.Helper()
 
 	server := httptest.NewServer(handler)
 
 	t.Cleanup(server.Close)
 
-	config := ClientConfig{Provider: "test", Model: litTestModel, APIKey: "test-key", BaseURL: server.URL}
+	config := provider.ClientConfig{Provider: "test", Model: litTestModel, APIKey: "test-key", BaseURL: server.URL}
 
 	for _, change := range tweak {
 		change(&config)
 	}
 
-	client, err := NewClient(t.Context(), config)
+	client, err := provider.NewClient(t.Context(), config)
 	require.NoError(t, err)
 
 	return client
@@ -46,7 +48,7 @@ func sse(lines ...string) string {
 }
 
 // frames serves a fixed SSE body, closed the way a real server closes it.
-func frames(t *testing.T, lines ...string) *Client {
+func frames(t *testing.T, lines ...string) *provider.Client {
 	t.Helper()
 
 	return serve(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -66,11 +68,11 @@ type turn struct {
 	err       error
 }
 
-// Stream runs one model call. A failure to start it arrives as an error part,
+// streamOf runs one model call. A failure to start it arrives as an error part,
 // the same way a failure mid-stream does, so a caller has one place to look.
-func (c *Client) Stream(ctx context.Context, call *fantasy.Call) fantasy.StreamResponse {
+func streamOf(ctx context.Context, c *provider.Client, call *fantasy.Call) fantasy.StreamResponse {
 	return func(yield func(fantasy.StreamPart) bool) {
-		stream, err := c.model.Stream(ctx, *call)
+		stream, err := c.Model().Stream(ctx, *call)
 		if err != nil {
 			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
 
@@ -86,10 +88,10 @@ func (c *Client) Stream(ctx context.Context, call *fantasy.Call) fantasy.StreamR
 }
 
 // collect runs one call to the end.
-func collect(client *Client, call *fantasy.Call) turn {
+func collect(client *provider.Client, call *fantasy.Call) turn {
 	var result turn
 
-	for part := range client.Stream(context.Background(), call) {
+	for part := range streamOf(context.Background(), client, call) {
 		switch part.Type {
 		case fantasy.StreamPartTypeTextDelta:
 			result.text += part.Delta
@@ -121,8 +123,8 @@ func hello() *fantasy.Call {
 func withStallTimeout(t *testing.T, timeout time.Duration) {
 	t.Helper()
 
-	previous := streamStallTimeout
-	streamStallTimeout = timeout
+	previous := provider.StreamStallTimeout
+	provider.StreamStallTimeout = timeout
 
-	t.Cleanup(func() { streamStallTimeout = previous })
+	t.Cleanup(func() { provider.StreamStallTimeout = previous })
 }

@@ -18,10 +18,10 @@ const (
 	responseHeaderTimeout = 10 * time.Minute
 )
 
-// streamStallTimeout is how long a stream may say nothing at all before it is
+// StreamStallTimeout is how long a stream may say nothing at all before it is
 // treated as hung. A variable only so tests can drive it without waiting
 // minutes. It is not a configuration knob.
-var streamStallTimeout = 10 * time.Minute
+var StreamStallTimeout = 10 * time.Minute
 
 // newHTTPClient builds the shared transport, bounding the phases that can hang
 // without bounding the one that takes a long time.
@@ -77,14 +77,14 @@ func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error)
 		return nil, err
 	}
 
-	response.Body = newStallReader(response.Body, streamStallTimeout)
+	response.Body = newStallReader(response.Body, StreamStallTimeout)
 
 	return response, nil
 }
 
-// errStreamStalled is what a stream that went silent fails with. A sentinel, so
+// ErrStreamStalled is what a stream that went silent fails with. A sentinel, so
 // the retry rules can recognize it by type rather than by its wording.
-var errStreamStalled = errors.New("the stream stalled")
+var ErrStreamStalled = errors.New("the stream stalled")
 
 func (r *stallReader) didStall() bool {
 	r.mu.Lock()
@@ -102,7 +102,7 @@ func (r *stallReader) Read(p []byte) (int, error) {
 	}
 
 	if err != nil && r.didStall() {
-		return n, fmt.Errorf("%w: nothing arrived for %s", errStreamStalled, r.timeout)
+		return n, fmt.Errorf("%w: nothing arrived for %s", ErrStreamStalled, r.timeout)
 	}
 
 	return n, err

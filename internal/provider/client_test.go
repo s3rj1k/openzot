@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/provider"
 )
 
 // wireRequest is what a fake endpoint saw.
@@ -152,8 +154,8 @@ func TestStreamSurfacesAnInBandErrorAsRetriable(t *testing.T) {
 
 	require.Error(t, result.err)
 
-	assert.True(t, IsProviderError(result.err))
-	assert.True(t, IsRetriable(result.err))
+	assert.True(t, provider.IsProviderError(result.err))
+	assert.True(t, provider.IsRetriable(result.err))
 }
 
 func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
@@ -166,7 +168,7 @@ func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
 	result := collect(client, hello())
 
 	require.Error(t, result.err, "want a retriable failure for a stream with no ending")
-	assert.True(t, IsRetriable(result.err), "want a retriable failure for a stream with no ending")
+	assert.True(t, provider.IsRetriable(result.err), "want a retriable failure for a stream with no ending")
 }
 
 // A connection cut at each point of a turn - after a frame, before any response,
@@ -199,7 +201,7 @@ func TestACutConnectionIsRetriable(t *testing.T) {
 			err := collect(serve(t, handler), hello()).err
 			require.Error(t, err, "a cut connection must surface as an error")
 
-			assert.True(t, IsRetriable(err))
+			assert.True(t, provider.IsRetriable(err))
 		})
 	}
 }
@@ -233,15 +235,15 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 			err := collect(client, hello()).err
 			require.Error(t, err)
 
-			assert.Equal(t, test.retriable, IsRetriable(err))
-			assert.Equal(t, test.limited, IsRateLimited(err))
+			assert.Equal(t, test.retriable, provider.IsRetriable(err))
+			assert.Equal(t, test.limited, provider.IsRateLimited(err))
 
-			failure := FailureOf(err)
+			failure := provider.FailureOf(err)
 			assert.NotNil(t, failure)
 			assert.Equal(t, test.status, failure.Status)
 
 			if test.limited {
-				delay, ok := RetryAfter(err)
+				delay, ok := provider.RetryAfter(err)
 				assert.True(t, ok)
 				assert.Equal(t, 7*time.Second, delay)
 			}
@@ -255,7 +257,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.","code":"context_length_exceeded"}}`)
 	})
 
-	limit, ok := DetectContextLimit(collect(client, hello()).err)
+	limit, ok := provider.DetectContextLimit(collect(client, hello()).err)
 	assert.True(t, ok)
 	assert.Equal(t, 8192, limit.MaxTokens)
 }
@@ -299,7 +301,7 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" })
+	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" })
 
 	collect(client, &fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
 
@@ -325,7 +327,7 @@ func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
 	var seen wireRequest
 
-	collect(serve(t, seen.capture, func(c *ClientConfig) { c.Model = "gpt-5.4" }), hello())
+	collect(serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" }), hello())
 
 	assert.Equal(t, "/chat/completions", seen.path, "want chat-completions for any model name")
 }
@@ -346,7 +348,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	for _, contentArray := range []bool{false, true} {
 		var seen wireRequest
 
-		client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = contentArray })
+		client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = contentArray })
 
 		collect(client, &fantasy.Call{Prompt: prompt})
 
@@ -384,7 +386,7 @@ func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *ClientConfig) { c.ContentArray = true })
+	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = true })
 
 	collect(client, &fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
@@ -413,7 +415,7 @@ func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *ClientConfig) { c.APIKey = "" })
+	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.APIKey = "" })
 
 	// loopback, so no key is required, and none may be invented
 	require.NoError(t, collect(client, hello()).err)
@@ -434,7 +436,7 @@ func TestAConfiguredKeyIsNotReplacedByTheEnvironment(t *testing.T) {
 }
 
 func TestClientExposesItsResolvedConfig(t *testing.T) {
-	client := serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *ClientConfig) { c.BaseURL += "/" })
+	client := serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *provider.ClientConfig) { c.BaseURL += "/" })
 
 	config := client.Config()
 
@@ -443,7 +445,7 @@ func TestClientExposesItsResolvedConfig(t *testing.T) {
 }
 
 func TestNewRefusesAnInvalidConfig(t *testing.T) {
-	_, err := NewClient(t.Context(), ClientConfig{})
+	_, err := provider.NewClient(t.Context(), provider.ClientConfig{})
 	require.Error(t, err, "an empty config must not connect")
 }
 
@@ -472,7 +474,7 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		for part := range client.Stream(ctx, hello()) {
+		for part := range streamOf(ctx, client, hello()) {
 			_ = part
 		}
 	}()
@@ -517,7 +519,7 @@ func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 
-	for part := range client.Stream(ctx, hello()) {
+	for part := range streamOf(ctx, client, hello()) {
 		if part.Type == fantasy.StreamPartTypeTextDelta {
 			break
 		}
@@ -588,7 +590,7 @@ func TestAStalledStreamFailsRetriably(t *testing.T) {
 	case result := <-done:
 		require.Error(t, result.err, "a stream that went silent must not hang forever")
 
-		assert.True(t, IsRetriable(result.err), "a stalled stream should be retriable")
+		assert.True(t, provider.IsRetriable(result.err), "a stalled stream should be retriable")
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "a stream that went silent was never cut off")
 	}

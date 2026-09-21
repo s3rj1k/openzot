@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 // The strings the tests of this package repeat.
 const (
