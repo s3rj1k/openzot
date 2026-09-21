@@ -47,12 +47,12 @@ func IsInteractive() bool {
 	return isatty.IsTerminal(fd)
 }
 
-// runViewer owns the viewer's lifetime. It starts the run, hands the program to start, and shuts the run down once start
+// RunViewer owns the viewer's lifetime. It starts the run, hands the program to start, and shuts the run down once start
 // returns. Start and programOptions are seams for tests, which cannot open a terminal and need a headless program that
 // still consumes messages.
-func runViewer(
+func RunViewer(
 	ctx context.Context,
-	m *model,
+	m *Model,
 	engine *loop.Engine,
 	start func(*tea.Program) (tea.Model, error),
 	programOptions ...tea.ProgramOption,
@@ -67,7 +67,7 @@ func runViewer(
 	done := make(chan struct{})
 	results := make(chan loop.Result, 1)
 
-	go runAgent(ctx, p, engine, results, done)
+	go RunAgent(ctx, p, engine, results, done)
 
 	final, err := start(p)
 
@@ -88,8 +88,8 @@ func runViewer(
 	}
 
 	switch m := final.(type) {
-	case *model:
-		return result, m.runError()
+	case *Model:
+		return result, m.RunError()
 	default:
 		return result, nil
 	}
@@ -104,15 +104,15 @@ func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error
 		return loop.Result{}, err
 	}
 
-	m := newModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
+	m := NewModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 
-	m.title = meta.Title
+	m.Title = meta.Title
 	if meta.MaxScrollback > 0 {
-		m.maxEntries = meta.MaxScrollback
+		m.MaxEntries = meta.MaxScrollback
 	}
 
-	m.maxIterations = meta.MaxIterations
-	m.maxDuration = meta.MaxDuration
+	m.MaxIterations = meta.MaxIterations
+	m.MaxDuration = meta.MaxDuration
 
-	return runViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
+	return RunViewer(ctx, m, engine, func(p *tea.Program) (tea.Model, error) { return p.Run() })
 }

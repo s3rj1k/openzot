@@ -25,16 +25,16 @@ func (e *AgentExitError) Error() string {
 	return fmt.Sprintf("agent exited with code %d: %s", e.Code, e.Message)
 }
 
-func (m *model) runError() error {
-	if m.err != nil {
-		return m.err
+func (m *Model) RunError() error {
+	if m.Err != nil {
+		return m.Err
 	}
 
 	if m.exitCode != 0 {
-		return &AgentExitError{Code: m.exitCode, Message: m.exitMsg}
+		return &AgentExitError{Code: m.exitCode, Message: m.ExitMsg}
 	}
 
-	if m.status == statusRunning {
+	if m.Status == StatusRunning {
 		// The viewer closed while the run was going, and in production only the operator does that (q or Ctrl-C).
 		// Say so, since "ended before completion" read as a mysterious failure when it was a keypress.
 		return ErrCancelled

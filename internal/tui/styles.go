@@ -31,7 +31,7 @@ var (
 
 	// Meta-bar value colors. Fixed functional hues (not the brand accent), so the
 	// header carries color and stays scannable even under a neutral theme. The
-	// model and provider are highlighted, the counters read by kind, and paths and
+	// Model and provider are highlighted, the counters read by kind, and paths and
 	// timing stay muted.
 	metaModel    = lipgloss.NewStyle().Foreground(colCyan)
 	metaProvider = lipgloss.NewStyle().Foreground(colBlue)

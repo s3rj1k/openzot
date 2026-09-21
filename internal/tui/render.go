@@ -38,9 +38,9 @@ func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
 	}
 }
 
-// truncate flattens a string to one line and caps it at limit characters. Characters, not bytes, since slicing bytes
+// Truncate flattens a string to one line and caps it at limit characters. Characters, not bytes, since slicing bytes
 // cuts a multi-byte rune in half, rendering a replacement character and cutting CJK or emoji far short of the width.
-func truncate(s string, limit int) string {
+func Truncate(s string, limit int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 
 	if utf8.RuneCountInString(s) <= limit {
@@ -70,10 +70,10 @@ func renderTasks(args map[string]any) string {
 
 	for _, task := range tasks {
 		b.WriteString("\n    " + taskMarker(task.Status) + " ")
-		b.WriteString(taskLineStyle(task.Status).Render(truncate(task.Title, 200)))
+		b.WriteString(taskLineStyle(task.Status).Render(Truncate(task.Title, 200)))
 
 		if task.Note != "" {
-			b.WriteString(outputStyle.Render(" - " + truncate(task.Note, 160)))
+			b.WriteString(outputStyle.Render(" - " + Truncate(task.Note, 160)))
 		}
 	}
 
@@ -83,7 +83,7 @@ func renderTasks(args map[string]any) string {
 func compactArgs(args map[string]any) string {
 	parts := make([]string, 0, len(args))
 	for k, v := range args {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, truncate(fmt.Sprint(v), 40)))
+		parts = append(parts, fmt.Sprintf("%s=%s", k, Truncate(fmt.Sprint(v), 40)))
 	}
 
 	return strings.Join(parts, " ")
@@ -105,13 +105,13 @@ func pad(s string, n int) string {
 	return s
 }
 
-// renderToolStart turns a tool invocation into one or more styled log lines. Built-in tools get a tailored form and
+// RenderToolStart turns a tool invocation into one or more styled log lines. Built-in tools get a tailored form and
 // anything else a generic one. The names match the tools package, and a mismatch is no compile error, it just renders
 // the most-used tool as an anonymous key/value dump.
-func renderToolStart(name string, args map[string]any) string {
+func RenderToolStart(name string, args map[string]any) string {
 	switch name {
 	case "shell":
-		return toolExecStyle.Render("  shell  ") + taskStyle.Render(truncate(str(args, "command"), 200))
+		return toolExecStyle.Render("  shell  ") + taskStyle.Render(Truncate(str(args, "command"), 200))
 	case "tasks":
 		return renderTasks(args)
 	default:
@@ -121,7 +121,7 @@ func renderToolStart(name string, args map[string]any) string {
 
 // renderOutputLines renders captured output. It does not cap it. How much of a
 // record fits is the viewer's call, made against the terminal's height (see
-// model.wrapRecord).
+// Model.wrapRecord).
 func renderOutputLines(text string) string {
 	lines := strings.Split(text, "\n")
 
@@ -132,7 +132,7 @@ func renderOutputLines(text string) string {
 			b.WriteString("\n")
 		}
 
-		b.WriteString(outputStyle.Render("    │ " + truncate(l, 200)))
+		b.WriteString(outputStyle.Render("    │ " + Truncate(l, 200)))
 	}
 
 	return b.String()
@@ -160,8 +160,8 @@ func renderTextResult(name, text string) string {
 	}
 }
 
-// commandOutput renders the stdout/stderr of a structured result.
-func commandOutput(m map[string]any) string {
+// CommandOutput renders the stdout/stderr of a structured result.
+func CommandOutput(m map[string]any) string {
 	text := strings.TrimRight(str(m, "stdout"), "\n")
 
 	if text == "" {
@@ -175,9 +175,9 @@ func commandOutput(m map[string]any) string {
 	return renderOutputLines(text)
 }
 
-// renderToolEnd produces an optional follow-up line summarizing a tool result, or "" when there is nothing worth showing.
+// RenderToolEnd produces an optional follow-up line summarizing a tool result, or "" when there is nothing worth showing.
 // Zot's tools return plain strings, handled first. The map form is for a caller whose own tool returns something structured.
-func renderToolEnd(name string, result any) string {
+func RenderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
 		return renderTextResult(name, text)
 	}
@@ -189,8 +189,8 @@ func renderToolEnd(name string, result any) string {
 
 	if success, present := m["success"].(bool); present && !success {
 		if e := str(m, "error"); e != "" {
-			out := errStyle.Render("    ✗ " + truncate(e, 200))
-			if tail := commandOutput(m); tail != "" {
+			out := errStyle.Render("    ✗ " + Truncate(e, 200))
+			if tail := CommandOutput(m); tail != "" {
 				out += "\n" + tail
 			}
 
@@ -198,17 +198,17 @@ func renderToolEnd(name string, result any) string {
 		}
 	}
 
-	if tail := commandOutput(m); tail != "" {
+	if tail := CommandOutput(m); tail != "" {
 		return okStyle.Render("    ✓ done") + "\n" + tail
 	}
 
 	return okStyle.Render("    ✓ done")
 }
 
-// shortPath fits a directory into limit columns from the right, since the informative end of a path is the last segment.
+// ShortPath fits a directory into limit columns from the right, since the informative end of a path is the last segment.
 // Whole leading segments are dropped and the cut marked with "…/", so a long path reads "…/repos/zot/tool". Only when the
 // final segment alone will not fit is it cut, from the left.
-func shortPath(path string, limit int) string {
+func ShortPath(path string, limit int) string {
 	if limit <= 0 {
 		return ""
 	}

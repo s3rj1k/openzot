@@ -1,10 +1,12 @@
-package tui
+package tui_test
 
 import (
 	"testing"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openzot/openzot/internal/tui"
 )
 
 // A path is read from its end. The last segment names the project, the first
@@ -57,7 +59,7 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := shortPath(test.path, test.max)
+			got := tui.ShortPath(test.path, test.max)
 
 			assert.Equal(t, test.want, got)
 
@@ -71,9 +73,9 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 // The header shows the project you are in, not the machine you are on.
 func TestTheDirStatShowsTheProjectEnd(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.workdir = "/workspaces/monorepo-zot/repos/zot/tool"
+	m.Workdir = "/workspaces/monorepo-zot/repos/zot/tool"
 
-	bar := stripANSI(m.metaBar())
+	bar := stripANSI(m.MetaBar())
 
 	assert.Contains(t, bar, "tool", "the dir stat must keep the directory you are actually in")
 

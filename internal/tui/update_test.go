@@ -1,4 +1,4 @@
-package tui
+package tui_test
 
 import (
 	"errors"
@@ -14,13 +14,14 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/tui"
 )
 
 // asModel is what an Update returned, as the model it is.
-func asModel(t *testing.T, updated tea.Model) *model {
+func asModel(t *testing.T, updated tea.Model) *tui.Model {
 	t.Helper()
 
-	typed, ok := updated.(*model)
+	typed, ok := updated.(*tui.Model)
 	require.True(t, ok, "Update returned %T, want *model", updated)
 
 	return typed
@@ -28,10 +29,10 @@ func asModel(t *testing.T, updated tea.Model) *model {
 
 // sized returns a model that has been through a window-size message, which is
 // what makes the viewport usable.
-func sized(t *testing.T, width, height int) *model {
+func sized(t *testing.T, width, height int) *tui.Model {
 	t.Helper()
 
-	m := newModel("do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
+	m := tui.NewModel("do the thing", "gpt-5.4-mini", "openai", "/tmp/work")
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 
@@ -42,7 +43,7 @@ func sized(t *testing.T, width, height int) *model {
 // and the elapsed clock never advances - a screen that looks hung on a run that
 // is working fine.
 func TestInitStartsTheSpinnerAndClock(t *testing.T) {
-	m := newModel("task", "m", "b", "/w")
+	m := tui.NewModel("task", "m", "b", "/w")
 
 	cmd := m.Init()
 
@@ -61,10 +62,10 @@ func TestInitStartsTheSpinnerAndClock(t *testing.T) {
 func TestWindowSizeMakesTheViewportReady(t *testing.T) {
 	m := sized(t, 100, 40)
 
-	assert.True(t, m.ready, "the model should be ready after a size message")
+	assert.True(t, m.Ready, "the model should be ready after a size message")
 
-	assert.Equal(t, 100, m.width)
-	assert.Equal(t, 40, m.height)
+	assert.Equal(t, 100, m.Width)
+	assert.Equal(t, 40, m.Height)
 }
 
 // A terminal too short for the chrome must still leave a usable viewport rather
@@ -72,7 +73,7 @@ func TestWindowSizeMakesTheViewportReady(t *testing.T) {
 func TestTinyTerminalDoesNotProduceANegativeViewport(t *testing.T) {
 	m := sized(t, 20, 1)
 
-	assert.GreaterOrEqual(t, m.vp.Height, 1)
+	assert.GreaterOrEqual(t, m.Viewport.Height, 1)
 }
 
 // A quit has to actually be a quit. Asserting only that some command came back
@@ -98,18 +99,18 @@ func TestJumpKeys(t *testing.T) {
 	m := sized(t, 80, 24)
 
 	for range 100 {
-		m.appendEntry("line")
+		m.AppendEntry("line")
 	}
 
-	m.render()
+	m.Render()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 
-	assert.False(t, updated.(*model).follow, "jumping to the top must stop following")
+	assert.False(t, updated.(*tui.Model).Follow, "jumping to the top must stop following")
 
-	updated, _ = updated.(*model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	updated, _ = updated.(*tui.Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 
-	assert.True(t, updated.(*model).follow, "jumping to the bottom must resume following")
+	assert.True(t, updated.(*tui.Model).Follow, "jumping to the bottom must resume following")
 }
 
 // The log is read-only, so scrolling is the only interaction - and following the
@@ -118,45 +119,45 @@ func TestScrollingStopsFollowing(t *testing.T) {
 	m := sized(t, 80, 24)
 
 	for range 200 {
-		m.appendEntry("line")
+		m.AppendEntry("line")
 	}
 
-	m.render()
+	m.Render()
 
-	require.True(t, m.follow, "a fresh model should follow the tail")
+	require.True(t, m.Follow, "a fresh model should follow the tail")
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 
-	assert.False(t, updated.(*model).follow, "scrolling up must stop the log from jumping back to the bottom")
+	assert.False(t, updated.(*tui.Model).Follow, "scrolling up must stop the log from jumping back to the bottom")
 }
 
 func TestTickAdvancesTheElapsedClock(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	updated, cmd := m.Update(tickMsg{})
+	updated, cmd := m.Update(tui.TickMsg{})
 
 	assert.NotNil(t, cmd, "a tick must schedule the next one, or the clock stops")
 
-	assert.GreaterOrEqual(t, updated.(*model).elapsed, time.Duration(0))
+	assert.GreaterOrEqual(t, updated.(*tui.Model).Elapsed, time.Duration(0))
 }
 
 func TestHandleEventBuildsTheLog(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 1})
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 1})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallStart, Tool: litShell, Args: map[string]any{"command": "ls"}})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "README.md"})
 	// tokens are what the log shows. A MessageAgentEvent carries the same
 	// content and is by design not drawn twice
-	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "here is "})
-	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "the answer"})
-	m.handleEvent(&loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToken, Text: "here is "})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToken, Text: "the answer"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventMessage, MessageType: conversation.TypeBot, Text: "here is the answer"})
 
-	m.flushPending()
+	m.FlushPending()
 
-	assert.Equal(t, 1, m.iteration)
+	assert.Equal(t, 1, m.Iteration)
 
-	log := strings.Join(m.entries, "\n")
+	log := strings.Join(m.Entries, "\n")
 
 	for _, want := range []string{litShell, "here is the answer"} {
 		assert.Contains(t, log, want)
@@ -166,9 +167,9 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 func TestToolErrorsAreShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallError, Tool: litShell, Text: "command not found"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallError, Tool: litShell, Text: "command not found"})
 
-	log := strings.Join(m.entries, "\n")
+	log := strings.Join(m.Entries, "\n")
 
 	assert.Contains(t, log, "command not found", "a tool failure must be visible")
 }
@@ -177,22 +178,22 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 	tests := []struct {
 		name string
 		exit loop.Result
-		want status
+		want tui.Status
 	}{
-		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: litDone}, statusDone},
-		{"a budget-exhausted run", loop.Result{Reason: loop.StopIterations, Message: "gave up"}, statusFailed},
-		{"a run the model declared failed", loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"}, statusFailed},
+		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: litDone}, tui.StatusDone},
+		{"a budget-exhausted run", loop.Result{Reason: loop.StopIterations, Message: "gave up"}, tui.StatusFailed},
+		{"a run the model declared failed", loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"}, tui.StatusFailed},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := sized(t, 100, 30)
 
-			m.finish(&test.exit)
+			m.Finish(&test.exit)
 
-			assert.Equal(t, test.want, m.status)
+			assert.Equal(t, test.want, m.Status)
 
-			assert.NotEmpty(t, m.exitMsg, "the exit message should be retained for the footer")
+			assert.NotEmpty(t, m.ExitMsg, "the exit message should be retained for the footer")
 		})
 	}
 }
@@ -223,9 +224,9 @@ func stripANSI(s string) string {
 func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.finish(&loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
+	m.Finish(&loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
 
-	log := stripANSI(strings.Join(m.entries, "\n"))
+	log := stripANSI(strings.Join(m.Entries, "\n"))
 
 	assert.Contains(t, log, "cannot reach the host", "log %q should carry the model's stated reason", log)
 
@@ -235,9 +236,9 @@ func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 func TestViewRendersWithoutPanicking(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 2})
-	m.handleEvent(&loop.Event{Kind: loop.EventToken, Text: "something"})
-	m.flushPending()
+	m.HandleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 2})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToken, Text: "something"})
+	m.FlushPending()
 
 	view := m.View()
 
@@ -251,10 +252,10 @@ func TestViewRendersWithoutPanicking(t *testing.T) {
 // Before the first size message there is nothing sensible to draw, and drawing
 // anyway used to produce a garbled frame.
 func TestViewBeforeReady(t *testing.T) {
-	m := newModel("task", "m", "b", "/w")
+	m := tui.NewModel("task", "m", "b", "/w")
 
 	if view := m.View(); strings.Contains(view, "\x1b[") {
-		assert.True(t, m.ready, "an unready model should not draw a full frame")
+		assert.True(t, m.Ready, "an unready model should not draw a full frame")
 	}
 }
 
@@ -263,9 +264,9 @@ func TestViewBeforeReady(t *testing.T) {
 func TestIterationRuleIsFixedShort(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 7})
+	m.HandleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 7})
 
-	entry := m.entries[len(m.entries)-1]
+	entry := m.Entries[len(m.Entries)-1]
 
 	got := strings.Count(entry, "─")
 	assert.Equal(t, 6, got, "iteration divider has %d ─ glyphs, want exactly 6: %q", got, entry)
@@ -281,9 +282,9 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 		t.Run(fmt.Sprintf("%dcolumns", width), func(t *testing.T) {
 			m := sized(t, width, 30)
 
-			m.handleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 4})
+			m.HandleEvent(&loop.Event{Kind: loop.EventIteration, Iteration: 4})
 
-			rows := strings.Split(m.committedWrapped, "\n")
+			rows := strings.Split(m.CommittedWrapped, "\n")
 
 			dividers := 0
 
@@ -305,15 +306,15 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 func TestRewrapOnResize(t *testing.T) {
 	m := sized(t, 120, 30)
 
-	m.appendEntry(strings.Repeat("word ", 60))
+	m.AppendEntry(strings.Repeat("word ", 60))
 
-	m.render()
+	m.Render()
 
-	wide := m.committedWrapped
+	wide := m.CommittedWrapped
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 30})
 
-	narrow := updated.(*model).committedWrapped
+	narrow := updated.(*tui.Model).CommittedWrapped
 
 	assert.NotEqual(t, narrow, wide, "resizing should re-wrap the committed log")
 }
@@ -322,14 +323,14 @@ func TestRewrapOnResize(t *testing.T) {
 // or has failed, so the three statuses have to be distinguishable - a
 // non-empty badge that says the same thing for all three tells them nothing.
 func TestBadgeReflectsStatus(t *testing.T) {
-	badges := map[status]string{}
+	badges := map[tui.Status]string{}
 
-	for _, st := range []status{statusRunning, statusDone, statusFailed} {
+	for _, st := range []tui.Status{tui.StatusRunning, tui.StatusDone, tui.StatusFailed} {
 		m := sized(t, 80, 24)
 
-		m.status = st
+		m.Status = st
 
-		badge := m.badge()
+		badge := m.Badge()
 
 		assert.NotEmpty(t, badge, "status %v produced no badge", st)
 
@@ -341,10 +342,10 @@ func TestBadgeReflectsStatus(t *testing.T) {
 	}
 
 	// and each says which state it is, in words rather than color alone
-	for st, want := range map[status]string{
-		statusRunning: "working",
-		statusDone:    litDone,
-		statusFailed:  litFailed,
+	for st, want := range map[tui.Status]string{
+		tui.StatusRunning: "working",
+		tui.StatusDone:    litDone,
+		tui.StatusFailed:  litFailed,
 	} {
 		assert.Contains(t, badges[st], want, "the %v badge %q does not say %q", st, badges[st], want)
 	}
@@ -353,9 +354,9 @@ func TestBadgeReflectsStatus(t *testing.T) {
 func TestFooterShowsTheKeyHints(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.iteration = 3
+	m.Iteration = 3
 
-	footer := m.footer()
+	footer := m.Footer()
 
 	require.NotEmpty(t, footer, "the footer must render while running")
 
@@ -370,18 +371,18 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 func TestExitBecomesAnError(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.finish(&loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
+	m.Finish(&loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
 
-	err := m.runError()
+	err := m.RunError()
 	require.Error(t, err, "a failed run must surface as an error")
 
 	assert.Contains(t, err.Error(), "kept repeating")
 
 	clean := sized(t, 100, 30)
 
-	clean.finish(&loop.Result{Reason: loop.StopSettled, Message: litDone})
+	clean.Finish(&loop.Result{Reason: loop.StopSettled, Message: litDone})
 
-	require.NoError(t, clean.runError())
+	require.NoError(t, clean.RunError())
 }
 
 // A spinner tick is ignored once the run has ended, or the finished screen keeps
@@ -389,9 +390,9 @@ func TestExitBecomesAnError(t *testing.T) {
 func TestSpinnerStopsWhenTheRunEnds(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	m.status = statusDone
+	m.Status = tui.StatusDone
 
-	_, cmd := m.Update(tickMsg{})
+	_, cmd := m.Update(tui.TickMsg{})
 
 	assert.Nil(t, cmd, "the clock must stop once the run has ended")
 }
@@ -412,7 +413,7 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		got := stripANSI(renderToolStart(test.tool, test.args))
+		got := stripANSI(tui.RenderToolStart(test.tool, test.args))
 
 		assert.Contains(t, got, test.want)
 	}
@@ -437,7 +438,7 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := stripANSI(renderToolEnd(test.tool, test.result))
+			got := stripANSI(tui.RenderToolEnd(test.tool, test.result))
 
 			if !test.wantAny {
 				assert.Empty(t, got)
@@ -461,9 +462,9 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
-	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
+	rows := strings.Split(stripANSI(m.CommittedWrapped), "\n")
 
 	require.Len(t, rows, 10, "the record took %d rows on a 30-row terminal, want 10", len(rows))
 
@@ -479,18 +480,18 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 
 	long := strings.Repeat("word ", 40)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
 
-	assert.Len(t, strings.Split(m.committedWrapped, "\n"), 10, "want the 10 a third of 30 allows")
+	assert.Len(t, strings.Split(m.CommittedWrapped, "\n"), 10, "want the 10 a third of 30 allows")
 }
 
 // A record that fits is left exactly as it is, with no ellipsis.
 func TestARecordThatFitsIsNotClipped(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
 
-	got := stripANSI(m.committedWrapped)
+	got := stripANSI(m.CommittedWrapped)
 
 	assert.NotContains(t, got, "…", "a short record must be shown whole")
 	assert.Contains(t, got, "three", "a short record must be shown whole")
@@ -507,20 +508,20 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
+	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
-	before := len(strings.Split(m.committedWrapped, "\n"))
+	before := len(strings.Split(m.CommittedWrapped, "\n"))
 
 	resized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
 	m = asModel(t, resized)
 
-	after := len(strings.Split(m.committedWrapped, "\n"))
+	after := len(strings.Split(m.CommittedWrapped, "\n"))
 	assert.Equal(t, 20, after, "rows after growing the window = %d (was %d), want 20", after, before)
 	assert.Greater(t, after, before, "rows after growing the window = %d (was %d), want 20", after, before)
 }
 
 func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
-	failure := stripANSI(renderToolEnd(litShell, map[string]any{
+	failure := stripANSI(tui.RenderToolEnd(litShell, map[string]any{
 		"success": false,
 		"error":   "exit status 1",
 		"stderr":  "compile failed",
@@ -528,7 +529,7 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 
 	assert.Contains(t, failure, "exit status 1")
 
-	success := stripANSI(renderToolEnd(litShell, map[string]any{litStdout: "all good"}))
+	success := stripANSI(tui.RenderToolEnd(litShell, map[string]any{litStdout: "all good"}))
 
 	assert.Contains(t, success, "all good", "structured output must surface")
 }
@@ -548,7 +549,7 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 
 		// A quit would leave the model unchanged and end the program. Without running the program, what can be
 		// checked is that the viewer is still there and still running.
-		assert.Equal(t, statusRunning, updated.(*model).status, "key %v ended the run", key)
+		assert.Equal(t, tui.StatusRunning, updated.(*tui.Model).Status, "key %v ended the run", key)
 	}
 }
 
@@ -557,15 +558,15 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 func TestTheClockStopsWhenTheRunEnds(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	m.status = statusDone
+	m.Status = tui.StatusDone
 
-	before := m.elapsed
+	before := m.Elapsed
 
-	next, cmd := m.Update(tickMsg{})
+	next, cmd := m.Update(tui.TickMsg{})
 
 	assert.Nil(t, cmd, "a finished run must not schedule another tick")
 
-	assert.Equal(t, before, next.(*model).elapsed, "the clock kept running after the run ended")
+	assert.Equal(t, before, next.(*tui.Model).Elapsed, "the clock kept running after the run ended")
 }
 
 // The footer tells the operator how to leave. While a run is going it shows the
@@ -574,13 +575,13 @@ func TestTheClockStopsWhenTheRunEnds(t *testing.T) {
 func TestFooterAddsAnExitHintWhenTheRunIsOver(t *testing.T) {
 	m := sized(t, 80, 24)
 
-	m.status = statusRunning
+	m.Status = tui.StatusRunning
 
-	running := m.footer()
+	running := m.Footer()
 
-	m.status = statusDone
+	m.Status = tui.StatusDone
 
-	finished := m.footer()
+	finished := m.Footer()
 
 	assert.Greater(t, len(finished), len(running), "a finished footer must say more than a running one")
 
@@ -599,7 +600,7 @@ func TestFormattedDuration(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		assert.Equal(t, test.want, fmtDuration(test.duration))
+		assert.Equal(t, test.want, tui.FmtDuration(test.duration))
 	}
 }
 
@@ -609,7 +610,7 @@ func TestTitleBarSurvivesANarrowTerminal(t *testing.T) {
 	for _, width := range []int{1, 8, 12, 20} {
 		m := sized(t, width, 24)
 
-		title := m.titleBar()
+		title := m.TitleBar()
 
 		assert.NotEmpty(t, title, "width %d produced no title bar", width)
 
@@ -637,47 +638,47 @@ func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		assert.Equal(t, test.want, truncate(test.in, test.max))
+		assert.Equal(t, test.want, tui.Truncate(test.in, test.max))
 	}
 }
 
 // A shell tool reports failure on stderr, and that is exactly the output an
 // operator reading a failed run needs to see.
 func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
-	assert.Contains(t, commandOutput(map[string]any{litStdout: "all good\n"}), "all good")
+	assert.Contains(t, tui.CommandOutput(map[string]any{litStdout: "all good\n"}), "all good")
 
-	got := commandOutput(map[string]any{litStdout: "", "stderr": "permission denied\n"})
+	got := tui.CommandOutput(map[string]any{litStdout: "", "stderr": "permission denied\n"})
 
 	assert.Contains(t, got, "permission denied", "stderr was not rendered when stdout was empty")
 
-	got = commandOutput(map[string]any{})
+	got = tui.CommandOutput(map[string]any{})
 	assert.Empty(t, got, "a silent command rendered %q, want nothing", got)
 }
 
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	// A not-yet-sized model. render() does nothing, so this exercises the scrollback cap without the per-append
 	// viewport cost (which a real, model-paced run pays anyway, now bounded by the cap).
-	m := newModel("do the thing", "m", "b", "d")
+	m := tui.NewModel("do the thing", "m", "b", "d")
 
-	limit := m.maxEntries // DefaultMaxScrollback
+	limit := m.MaxEntries // DefaultMaxScrollback
 
 	total := limit + limit/4 + 200 // enough to force a trim past the cap + slack
 	for i := range total {
-		m.appendEntry(fmt.Sprintf("line %d", i))
+		m.AppendEntry(fmt.Sprintf("line %d", i))
 	}
 
 	// bounded. Never more than the cap plus the trim slack, whatever the run length
-	require.LessOrEqual(t, len(m.entries), limit+limit/4, "scrollback must stay bounded, got %d entries", len(m.entries))
+	require.LessOrEqual(t, len(m.Entries), limit+limit/4, "scrollback must stay bounded, got %d entries", len(m.Entries))
 
-	assert.True(t, m.truncated, "truncation must be flagged once the cap is exceeded")
+	assert.True(t, m.Truncated, "truncation must be flagged once the cap is exceeded")
 
 	// the newest line always survives
-	got := m.entries[len(m.entries)-1]
+	got := m.Entries[len(m.Entries)-1]
 	assert.Equal(t, fmt.Sprintf("line %d", total-1), got, "the most recent line must be kept, got %q", got)
 
 	// the oldest kept line is exactly total - len(entries), and older ones are gone
-	oldest := total - len(m.entries)
-	got = m.entries[0]
+	oldest := total - len(m.Entries)
+	got = m.Entries[0]
 	assert.Equal(t, fmt.Sprintf("line %d", oldest), got, "the oldest kept line should be line %d, got %q", oldest, got)
 }
 
@@ -685,25 +686,25 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 // log, so a watcher knows the on-screen history is not the whole run.
 func TestTrimmedLogShowsAMarker(t *testing.T) {
 	m := sized(t, 100, 30)
-	m.truncated = true
-	m.appendEntry("a recent line") // triggers a render
+	m.Truncated = true
+	m.AppendEntry("a recent line") // triggers a render
 
-	assert.Contains(t, m.vp.View(), "trimmed", "a trimmed log must show a marker, got")
+	assert.Contains(t, m.Viewport.View(), "trimmed", "a trimmed log must show a marker, got")
 }
 
 // The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback). A
 // caller can keep fewer or more lines than the default.
 func TestScrollbackCapIsConfigurable(t *testing.T) {
-	m := newModel("t", "m", "b", "d")
-	m.maxEntries = 50 // what Run sets from Meta.MaxScrollback
+	m := tui.NewModel("t", "m", "b", "d")
+	m.MaxEntries = 50 // what Run sets from Meta.MaxScrollback
 
 	for i := range 300 {
-		m.appendEntry(fmt.Sprintf("line %d", i))
+		m.AppendEntry(fmt.Sprintf("line %d", i))
 	}
 
-	assert.LessOrEqual(t, len(m.entries), m.maxEntries+m.maxEntries/4, "a custom cap of %d must be honored, kept %d", m.maxEntries, len(m.entries))
+	assert.LessOrEqual(t, len(m.Entries), m.MaxEntries+m.MaxEntries/4, "a custom cap of %d must be honored, kept %d", m.MaxEntries, len(m.Entries))
 
-	assert.GreaterOrEqual(t, len(m.entries), m.maxEntries, "should keep about the cap %d, kept only %d", m.maxEntries, len(m.entries))
+	assert.GreaterOrEqual(t, len(m.Entries), m.MaxEntries, "should keep about the cap %d, kept only %d", m.MaxEntries, len(m.Entries))
 }
 
 // headerSegments is how many segments the header has when everything fits.
@@ -713,9 +714,9 @@ const headerSegments = 6
 // that order, so what survives a narrow terminal is what changes most.
 func TestMetaBarOrder(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.workdir = "/work/project"
+	m.Workdir = "/work/project"
 
-	bar := stripANSI(m.metaBar())
+	bar := stripANSI(m.MetaBar())
 
 	last := -1
 
@@ -745,14 +746,14 @@ func metaSegments(bar string) []string {
 // A stat segment is shown whole or not at all, since a clipped count can be misread, which is worse than an absent one. The
 // narrow renders are checked against a wide one rather than hardcoded text, since what a segment says is the bar's business.
 func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
-	reference := metaSegments(sized(t, 400, 30).metaBar())
+	reference := metaSegments(sized(t, 400, 30).MetaBar())
 
 	require.Len(t, reference, headerSegments, "a wide terminal must show every header segment")
 
 	for _, width := range []int{12, 20, 33, 47, 68, 95, 140} {
 		m := sized(t, width, 30)
 
-		bar := m.metaBar()
+		bar := m.MetaBar()
 
 		// nothing may spill past the terminal edge
 		got := lipgloss.Width(bar)
@@ -785,7 +786,7 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 	previous := -1
 
 	for width := 8; width <= 400; width += 4 {
-		shown := len(metaSegments(sized(t, width, 30).metaBar()))
+		shown := len(metaSegments(sized(t, width, 30).MetaBar()))
 
 		require.GreaterOrEqual(t, shown, previous, "widening to %d columns dropped a segment (%d, was %d)", width, shown, previous)
 
@@ -800,20 +801,20 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 func TestMetaBarIsEmptyWhenNothingFits(t *testing.T) {
 	m := sized(t, 3, 30)
 
-	assert.Empty(t, strings.TrimSpace(stripANSI(m.metaBar())), "nothing fits at 3 columns, so nothing should be drawn")
+	assert.Empty(t, strings.TrimSpace(stripANSI(m.MetaBar())), "nothing fits at 3 columns, so nothing should be drawn")
 }
 
 // The header shows the provider-reported token usage, and progress against any
 // configured limits (5/1000). A limit that is unset shows no denominator.
 func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.iteration = 5
-	m.maxIterations = 1000
-	m.maxDuration = 30 * time.Minute
-	m.inputTokens = 32000
-	m.outputTokens = 13000
+	m.Iteration = 5
+	m.MaxIterations = 1000
+	m.MaxDuration = 30 * time.Minute
+	m.InputTokens = 32000
+	m.OutputTokens = 13000
 
-	bar := m.metaBar()
+	bar := m.MetaBar()
 
 	assert.Contains(t, bar, "5/1000", "iter must show progress against its limit")
 
@@ -827,10 +828,10 @@ func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 func TestHandleEventRecordsUsage(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
+	m.HandleEvent(&loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
 
-	assert.Equal(t, 1234, m.inputTokens, "usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
-	assert.Equal(t, 567, m.outputTokens, "usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
+	assert.Equal(t, 1234, m.InputTokens, "usage not recorded: in=%d out=%d", m.InputTokens, m.OutputTokens)
+	assert.Equal(t, 567, m.OutputTokens, "usage not recorded: in=%d out=%d", m.InputTokens, m.OutputTokens)
 }
 
 func TestFmtTokens(t *testing.T) {
@@ -843,7 +844,7 @@ func TestFmtTokens(t *testing.T) {
 		{45200, "45.2k"},
 		{1_200_000, "1.2M"},
 	} {
-		assert.Equal(t, tc.want, fmtTokens(tc.n))
+		assert.Equal(t, tc.want, tui.FmtTokens(tc.n))
 	}
 }
 
@@ -852,18 +853,18 @@ func TestFmtTokens(t *testing.T) {
 func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	next, _ := m.Update(doneMsg{result: loop.Result{
+	next, _ := m.Update(tui.DoneMsg{Result: loop.Result{
 		Reason:  loop.StopError,
 		Message: "the provider failed",
 		Err:     errors.New("provider: Model 'x' not found (404)"),
 	}})
 	m = asModel(t, next)
 
-	err := m.runError()
+	err := m.RunError()
 	require.Error(t, err, "want the provider's own words")
 	assert.Contains(t, err.Error(), "not found (404)", "want the provider's own words")
 
-	joined := strings.Join(m.entries, "\n")
+	joined := strings.Join(m.Entries, "\n")
 	assert.Contains(t, joined, "not found (404)", "the log should show the underlying error")
 }
 
@@ -873,9 +874,9 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 func TestRetryEventIsRendered(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.handleEvent(&loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
+	m.HandleEvent(&loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
 
-	joined := strings.Join(m.entries, "\n")
+	joined := strings.Join(m.Entries, "\n")
 	assert.Contains(t, joined, "retrying", "the retry should be visible with its cause")
 	assert.Contains(t, joined, "Stealth", "the retry should be visible with its cause")
 }
@@ -886,10 +887,10 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	task := "add rate limiting to the api\n\nAcceptance criteria - the objective is not met until every one of these holds:\n1. the suite passes"
 
 	withTitle := sized(t, 120, 30)
-	withTitle.task = task
-	withTitle.title = "Rate limiting"
+	withTitle.Task = task
+	withTitle.Title = "Rate limiting"
 
-	bar := stripANSI(withTitle.titleBar())
+	bar := stripANSI(withTitle.TitleBar())
 
 	assert.Contains(t, bar, "Rate limiting", "the title bar should show the title")
 
@@ -897,9 +898,9 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 
 	// without a title there is still something to show
 	untitled := sized(t, 120, 30)
-	untitled.task = task
+	untitled.Task = task
 
-	assert.Contains(t, stripANSI(untitled.titleBar()), "add rate limiting", "an untitled run must fall back to the task")
+	assert.Contains(t, stripANSI(untitled.TitleBar()), "add rate limiting", "an untitled run must fall back to the task")
 }
 
 // A live value growing a digit (nine iterations becoming ten, 999 tokens becoming 1.0k) must not shove later segments
@@ -909,42 +910,42 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 	tests := []struct {
 		name   string
 		next   string // the label of the segment after the one that changes
-		before func(*model)
-		after  func(*model)
+		before func(*tui.Model)
+		after  func(*tui.Model)
 	}{
 		{
 			name:   "iterations gaining a digit",
 			next:   litElapsed,
-			before: func(m *model) { m.iteration = 9 },
-			after:  func(m *model) { m.iteration = 10 },
+			before: func(m *tui.Model) { m.Iteration = 9 },
+			after:  func(m *tui.Model) { m.Iteration = 10 },
 		},
 		{
 			name:   "iterations against a limit",
 			next:   litElapsed,
-			before: func(m *model) { m.iteration, m.maxIterations = 9, 300 },
-			after:  func(m *model) { m.iteration, m.maxIterations = 100, 300 },
+			before: func(m *tui.Model) { m.Iteration, m.MaxIterations = 9, 300 },
+			after:  func(m *tui.Model) { m.Iteration, m.MaxIterations = 100, 300 },
 		},
 		{
 			name:   "tokens crossing into thousands",
 			next:   "dir",
-			before: func(m *model) { m.inputTokens, m.outputTokens = 532, 40 },
-			after:  func(m *model) { m.inputTokens, m.outputTokens = 120_000, 4_500 },
+			before: func(m *tui.Model) { m.InputTokens, m.OutputTokens = 532, 40 },
+			after:  func(m *tui.Model) { m.InputTokens, m.OutputTokens = 120_000, 4_500 },
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := sized(t, 400, 30)
-			m.workdir = "/work/project"
+			m.Workdir = "/work/project"
 
 			test.before(m)
 
-			was := strings.Index(stripANSI(m.metaBar()), test.next)
+			was := strings.Index(stripANSI(m.MetaBar()), test.next)
 
 			test.after(m)
 
-			now := strings.Index(stripANSI(m.metaBar()), test.next)
-			assert.Equal(t, was, now, "the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.metaBar()))
+			now := strings.Index(stripANSI(m.MetaBar()), test.next)
+			assert.Equal(t, was, now, "the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.MetaBar()))
 		})
 	}
 }
@@ -969,7 +970,7 @@ func tasksArgs(tasks ...[3]string) map[string]any {
 // The task list is the one piece of the run worth reading in full, so it renders
 // as a checklist. What is done, what is under way, what is left, what is stuck.
 func TestRenderTasksShowsTheChecklist(t *testing.T) {
-	out := stripANSI(renderToolStart(litTasks, tasksArgs(
+	out := stripANSI(tui.RenderToolStart(litTasks, tasksArgs(
 		[3]string{"read the handler", litDone, ""},
 		[3]string{"add validation", "in_progress", "the error path is missing"},
 		[3]string{"write a test", "pending", ""},
@@ -995,7 +996,7 @@ func TestRenderTasksIsRobust(t *testing.T) {
 		"not a list":    {litTasks: "do it"},
 		"a non-object":  {litTasks: []any{"do it"}},
 	} {
-		out := stripANSI(renderToolStart(litTasks, args))
+		out := stripANSI(tui.RenderToolStart(litTasks, args))
 
 		assert.Contains(t, out, litTasks, "%s: should still render a header", name)
 

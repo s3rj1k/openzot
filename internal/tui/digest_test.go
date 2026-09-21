@@ -1,4 +1,4 @@
-package tui
+package tui_test
 
 import (
 	"strings"
@@ -8,10 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/tui"
 )
 
 func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
-	out := RenderDigest(Digest{
+	out := tui.RenderDigest(tui.Digest{
 		Status:       litDone,
 		Session:      "20260824-143210",
 		Iterations:   42,
@@ -48,7 +49,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 }
 
 func TestRenderDigestOmitsEmptyFields(t *testing.T) {
-	out := RenderDigest(Digest{Status: litDone, Iterations: 1, Calls: 1})
+	out := tui.RenderDigest(tui.Digest{Status: litDone, Iterations: 1, Calls: 1})
 
 	for _, absent := range []string{"session", "message"} {
 		assert.NotContains(t, out, absent, "a run with no %s must not render that row", absent)
@@ -56,7 +57,7 @@ func TestRenderDigestOmitsEmptyFields(t *testing.T) {
 }
 
 func TestRenderDigestFlattensMultilineMessage(t *testing.T) {
-	out := RenderDigest(Digest{Status: litDone, Message: "line one\nline two"})
+	out := tui.RenderDigest(tui.Digest{Status: litDone, Message: "line one\nline two"})
 
 	// The one-row-per-line contract must hold even for a multi-line message.
 	assert.NotContains(t, out, "line one\nline two", "a multi-line message must be flattened to one line")
@@ -77,6 +78,6 @@ func TestDigestStatus(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(t, c.want, DigestStatus(c.reason, c.code))
+		assert.Equal(t, c.want, tui.DigestStatus(c.reason, c.code))
 	}
 }

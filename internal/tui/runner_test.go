@@ -1,4 +1,4 @@
-package tui
+package tui_test
 
 import (
 	"context"
@@ -18,13 +18,14 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/tui"
 )
 
 // testWindow is the context window every test engine is given. A window is
 // required, and this one is large enough that no test trims by accident.
 const testWindow = 1_000_000
 
-// The runAgent function is the seam between the engine and the screen, a pure pump, so what is worth proving is that nothing goes
+// The RunAgent function is the seam between the engine and the screen, a pure pump, so what is worth proving is that nothing goes
 // missing. Every event and any error reaches the program, and the stream always ends with a done message so the viewer
 // never hangs on a spinner nobody will stop.
 
@@ -66,13 +67,13 @@ func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 
 // headless starts a Bubble Tea program with no terminal attached, collecting
 // every message it receives.
-func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
+func headless(t *testing.T) (*tea.Program, *collector, func() *tui.Model) {
 	t.Helper()
 
 	seen := &collector{}
 
 	program := tea.NewProgram(
-		&recordingModel{collector: seen, inner: newModel("do the thing", litTestModel, litCustom, "/tmp/work")},
+		&recordingModel{collector: seen, inner: tui.NewModel("do the thing", litTestModel, litCustom, "/tmp/work")},
 		tea.WithInput(nil),
 		tea.WithOutput(io.Discard),
 		tea.WithoutSignalHandler(),
@@ -87,7 +88,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
 		finished <- final
 	}()
 
-	return program, seen, func() *model {
+	return program, seen, func() *tui.Model {
 		program.Quit()
 
 		select {
@@ -96,12 +97,12 @@ func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
 				return recording.inner
 			}
 
-			return &model{}
+			return &tui.Model{}
 
 		case <-time.After(5 * time.Second):
 			require.FailNow(t, "the program did not stop")
 
-			return &model{}
+			return &tui.Model{}
 		}
 	}
 }
@@ -115,22 +116,22 @@ type collector struct {
 // recordingModel wraps the real model, noting the run's messages as they arrive.
 type recordingModel struct {
 	collector *collector
-	inner     *model
+	inner     *tui.Model
 }
 
 func (*recordingModel) Init() tea.Cmd { return nil }
 
 func (r *recordingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
-	case eventMsg:
-		r.collector.events = append(r.collector.events, typed.ev)
-	case doneMsg:
-		r.collector.results = append(r.collector.results, typed.result)
+	case tui.EventMsg:
+		r.collector.events = append(r.collector.events, typed.Event)
+	case tui.DoneMsg:
+		r.collector.results = append(r.collector.results, typed.Result)
 	}
 
 	updated, cmd := r.inner.Update(msg)
 
-	if typed, ok := updated.(*model); ok {
+	if typed, ok := updated.(*tui.Model); ok {
 		r.inner = typed
 	}
 
@@ -176,7 +177,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(t.Context(), program, engineFor(t, client, func(o *loop.Options) { o.MaxSettles = 5 }),
+	tui.RunAgent(t.Context(), program, engineFor(t, client, func(o *loop.Options) { o.MaxSettles = 5 }),
 		make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
@@ -198,7 +199,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 	assert.Equal(t, loop.StopSettled, seen.results[0].Reason, "want settled with the summary: it is what stops the spinner")
 	assert.Equal(t, "all done", seen.results[0].Message, "want settled with the summary: it is what stops the spinner")
 
-	assert.NotEqual(t, statusRunning, final.status, "the viewer should not still be showing a running run")
+	assert.NotEqual(t, tui.StatusRunning, final.Status, "the viewer should not still be showing a running run")
 }
 
 // A run that cannot reach its provider must surface the failure rather than
@@ -222,7 +223,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(t.Context(), program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
+	tui.RunAgent(t.Context(), program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
 
 	final := stop()
 
@@ -230,7 +231,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	require.Error(t, seen.results[0].Err, "the provider failure never reached the screen")
 
-	require.Error(t, final.runError(), "a failed run must be reportable to the caller")
+	require.Error(t, final.RunError(), "a failed run must be reportable to the caller")
 }
 
 // A canceled run still has to end cleanly. The pump drains and the done
@@ -247,7 +248,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 
 	program, seen, stop := headless(t)
 
-	runAgent(ctx, program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
+	tui.RunAgent(ctx, program, engineFor(t, client), make(chan loop.Result, 1), make(chan struct{}))
 
 	stop()
 
@@ -293,7 +294,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
+	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 
 	// start stands in for the user pressing q. The program runs headlessly, so the
 	// event pump is really consuming, and quits once the agent is under way
@@ -307,7 +308,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		return p.Run()
 	}
 
-	_, err = runViewer(t.Context(), m, engineFor(t, client), start,
+	_, err = tui.RunViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 	require.Error(t, err, "quitting mid-run should report that the run did not finish")
 
@@ -350,7 +351,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
+	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 
 	// the program runs headlessly so the event pump is really consuming.
 	// Quitting once the stream is under way is the user pressing q mid-run
@@ -364,7 +365,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		return p.Run()
 	}
 
-	result, _ := runViewer(t.Context(), m, engineFor(t, client), start,
+	result, _ := tui.RunViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 
 	assert.Equal(t, loop.StopAborted, result.Reason, "want the abort handed back")
