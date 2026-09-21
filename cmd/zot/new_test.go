@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
 )
@@ -21,37 +24,24 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 
 	var out strings.Builder
 
-	if err := newOrder(nil, &out); err != nil {
-		t.Fatalf("newOrder: %v", err)
-	}
+	require.NoError(t, newOrder(nil, &out))
 
 	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
-	if len(matches) != 1 {
-		t.Fatalf("orders written = %v, want the one", matches)
-	}
+	require.Len(t, matches, 1, "orders written = %v, want the one", matches)
 
-	if name := filepath.Base(matches[0]); !regexp.MustCompile(`^\d+\.md$`).MatchString(name) {
-		t.Errorf("name = %q, want a unix timestamp", name)
-	}
+	assert.True(t, regexp.MustCompile(`^\d+\.md$`).MatchString(filepath.Base(matches[0])))
 
-	if !strings.Contains(out.String(), matches[0]) {
-		t.Errorf("the output should say where the order went and how to run it:\n%s", out.String())
-	}
+	assert.Contains(t, out.String(), matches[0], "the output should say where the order went and how to run it")
 
 	o, err := loadOrder([]string{matches[0]})
-	if err != nil {
-		t.Fatalf("the written order does not resolve: %v", err)
-	}
+	require.NoError(t, err, "the written order does not resolve")
 
-	if o.Objective != "fix the typo" {
-		t.Errorf("objective = %q", o.Objective)
-	}
+	assert.Equal(t, "fix the typo", o.Objective)
 
 	// the book is one dotted directory. Zot does not claim the generic
 	// top-level names in the root of somebody else's project
-	if _, err := os.Stat("orders"); err == nil {
-		t.Errorf("a top-level orders/ was created; the book lives under %s", order.BookDir)
-	}
+	_, err = os.Stat("orders")
+	require.Error(t, err, "a top-level orders/ was created; the book lives under %s", order.BookDir)
 }
 
 // Prose has no place on the command line. Someone typing it out of habit is told
@@ -62,17 +52,12 @@ func TestNewOrderTakesNoProse(t *testing.T) {
 	withEditor(t, `printf -- '---\nobjective: never\n---\nbody\n' > "$1"`)
 
 	err := newOrder([]string{"fix", "the", "typo"}, io.Discard)
-	if err == nil {
-		t.Fatal("prose must be refused")
-	}
+	require.Error(t, err)
 
-	if !strings.Contains(err.Error(), "no arguments") {
-		t.Errorf("the error should say zot new takes none: %v", err)
-	}
+	assert.Contains(t, err.Error(), "no arguments", "the error should say zot new takes none")
 
-	if _, statErr := os.Stat(order.BookDir); !os.IsNotExist(statErr) {
-		t.Errorf("a refused invocation must create nothing: %v", statErr)
-	}
+	_, statErr := os.Stat(order.BookDir)
+	assert.True(t, os.IsNotExist(statErr), "a refused invocation must create nothing")
 }
 
 // `zot new --dir` creates the order in another working directory, not the one
@@ -85,18 +70,13 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 
 	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
-	if err := newOrder([]string{litDir, target}, io.Discard); err != nil {
-		t.Fatalf("newOrder: %v", err)
-	}
+	require.NoError(t, newOrder([]string{litDir, target}, io.Discard))
 
-	if _, err := os.Stat(filepath.Join(invocation, order.BookDir)); !os.IsNotExist(err) {
-		t.Errorf("the invoking directory must stay untouched: %v", err)
-	}
+	_, err := os.Stat(filepath.Join(invocation, order.BookDir))
+	assert.True(t, os.IsNotExist(err), "the invoking directory must stay untouched")
 
 	matches, _ := filepath.Glob(filepath.Join(target, order.BookDir, "orders", "*.md"))
-	if len(matches) != 1 {
-		t.Errorf("orders in the target project = %v, want the one", matches)
-	}
+	assert.Len(t, matches, 1, "orders in the target project = %v, want the one", matches)
 }
 
 // An order closed without a word written is not an order, and a blank one left
@@ -109,17 +89,12 @@ func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 
 	var out strings.Builder
 
-	if err := newOrder(nil, &out); err != nil {
-		t.Fatalf("newOrder: %v", err)
-	}
+	require.NoError(t, newOrder(nil, &out))
 
-	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md")); len(matches) != 0 {
-		t.Errorf("an unedited order was kept: %v", matches)
-	}
+	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
+	assert.Empty(t, matches, "an unedited order was kept")
 
-	if !strings.Contains(out.String(), "no order was created") {
-		t.Errorf("the output should say nothing was created:\n%s", out.String())
-	}
+	assert.Contains(t, out.String(), "no order was created", "the output should say nothing was created")
 }
 
 // An editor that fails must not cost the operator the file. They may have
@@ -129,14 +104,10 @@ func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 
 	withEditor(t, `printf -- '---\nobjective: half written\n---\nbody\n' > "$1"; exit 3`)
 
-	if err := newOrder(nil, io.Discard); err == nil {
-		t.Fatal("an editor that fails must be reported")
-	}
+	require.Error(t, newOrder(nil, io.Discard), "an editor that fails must be reported")
 
 	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
-	if len(matches) != 1 {
-		t.Fatalf("orders = %v, want the file kept", matches)
-	}
+	require.Len(t, matches, 1, "want the file kept")
 }
 
 // With no editor to be found the order is still created, and the operator is
@@ -149,13 +120,11 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	err := newOrder(nil, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "no editor found") {
-		t.Fatalf("err = %v, want it to say no editor was found", err)
-	}
+	require.Error(t, err, "want it to say no editor was found")
+	require.Contains(t, err.Error(), "no editor found", "want it to say no editor was found")
 
-	if matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md")); len(matches) != 1 {
-		t.Errorf("orders = %v, want the blank order left to be edited", matches)
-	}
+	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.md"))
+	assert.Len(t, matches, 1, "want the blank order left to be edited")
 }
 
 // editConfig is the setup path. It must create the config from the template on
@@ -172,17 +141,12 @@ func TestEditConfigSeedsTheTemplate(t *testing.T) {
 
 	// with no editor available it must fail loudly rather than silently doing
 	// nothing - but the file it would have opened must exist by then
-	if err == nil {
-		t.Fatal("expected an error when no editor is available")
-	}
+	require.Error(t, err, "expected an error when no editor is available")
 
-	if !strings.Contains(err.Error(), "editor") {
-		t.Errorf("the error should mention the missing editor: %v", err)
-	}
+	assert.Contains(t, err.Error(), "editor", "the error should mention the missing editor")
 
-	if _, statErr := os.Stat(config.DefaultConfigPath()); statErr != nil {
-		t.Errorf("the config should have been seeded from the template: %v", statErr)
-	}
+	_, statErr := os.Stat(config.DefaultConfigPath())
+	require.NoError(t, statErr, "the config should have been seeded from the template")
 }
 
 func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
@@ -197,16 +161,10 @@ func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
 	t.Setenv("VISUAL", "true")
 	t.Setenv("EDITOR", "false")
 
-	if err := editConfig(); err != nil {
-		t.Fatalf("editConfig: %v", err)
-	}
+	require.NoError(t, editConfig())
 
 	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read seeded config: %v", err)
-	}
+	require.NoError(t, err, "read seeded config")
 
-	if len(content) == 0 {
-		t.Error("the seeded config is empty")
-	}
+	assert.NotEmpty(t, content, "the seeded config is empty")
 }

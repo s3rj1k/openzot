@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"github.com/openzot/openzot/configs"
@@ -75,9 +77,7 @@ func orderFileIn(t *testing.T, dir, name, objective string) string {
 
 	path := filepath.Join(dir, name)
 
-	if err := os.WriteFile(path, []byte(orderText(objective)), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(orderText(objective)), 0o644))
 
 	return path
 }
@@ -127,7 +127,7 @@ func TestRunNeedsATerminal(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
+	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
 provider:
@@ -136,73 +136,55 @@ provider:
   models:
     test-model:
       context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`, server.URL)), 0o644))
 
 	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "a task"))
 
 	err := command()
-	if err == nil || !strings.Contains(err.Error(), "terminal") {
-		t.Fatalf("run = %v, want it to say zot needs a terminal", err)
-	}
+	require.Error(t, err, "want it to say zot needs a terminal")
+	require.Contains(t, err.Error(), "terminal", "want it to say zot needs a terminal")
 
-	if requests.Load() != 0 {
-		t.Error("a run with no terminal must not reach the provider")
-	}
+	assert.EqualValues(t, 0, requests.Load(), "a run with no terminal must not reach the provider")
 }
 
 func TestLoadOrderLoadsTheFile(t *testing.T) {
 	path := orderFile(t, "build the parser")
 
 	o, err := loadOrder([]string{path})
-	if err != nil {
-		t.Fatalf("loadOrder: %v", err)
-	}
+	require.NoError(t, err)
 
-	if o.Objective != "build the parser" || o.Path != path {
-		t.Errorf("order = %+v", o)
-	}
+	assert.Equal(t, "build the parser", o.Objective)
+	assert.Equal(t, path, o.Path)
 }
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
 
 // A broken order fails the run before a provider is touched.
 func TestLoadOrderFailsUpFront(t *testing.T) {
-	if _, err := loadOrder([]string{filepath.Join(t.TempDir(), "nope.md")}); err == nil {
-		t.Error("a missing order must not load")
-	}
+	_, err := loadOrder([]string{filepath.Join(t.TempDir(), "nope.md")})
+	require.Error(t, err, "a missing order must not load")
 
 	broken := filepath.Join(t.TempDir(), "broken.md")
 
 	mustWrite(t, broken, "---\nobjective: x\n---\n{{ .Objectve }}")
 
-	if _, err := loadOrder([]string{broken}); err == nil {
-		t.Error("an order whose prompt names a field that does not exist must not load")
-	}
+	_, err = loadOrder([]string{broken})
+	require.Error(t, err, "an order whose prompt names a field that does not exist must not load")
 }
 
 // Someone typing prose where an order file goes is the retraining moment. The
 // error has to teach the new shape, not just report a missing file.
 func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	_, err := loadOrder([]string{"add a health endpoint"})
-	if err == nil {
-		t.Fatal("prose must not load")
-	}
+	require.Error(t, err)
 
-	if !strings.Contains(err.Error(), "zot new") {
-		t.Errorf("the error should point at `zot new`: %v", err)
-	}
+	assert.Contains(t, err.Error(), "zot new", "the error should point at `zot new`")
 }
 
 // quietStderr silences stderr for a test that by design triggers the usage
@@ -213,9 +195,7 @@ func quietStderr(t *testing.T) {
 	original := os.Stderr
 
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	os.Stderr = devNull
 
@@ -232,14 +212,12 @@ func TestLoadOrderNeedsExactlyOne(t *testing.T) {
 	quietStderr(t)
 
 	_, err := loadOrder(nil)
-	if err == nil || !strings.Contains(err.Error(), "zot new") {
-		t.Errorf("no order: err = %v, want it to say how to write one", err)
-	}
+	require.Error(t, err, "want it to say how to write one")
+	assert.Contains(t, err.Error(), "zot new", "want it to say how to write one")
 
 	_, err = loadOrder([]string{orderFile(t, "a"), orderFile(t, "b")})
-	if err == nil || !strings.Contains(err.Error(), "one order per invocation") {
-		t.Errorf("two orders: err = %v, want it to say zot runs one at a time", err)
-	}
+	require.Error(t, err, "want it to say zot runs one at a time")
+	assert.Contains(t, err.Error(), "one order per invocation", "want it to say zot runs one at a time")
 }
 
 // withEditor makes $VISUAL a script that runs the given shell body against the
@@ -249,9 +227,7 @@ func withEditor(t *testing.T, body string) {
 
 	script := filepath.Join(t.TempDir(), "editor.sh")
 
-	if err := os.WriteFile(script, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\n"+body+"\n"), 0o755))
 
 	t.Setenv("VISUAL", script)
 	t.Setenv("EDITOR", "")
@@ -263,9 +239,7 @@ func readLog(t *testing.T, path string) []session.Record {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read log: %v", err)
-	}
+	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	records := make([]session.Record, 0, len(lines))
@@ -273,9 +247,8 @@ func readLog(t *testing.T, path string) []session.Record {
 	for i, line := range lines {
 		var record session.Record
 
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			t.Fatalf("line %d is not a JSON record: %v\n%s", i+1, err, line)
-		}
+		err := json.Unmarshal([]byte(line), &record)
+		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
 
 		records = append(records, record)
 	}
@@ -289,9 +262,7 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 	original := os.Stderr
 
 	read, write, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	os.Stderr = write
 
@@ -318,38 +289,27 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 	text := builder.String()
 
 	for _, want := range []string{"zot [flags] <order.md>", "zot new", "zot config", litDir, ".jsonl"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("usage does not mention %q:\n%s", want, text)
-		}
+		assert.Contains(t, text, want, "usage does not mention %q", want)
 	}
 
 	// --dir belongs to both shapes. Where a run works, and where `zot new`
 	// scaffolds - someone standing outside the project needs it either way
-	if n := strings.Count(text, litDir); n < 2 {
-		t.Errorf("usage should document --dir for both running an order and `zot new` (%d mentions):\n%s", n, text)
-	}
+	n := strings.Count(text, litDir)
+	assert.GreaterOrEqual(t, n, 2, "usage should document --dir for both running an order and `zot new` (%d mentions):\n%s", n, text)
 
 	// The book is a convention, so --help is where someone finds out where
 	// their orders went.
-	if !strings.Contains(text, order.BookDir+"/orders") {
-		t.Errorf("usage does not say where zot new files an order:\n%s", text)
-	}
+	assert.Contains(t, text, order.BookDir+"/orders", "usage does not say where zot new files an order")
 
-	if strings.Contains(text, "--orders-dir") {
-		t.Errorf("usage still mentions --orders-dir:\n%s", text)
-	}
+	assert.NotContains(t, text, "--orders-dir", "usage still mentions --orders-dir")
 
 	// ACP is gone. Zot runs unattended and has no protocol server
-	if strings.Contains(strings.ToLower(text), "acp") {
-		t.Errorf("usage still mentions acp:\n%s", text)
-	}
+	assert.NotContains(t, strings.ToLower(text), "acp", "usage still mentions acp")
 
 	// nothing is resumed, skipped or recorded between runs, and the help must
 	// not promise it
 	for _, gone := range []string{"--resume", "--fresh", "--rerun", "--records-dir", "--draft", "ledger"} {
-		if strings.Contains(text, gone) {
-			t.Errorf("usage still mentions %q:\n%s", gone, text)
-		}
+		assert.NotContains(t, text, gone, "usage still mentions %q", gone)
 	}
 }
 
@@ -359,17 +319,11 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
 	dir := set.String("dir", ".", "")
 
-	if err := set.Parse([]string{"a.md", "b.md", litDir, "proj"}); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
+	require.NoError(t, set.Parse([]string{"a.md", "b.md", litDir, "proj"}))
 
-	if *dir != "proj" {
-		t.Errorf("--dir given after the orders = %q, want it parsed as a flag", *dir)
-	}
+	assert.Equal(t, "proj", *dir, "want it parsed as a flag")
 
-	if got := strings.Join(set.Args(), " "); got != "a.md b.md" {
-		t.Errorf("positional orders = %q, want the paths before the flag", got)
-	}
+	assert.Equal(t, "a.md b.md", strings.Join(set.Args(), " "), "want the paths before the flag")
 }
 
 // capture redirects one of the process's standard streams for the duration of a
@@ -380,9 +334,7 @@ func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
 	original := *stream
 
 	read, write, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	*stream = write
 
@@ -432,15 +384,11 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 	_, _ = captureStderr(t, command)
 
 	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color", "orders-dir"} {
-		if pflag.CommandLine.Lookup(name) != nil {
-			t.Errorf("--%s is a flag, but the config already says it", name)
-		}
+		assert.Nil(t, pflag.CommandLine.Lookup(name), "--%s is a flag, but the config already says it", name)
 	}
 
 	for _, name := range []string{"config", "dir"} {
-		if pflag.CommandLine.Lookup(name) == nil {
-			t.Errorf("--%s should stay a flag: the config cannot say it", name)
-		}
+		assert.NotNil(t, pflag.CommandLine.Lookup(name), "the config cannot say it")
 	}
 }
 
@@ -457,22 +405,16 @@ func TestRunConfigPath(t *testing.T) {
 	withArgs(t, "config", "path")
 
 	output, err := captureStdout(t, command)
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(output, "/some/where/config.yaml") {
-		t.Errorf("output = %q, want the config path", output)
-	}
+	assert.Contains(t, output, "/some/where/config.yaml")
 }
 
 func TestRunRequiresAnOrder(t *testing.T) {
 	quietStderr(t)
 	withArgs(t)
 
-	if err := command(); err == nil {
-		t.Error("running with no task must be an error")
-	}
+	require.Error(t, command())
 }
 
 // The whole path. Argv in, config resolved, provider called, transcript out.
@@ -527,21 +469,15 @@ provider:
       context: 100000
 `, server.URL)
 
-	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0o644))
 
 	withArgs(t, "--config", configPath, litDir, workdir, orderFile(t, "do the thing"))
 
 	output, err := captureStdout(t, command)
-	if err != nil {
-		t.Fatalf("run: %v\n%s", err, output)
-	}
+	require.NoError(t, err, "run")
 
 	for _, want := range []string{"do the thing", "on it", "complete"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("transcript is missing %q:\n%s", want, output)
-		}
+		assert.Contains(t, output, want)
 	}
 }
 
@@ -561,14 +497,11 @@ func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 
 	var out strings.Builder
 
-	if err := newOrder([]string{litDir, project}, &out); err != nil {
-		t.Fatalf("newOrder: %v", err)
-	}
+	require.NoError(t, newOrder([]string{litDir, project}, &out))
 
 	written, err := filepath.Glob(filepath.Join(project, order.BookDir, "orders", "*.md"))
-	if err != nil || len(written) != 1 {
-		t.Fatalf("orders written = %v, %v", written, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, written, 1)
 
 	var system string
 
@@ -609,9 +542,8 @@ provider:
 
 	withArgs(t, "--config", configPath, litDir, project, written[0])
 
-	if _, err := captureStdout(t, command); err != nil {
-		t.Fatalf("run: %v", err)
-	}
+	_, err = captureStdout(t, command)
+	require.NoError(t, err)
 
 	for _, want := range []string{
 		"## Your task\n\nbuild the parser",
@@ -620,14 +552,11 @@ provider:
 		`- "tasks":`,
 		"# Project context\n\nAlways mention PINECONE.",
 	} {
-		if !strings.Contains(system, want) {
-			t.Errorf("the system prompt is missing %q:\n%s", want, system)
-		}
+		assert.Contains(t, system, want)
 	}
 
-	if n := strings.Count(system, contractHeading); n != 1 {
-		t.Errorf("the contract appears %d times, want once", n)
-	}
+	n := strings.Count(system, contractHeading)
+	assert.Equal(t, 1, n, "the contract appears %d times, want once", n)
 }
 
 // A run pointed at another directory works end to end. Relative paths on the command line resolve from the invoking directory
@@ -639,15 +568,11 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	target := filepath.Join(invocation, "project")
 
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(target, 0o755))
 
 	// project context that only exists inside --dir. If either reaches the
 	// provider, it was loaded from the right tree
-	if err := os.WriteFile(filepath.Join(target, "AGENTS.md"), []byte("# Project context\n\nAlways mention PINECONE.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(target, "AGENTS.md"), []byte("# Project context\n\nAlways mention PINECONE.\n"), 0o644))
 
 	// a relative skills_dir means the project. The skills tool only exists if
 	// this folder, inside --dir, was found
@@ -656,9 +581,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	// every path on the command line is relative to the invoking directory -
 	// none of them exist inside --dir, so they must resolve before the chdir
-	if err := os.WriteFile("order.md", []byte(orderText("do the thing")+"{{ .Project }}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile("order.md", []byte(orderText("do the thing")+"{{ .Project }}\n"), 0o644))
 
 	var (
 		requests             atomic.Int32
@@ -690,7 +613,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	defer server.Close()
 
-	if err := os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
+	require.NoError(t, os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
 agent:
   model: test-model
 skills_dir: skills
@@ -700,34 +623,25 @@ provider:
   models:
     test-model:
       context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`, server.URL)), 0o644))
 
 	withArgs(t, "--config", "config.yaml", litDir, target, "order.md")
 
 	output, err := captureStdout(t, command)
-	if err != nil {
-		t.Fatalf("run: %v\n%s", err, output)
-	}
+	require.NoError(t, err, "run")
 
 	for _, want := range []string{"do the thing", "on it", "complete"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("transcript is missing %q:\n%s", want, output)
-		}
+		assert.Contains(t, output, want)
 	}
 
-	if !sawContext.Load() || !sawSkill.Load() {
-		t.Errorf("project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)",
-			sawContext.Load(), sawSkill.Load())
-	}
+	assert.True(t, sawContext.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
+	assert.True(t, sawSkill.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
 
 	// the log lands in the project being worked on, named after the order
 	records := readLog(t, filepath.Join(target, ".zot", "orders", "order.jsonl"))
 
-	if records[0].Meta == nil || records[0].Meta.Workdir != target {
-		t.Errorf("meta = %+v, want the absolute --dir %q as workdir", records[0].Meta, target)
-	}
+	assert.NotNil(t, records[0].Meta)
+	assert.Equal(t, target, records[0].Meta.Workdir)
 }
 
 // A run gets its own log, named after its order, with its own recorded outcome.
@@ -750,7 +664,7 @@ func TestRunAnOrder(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "config.yaml")
 
-		if err := os.WriteFile(path, []byte(fmt.Sprintf(`
+		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`
 agent:
   model: test-model
 provider:
@@ -759,9 +673,7 @@ provider:
   models:
     test-model:
       context: 100000
-`, url)), 0o644); err != nil {
-			t.Fatal(err)
-		}
+`, url)), 0o644))
 
 		return path
 	}
@@ -775,15 +687,13 @@ provider:
 		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "first.md", "the first order"))
 
-		if _, err := captureStdout(t, command); err != nil {
-			t.Fatalf("run: %v", err)
-		}
+		_, err := captureStdout(t, command)
+		require.NoError(t, err)
 
 		records := readLog(t, filepath.Join(project, ".zot", "orders", "first.jsonl"))
 
-		if records[0].Meta == nil || records[0].Meta.Task != "the first order" {
-			t.Errorf("the log opens with %+v, want the order's objective as the task", records[0])
-		}
+		assert.NotNil(t, records[0].Meta, "want the order's objective as the task")
+		assert.Equal(t, "the first order", records[0].Meta.Task, "want the order's objective as the task")
 	})
 
 	t.Run("a failed order fails the run", func(t *testing.T) {
@@ -797,9 +707,8 @@ provider:
 
 		quietStderr(t)
 
-		if _, err := captureStdout(t, command); err == nil {
-			t.Fatal("a failed order must fail the run")
-		}
+		_, err := captureStdout(t, command)
+		require.Error(t, err, "a failed order must fail the run")
 	})
 }
 
@@ -808,7 +717,7 @@ provider:
 func TestRunRefusesAModelWithNoContextWindow(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	if err := os.WriteFile(configPath, []byte(`
+	require.NoError(t, os.WriteFile(configPath, []byte(`
 agent:
   model: my-model
 provider:
@@ -816,21 +725,15 @@ provider:
   models:
     my-model:
       model: some-real-id
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`), 0o644))
 
 	withArgs(t, "--config", configPath, orderFile(t, "a task"))
 
 	err := command()
-	if err == nil {
-		t.Fatal("a model with no context window must not run")
-	}
+	require.Error(t, err, "a model with no context window must not run")
 
 	for _, want := range []string{"provider.models.my-model", "context is required"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %q", err, want)
-		}
+		assert.Contains(t, err.Error(), want)
 	}
 }
 
@@ -838,25 +741,19 @@ func TestRunRejectsAnInvalidConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	// a provider that has no endpoint
-	if err := os.WriteFile(configPath, []byte(`
+	require.NoError(t, os.WriteFile(configPath, []byte(`
 provider: {}
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`), 0o644))
 
 	withArgs(t, "--config", configPath, orderFile(t, "a task"))
 
-	if err := command(); err == nil {
-		t.Error("an unreachable provider must fail before any request")
-	}
+	require.Error(t, command(), "an unreachable provider must fail before any request")
 }
 
 func TestRunRejectsAMissingConfigFile(t *testing.T) {
 	withArgs(t, "--config", filepath.Join(t.TempDir(), "nope.yaml"), orderFile(t, "a task"))
 
-	if err := command(); err == nil {
-		t.Error("an explicit but missing --config must be an error")
-	}
+	require.Error(t, command(), "an explicit but missing --config must be an error")
 }
 
 // A run leaves a record. One log per order, in .zot/orders of the project,
@@ -891,17 +788,14 @@ provider:
       context: 100000
 `, server.URL)
 
-	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0o644))
 
 	orderPath := orderFileIn(t, t.TempDir(), "1758300000.md", "the first task")
 
 	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
-	if _, err := captureStdout(t, command); err != nil {
-		t.Fatalf("run: %v", err)
-	}
+	_, err := captureStdout(t, command)
+	require.NoError(t, err)
 
 	logPath := filepath.Join(workdir, ".zot", "orders", "1758300000.jsonl")
 
@@ -911,40 +805,32 @@ provider:
 	// instructions), not as the opening user message
 	meta := first[0]
 
-	if meta.Kind != session.KindMeta || meta.Meta.Task != "the first task" {
-		t.Errorf("the log must open with the objective: %+v", meta)
-	}
+	assert.Equal(t, session.KindMeta, meta.Kind, "the log must open with the objective")
+	assert.Equal(t, "the first task", meta.Meta.Task, "the log must open with the objective")
 
-	if meta.Meta.Model != "test-model" || meta.Meta.Workdir == "" {
-		t.Errorf("meta = %+v", meta.Meta)
-	}
+	assert.Equal(t, "test-model", meta.Meta.Model)
+	assert.NotEmpty(t, meta.Meta.Workdir)
 
-	if last := first[len(first)-1]; last.Kind != session.KindResult || last.Result.Reason == "" {
-		t.Errorf("the log must end with the outcome: %+v", last)
-	}
+	last := first[len(first)-1]
+	assert.Equal(t, session.KindResult, last.Kind, "the log must end with the outcome")
+	assert.NotEmpty(t, last.Result.Reason, "the log must end with the outcome")
 
 	// running the order again adds a run to the same log, after the first
 	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
-	if _, err := captureStdout(t, command); err != nil {
-		t.Fatalf("second run: %v", err)
-	}
+	_, err = captureStdout(t, command)
+	require.NoError(t, err)
 
 	second := readLog(t, logPath)
 
-	if len(second) != 2*len(first) {
-		t.Fatalf("the log holds %d records after two runs, want the first run's %d twice", len(second), len(first))
-	}
+	require.Len(t, second, 2*len(first), "the log holds %d records after two runs, want the first run's %d twice", len(second), len(first))
 
 	for i, record := range first {
-		if second[i].Kind != record.Kind {
-			t.Errorf("record %d changed from %s to %s: the first run must be left as it was", i, record.Kind, second[i].Kind)
-		}
+		assert.Equal(t, record.Kind, second[i].Kind, "the first run must be left as it was")
 	}
 
-	if again := second[len(first)]; again.Kind != session.KindMeta {
-		t.Errorf("the second run must open with its own meta, got %+v", again)
-	}
+	again := second[len(first)]
+	assert.Equal(t, session.KindMeta, again.Kind, "the second run must open with its own meta, got %+v", again)
 }
 
 // The tasks tool end to end. A model lists its work, keeps going, and settles.
@@ -977,7 +863,7 @@ func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`
+	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
 agent:
   model: test-model
 provider:
@@ -986,19 +872,14 @@ provider:
   models:
     test-model:
       context: 100000
-`, server.URL)), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`, server.URL)), 0o644))
 
 	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "fix the lexer"))
 
-	if _, err := captureStdout(t, command); err != nil {
-		t.Fatalf("run: %v", err)
-	}
+	_, err := captureStdout(t, command)
+	require.NoError(t, err)
 
-	if requests.Load() != 2 {
-		t.Errorf("the model was called %d times, want the tasks turn and the settling turn", requests.Load())
-	}
+	assert.EqualValues(t, 2, requests.Load(), "want the tasks turn and the settling turn")
 }
 
 func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
@@ -1023,20 +904,14 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			orderPath := filepath.Join(t.TempDir(), "fix-the-flaky-test.md")
 
-			if err := os.WriteFile(orderPath, []byte(test.body), 0o644); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(orderPath, []byte(test.body), 0o644))
 
 			loaded, err := order.Load(orderPath)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			got := orderOptions(t.TempDir(), loaded)
 
-			if got.Title != test.want {
-				t.Errorf("viewer title = %q, want %q", got.Title, test.want)
-			}
+			assert.Equal(t, test.want, got.Title)
 		})
 	}
 }
@@ -1046,16 +921,11 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 	var example config.Config
 
-	if err := yaml.Unmarshal(configs.ExampleConfigYAML, &example); err != nil {
-		t.Fatalf("the embedded example config does not parse: %v", err)
-	}
+	require.NoError(t, yaml.Unmarshal(configs.ExampleConfigYAML, &example), "the embedded example config does not parse")
 
 	defaults := config.Defaults()
 
-	if example.Agent.MaxIterations != defaults.Agent.MaxIterations {
-		t.Errorf("example max_iterations = %d, defaults = %d",
-			example.Agent.MaxIterations, defaults.Agent.MaxIterations)
-	}
+	assert.Equal(t, defaults.Agent.MaxIterations, example.Agent.MaxIterations)
 }
 
 // A config file is only useful if it survives being loaded, and the example is
@@ -1063,19 +933,13 @@ func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 func TestTheExampleConfigLoadsAndValidates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 
-	if err := os.WriteFile(path, configs.ExampleConfigYAML, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, configs.ExampleConfigYAML, 0o600))
 
 	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatalf("the example config does not load: %v", err)
-	}
+	require.NoError(t, err, "the example config does not load")
 
 	// a key so validation is judging the shape rather than the environment
 	cfg.Provider.APIKey = "test-key"
 
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("the example config does not validate: %v", err)
-	}
+	require.NoError(t, cfg.Validate(), "the example config does not validate")
 }
