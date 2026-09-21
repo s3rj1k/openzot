@@ -11,10 +11,10 @@ import (
 	"github.com/openzot/openzot/internal/skills"
 )
 
-// maxListedDescription bounds one skill's description in the listing the skills
+// MaxListedDescription bounds one skill's description in the listing the skills
 // tool returns. The listing is meant to be scanned, so a long description is
 // cut. The skill itself, read by name, is always whole.
-const maxListedDescription = 200
+const MaxListedDescription = 200
 
 // skillsInput is what the skills tool is called with. The struct is the schema.
 type skillsInput struct {
@@ -43,7 +43,7 @@ func listSkills(offered []skills.Skill) string {
 		b.WriteString("\n- " + skill.Name)
 
 		if skill.Description != "" {
-			b.WriteString(": " + shorten(skill.Description, maxListedDescription))
+			b.WriteString(": " + shorten(skill.Description, MaxListedDescription))
 		}
 	}
 
@@ -63,7 +63,7 @@ func skillNames(offered []skills.Skill) string {
 // skillsTool is the model's way to the skills. Called with no name it lists them
 // with their short descriptions, called with one it returns that skill's full
 // instructions. Everything is already in memory, so a call reads no file.
-func (s toolSet) skillsTool(offered []skills.Skill) fantasy.AgentTool {
+func (s ToolSet) skillsTool(offered []skills.Skill) fantasy.AgentTool {
 	return fantasy.NewAgentTool("skills",
 		"Skills are ready-made instructions for particular kinds of work. Call with no arguments to list the available skills with a short description of each; check the list at the start of a task. Call with a skill's name to read its full instructions, then follow them.",
 		func(_ context.Context, in skillsInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {

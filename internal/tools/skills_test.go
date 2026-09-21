@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"strings"
@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/skills"
+	"github.com/openzot/openzot/internal/tools"
 )
 
 func skillsCall(t *testing.T, offered []skills.Skill, args map[string]any) (any, error) {
 	t.Helper()
 
-	return call(t, New(maxToolOutput, offered), "skills", args)
+	return call(t, tools.New(maxToolOutput, offered), "skills", args)
 }
 
 var testSkills = []skills.Skill{
@@ -41,7 +42,7 @@ func TestSkillsToolShortensALongDescription(t *testing.T) {
 
 	line := asString(t, out)
 
-	assert.LessOrEqual(t, strings.Count(line, "word"), maxListedDescription/5, "a long description must be cut with an ellipsis")
+	assert.LessOrEqual(t, strings.Count(line, "word"), tools.MaxListedDescription/5, "a long description must be cut with an ellipsis")
 	assert.Contains(t, line, "…", "a long description must be cut with an ellipsis")
 }
 
@@ -70,7 +71,7 @@ func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
 func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 	big := []skills.Skill{{Name: "big", Content: strings.Repeat("x", 500)}}
 
-	out, err := call(t, New(100, big), "skills", map[string]any{litName: "big"})
+	out, err := call(t, tools.New(100, big), "skills", map[string]any{litName: "big"})
 	require.NoError(t, err)
 
 	assert.Contains(t, asString(t, out), "[truncated:", "a skill larger than the tool ceiling must be visibly truncated")
@@ -79,9 +80,9 @@ func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 // A run with no skills has no skills tool. Nothing to list is not worth a tool
 // in every request.
 func TestTheSkillsToolExistsOnlyWhenThereAreSkills(t *testing.T) {
-	_, ok := findTool(New(maxToolOutput, nil), "skills")
+	_, ok := findTool(tools.New(maxToolOutput, nil), "skills")
 	assert.False(t, ok, "no skills tool without skills")
 
-	_, ok = findTool(New(maxToolOutput, testSkills), "skills")
+	_, ok = findTool(tools.New(maxToolOutput, testSkills), "skills")
 	assert.True(t, ok, "skills tool expected when skills are loaded")
 }

@@ -1,4 +1,4 @@
-package run
+package run_test
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/run"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/tools"
@@ -51,7 +52,7 @@ func TestLoadProjectContext(t *testing.T) {
 	mustWrite(t, filepath.Join(configDir, "AGENTS.md"), "GLOBAL CONVENTIONS")
 	mustWrite(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
 
-	project := LoadProjectContext(configDir, workDir, workDir)
+	project := run.LoadProjectContext(configDir, workDir, workDir)
 
 	// both files are there, the config directory's first, each once
 	for _, want := range []string{"GLOBAL CONVENTIONS", "PROJECT CONVENTIONS"} {
@@ -63,13 +64,13 @@ func TestLoadProjectContext(t *testing.T) {
 }
 
 func TestLoadProjectContextNoFiles(t *testing.T) {
-	project := LoadProjectContext(t.TempDir())
+	project := run.LoadProjectContext(t.TempDir())
 	assert.Empty(t, project, "expected no project context when no AGENTS.md is present")
 }
 
 func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 	t.Run("unset means no skills", func(t *testing.T) {
-		loaded, err := LoadSkills("")
+		loaded, err := run.LoadSkills("")
 		require.NoError(t, err)
 		assert.Nil(t, loaded)
 	})
@@ -79,7 +80,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 		mustWrite(t, filepath.Join(project, "my-skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: say hello\n---\nbody")
 		t.Chdir(project)
 
-		loaded, err := LoadSkills("my-skills")
+		loaded, err := run.LoadSkills("my-skills")
 		require.NoError(t, err)
 
 		assert.Len(t, loaded, 1, "want greet loaded with its content")
@@ -92,7 +93,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 		mustWrite(t, filepath.Join(home, "skills", "deploy", "SKILL.md"), "---\nname: deploy\n---\nbody")
 		t.Setenv("HOME", home)
 
-		loaded, err := LoadSkills("~/skills")
+		loaded, err := run.LoadSkills("~/skills")
 		require.NoError(t, err)
 
 		assert.Len(t, loaded, 1, "want deploy from ~/skills")
@@ -100,7 +101,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 	})
 
 	t.Run("a folder that cannot be read stops the run", func(t *testing.T) {
-		_, err := LoadSkills(filepath.Join(t.TempDir(), "missing"))
+		_, err := run.LoadSkills(filepath.Join(t.TempDir(), "missing"))
 		require.Error(t, err, "want it to name skills_dir")
 		assert.Contains(t, err.Error(), "skills_dir", "want it to name skills_dir")
 	})
@@ -217,10 +218,10 @@ func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loo
 }
 
 // logged is the options of a run that is recorded, as every run must be.
-func logged(t *testing.T) Options {
+func logged(t *testing.T) run.Options {
 	t.Helper()
 
-	return Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
+	return run.Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
 }
 
 // The whole path a skill takes. The model lists the skills, reads one by name,
@@ -265,7 +266,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
-	offered, err := LoadSkills(skillsDir)
+	offered, err := run.LoadSkills(skillsDir)
 	require.NoError(t, err)
 
 	// loaded at startup. The folder is not read again during the run
@@ -275,7 +276,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 		options := logged(t)
 		options.Skills = offered
 
-		return Run(t.Context(), cfg, testOrder("do the thing"), options)
+		return run.Run(t.Context(), cfg, testOrder("do the thing"), options)
 	})
 	require.NoError(t, err)
 
@@ -366,13 +367,13 @@ provider:
 			cfg, err := config.Load(path)
 			require.NoError(t, err)
 
-			client, _, err := Resolve(t.Context(), &cfg, nil)
+			client, _, err := run.Resolve(t.Context(), &cfg, nil)
 			require.NoError(t, err)
 
 			assert.Equal(t, litGpt4, client.Config().Model)
 
 			_, err = quietly(t, func() error {
-				return Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
+				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
 
@@ -450,7 +451,7 @@ provider:
 			require.NoError(t, err)
 
 			_, err = quietly(t, func() error {
-				return Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
+				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
 
@@ -474,7 +475,7 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{APIKey: litSkTest, Models: declared(litGlm52)}
 
-	_, _, err := Resolve(t.Context(), cfg, nil)
+	_, _, err := run.Resolve(t.Context(), cfg, nil)
 	require.Error(t, err, "a provider naming no endpoint must be rejected")
 
 	// the error has to be actionable. It names the field to set
@@ -487,7 +488,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: declared(litGlm52)}
 
-	_, opts, err := Resolve(t.Context(), cfg, nil)
+	_, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, opts.Unrepaired, 1, "want just the shell tool")
@@ -510,7 +511,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 			cfg := testDefaults()
 			cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: models}
 
-			_, _, err := Resolve(t.Context(), cfg, nil)
+			_, _, err := run.Resolve(t.Context(), cfg, nil)
 			require.Error(t, err, "a model with no context window resolved")
 
 			for _, want := range []string{litGlm52, "context window", "provider.models"} {
@@ -557,7 +558,7 @@ provider:
 	} {
 		cfg.Agent.Model = name
 
-		client, opts, err := Resolve(t.Context(), &cfg, nil)
+		client, opts, err := run.Resolve(t.Context(), &cfg, nil)
 		require.NoError(t, err, "resolve(%s)", name)
 
 		got := client.Config()
@@ -575,7 +576,7 @@ provider:
 
 	cfg.Agent.Model = "huge"
 
-	_, _, err = Resolve(t.Context(), &cfg, nil)
+	_, _, err = run.Resolve(t.Context(), &cfg, nil)
 	require.Error(t, err, "a model the provider does not list resolved")
 	assert.Contains(t, err.Error(), "context window", "a model the provider does not list resolved")
 }
@@ -586,7 +587,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 
-	_, _, err := Resolve(t.Context(), testDefaults(), nil)
+	_, _, err := run.Resolve(t.Context(), testDefaults(), nil)
 	require.Error(t, err, "a run resolved with no provider declared")
 }
 
@@ -611,7 +612,7 @@ provider:
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 
-	client, opts, err := Resolve(t.Context(), &cfg, nil)
+	client, opts, err := run.Resolve(t.Context(), &cfg, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, litGpt5, client.Config().Model)
@@ -636,12 +637,12 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 		},
 	}
 
-	_, opts, err := Resolve(t.Context(), cfg, nil)
+	_, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	require.Equal(t, 40, opts.MaxIterations, "want the model's cap")
 
-	meta := viewerMeta(cfg, "a task", "/somewhere", &opts)
+	meta := run.ViewerMeta(cfg, "a task", "/somewhere", &opts)
 
 	assert.Equal(t, opts.MaxIterations, meta.MaxIterations, "the viewer shows a limit of %d while the engine stops at %d", meta.MaxIterations, opts.MaxIterations)
 
@@ -650,10 +651,10 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg.Agent.MaxIterations = config.Defaults().Agent.MaxIterations
 	cfg.Provider.Models["capped"] = config.ModelConfig{Model: litGpt5, Context: 100_000}
 
-	_, opts, err = Resolve(t.Context(), cfg, nil)
+	_, opts, err = run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, viewerMeta(cfg, "a task", "/somewhere", &opts).MaxIterations, "want the backstop hidden")
+	assert.Equal(t, 0, run.ViewerMeta(cfg, "a task", "/somewhere", &opts).MaxIterations, "want the backstop hidden")
 }
 
 // Run is the whole thing end to end. Config in, a provider call out, a
@@ -718,7 +719,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		done <- builder.String()
 	}()
 
-	err := Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
+	err := run.Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
 
 	write.Close()
 
@@ -739,7 +740,7 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{}
 
-	err := Run(t.Context(), cfg, testOrder("task"), logged(t))
+	err := run.Run(t.Context(), cfg, testOrder("task"), logged(t))
 	require.Error(t, err, "an unconfigured provider must fail")
 
 	assert.Contains(t, err.Error(), "provider:", "the error should say to declare the provider")
@@ -776,7 +777,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".zot", "orders", "task.jsonl")
 
 	_, err := quietly(t, func() error {
-		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
 
@@ -802,7 +803,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 	var opening bool
 
 	for _, record := range records {
-		if record.Kind == session.KindMessage && record.Message.Text == taskKickoff {
+		if record.Kind == session.KindMessage && record.Message.Text == run.TaskKickoff {
 			opening = true
 		}
 	}
@@ -820,7 +821,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	for i := range 2 {
 		_, err := quietly(t, func() error {
-			return Run(t.Context(), cfg, testOrder("the same brief"), Options{Viewer: headlessViewer, SessionPath: path})
+			return run.Run(t.Context(), cfg, testOrder("the same brief"), run.Options{Viewer: headlessViewer, SessionPath: path})
 		})
 		require.NoError(t, err, "run %d", i+1)
 	}
@@ -841,8 +842,8 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	assert.Len(t, runs[0], len(runs[1]), "the runs differ in length (%d, %d), so one carried the other", len(runs[0]), len(runs[1]))
 
-	for i, run := range runs {
-		assert.Equal(t, session.KindResult, run[len(run)-1].Kind, "run %d does not end with its outcome", i+1)
+	for i, records := range runs {
+		assert.Equal(t, session.KindResult, records[len(records)-1].Kind, "run %d does not end with its outcome", i+1)
 	}
 }
 
@@ -883,7 +884,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
 	_, err = quietly(t, func() error {
-		return Run(t.Context(), cfg, testOrder("do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err, "RunWith")
 
@@ -925,8 +926,8 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 
 	var recorded, unrecorded strings.Builder
 
-	printDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", &result)
-	printDigest(&unrecorded, "", &result)
+	run.PrintDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", &result)
+	run.PrintDigest(&unrecorded, "", &result)
 
 	assert.Contains(t, recorded.String(), "/w/.zot/orders/1758300000.jsonl", "the digest must say where the log is")
 
@@ -950,7 +951,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o600))
 
 	output, err := quietly(t, func() error {
-		return Run(t.Context(), cfg, testOrder("do the thing"), Options{
+		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{
 			Viewer:      headlessViewer,
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
@@ -968,7 +969,7 @@ func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 	t.Chdir(dir)
 
 	_, err := quietly(t, func() error {
-		return Run(t.Context(), stubProvider(t), testOrder("do the thing"), Options{Viewer: headlessViewer})
+		return run.Run(t.Context(), stubProvider(t), testOrder("do the thing"), run.Options{Viewer: headlessViewer})
 	})
 	require.Error(t, err, "want a run with no log refused")
 	require.Contains(t, err.Error(), "session log", "want a run with no log refused")
@@ -999,7 +1000,7 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "provider", "want it to say to declare a provider")
 
 	// and the library entry point, which does not validate, says the same
-	err = Run(t.Context(), &cfg, testOrder("task"), logged(t))
+	err = run.Run(t.Context(), &cfg, testOrder("task"), logged(t))
 	require.Error(t, err, "want it to say to declare a provider")
 	assert.Contains(t, err.Error(), "provider", "want it to say to declare a provider")
 }
@@ -1031,10 +1032,10 @@ func starterPrompt(t *testing.T) string {
 func promptOf(t *testing.T, text string, o order.Order) string {
 	t.Helper()
 
-	client, opts, err := Resolve(t.Context(), stubProviderConfig(t), nil)
+	client, opts, err := run.Resolve(t.Context(), stubProviderConfig(t), nil)
 	require.NoError(t, err)
 
-	prompt, err := o.Render(text, orderEnv(stubProviderConfig(t), client, &opts, "/work", "", ""))
+	prompt, err := o.Render(text, run.OrderEnv(stubProviderConfig(t), client, &opts, "/work", "", ""))
 	require.NoError(t, err)
 
 	return prompt
@@ -1116,10 +1117,10 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	cfg := stubProviderConfig(t)
 	offered := []skills.Skill{{Name: "deploy", Description: "ship it"}}
 
-	client, opts, err := Resolve(t.Context(), cfg, offered)
+	client, opts, err := run.Resolve(t.Context(), cfg, offered)
 	require.NoError(t, err)
 
-	with, err := newOrderNamed(t, "x").Render(starterPrompt(t), orderEnv(cfg, client, &opts, "/work", "", ""))
+	with, err := newOrderNamed(t, "x").Render(starterPrompt(t), run.OrderEnv(cfg, client, &opts, "/work", "", ""))
 	require.NoError(t, err)
 
 	assert.Contains(t, with, `- "skills":`, "the prompt must list the skills tool when the run has one")
@@ -1159,13 +1160,13 @@ func TestTheDefaultPromptTeachesHowToKeepTheTasksCurrent(t *testing.T) {
 func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	cfg := stubProviderConfig(t)
 
-	client, opts, err := Resolve(t.Context(), cfg, nil)
+	client, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	o, err := order.Parse([]byte("---\nobjective: go\n---\n"))
 	require.NoError(t, err)
 
-	got, err := o.Render("{{ .Workdir }}|{{ .Model }}|{{ .Provider }}|{{ .Date }}|{{ .Project }}|{{ range .Tools }}{{ .Name }},{{ end }}", orderEnv(cfg, client, &opts, "/work/project", "", "Always mention PINECONE."))
+	got, err := o.Render("{{ .Workdir }}|{{ .Model }}|{{ .Provider }}|{{ .Date }}|{{ .Project }}|{{ range .Tools }}{{ .Name }},{{ end }}", run.OrderEnv(cfg, client, &opts, "/work/project", "", "Always mention PINECONE."))
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasPrefix(got, "/work/project|glm-5.2|"+cfg.Provider.Label()+"|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,"))
@@ -1238,7 +1239,7 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 	cfg.Prompt = "You are a haiku bot. Write only haiku about {{ .Objective }}."
 
 	_, err := quietly(t, func() error {
-		return Run(t.Context(), cfg, testOrder("the sea"), logged(t))
+		return run.Run(t.Context(), cfg, testOrder("the sea"), logged(t))
 	})
 	require.NoError(t, err)
 
@@ -1255,7 +1256,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
-	_, opts, err := Resolve(t.Context(), cfg, nil)
+	_, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 5, opts.MaxSettles)
@@ -1265,7 +1266,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// max_time is a duration string on the config, a time.Duration on the run
 	cfg.Agent.MaxTime = "30m"
 
-	_, timed, err := Resolve(t.Context(), cfg, nil)
+	_, timed, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 30*time.Minute, timed.MaxDuration)
@@ -1274,7 +1275,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 	// and it never means "no settling"
 	cfg.Agent.MaxSettles = 0
 
-	_, opts, err = Resolve(t.Context(), cfg, nil)
+	_, opts, err = run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, opts.MaxSettles, "want the unset value left for the engine to default")
@@ -1291,7 +1292,7 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 			Models: map[string]config.ModelConfig{litGlm52: {Context: window}},
 		}
 
-		_, opts, err := Resolve(t.Context(), cfg, nil)
+		_, opts, err := run.Resolve(t.Context(), cfg, nil)
 		require.NoError(t, err)
 
 		for _, tool := range opts.Tools {
@@ -1358,7 +1359,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 
 	_, err := quietly(t, func() error {
-		return Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
 
@@ -1382,7 +1383,7 @@ func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 
 	cfg := stubProviderConfig(t)
 
-	_, opts, err := Resolve(t.Context(), cfg, nil)
+	_, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, loop.DefaultContextSoft, opts.ContextSoft, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)

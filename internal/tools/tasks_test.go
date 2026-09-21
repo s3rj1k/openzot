@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"testing"
@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/plan"
+	"github.com/openzot/openzot/internal/tools"
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model
@@ -28,7 +29,7 @@ func task(title, status string) map[string]any {
 // The tool answers with the list, so the model reads its own state back on every
 // call - the latest result is the one place the whole list is always in view.
 func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
-	got, err := call(t, New(maxToolOutput, nil), litTasks, taskCall(
+	got, err := call(t, tools.New(maxToolOutput, nil), litTasks, taskCall(
 		task("read the parser", "done"),
 		map[string]any{litTitle: "fix the lexer", litStatus: "in_progress", "note": "hit in TestLex"},
 		task("add a test", "pending"),
@@ -49,12 +50,12 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 // the tool, so a second call is never merged into the first. A task left out of
 // it is a task that is no longer wanted.
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
-	tools := New(maxToolOutput, nil)
+	set := tools.New(maxToolOutput, nil)
 
-	_, err := call(t, tools, litTasks, taskCall(task("first", "pending"), task("second", "pending")))
+	_, err := call(t, set, litTasks, taskCall(task("first", "pending"), task("second", "pending")))
 	require.NoError(t, err)
 
-	got, err := call(t, tools, litTasks, taskCall(task("third", "in_progress")))
+	got, err := call(t, set, litTasks, taskCall(task("third", "in_progress")))
 	require.NoError(t, err)
 
 	text := asString(t, got)
@@ -67,10 +68,10 @@ func TestTasksReplaceRatherThanMerge(t *testing.T) {
 }
 
 func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
-	_, err := call(t, New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}})
+	_, err := call(t, tools.New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}})
 	require.Error(t, err, "an empty list must be refused")
 
-	_, err = call(t, New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished")))
+	_, err = call(t, tools.New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished")))
 	require.Error(t, err, "an unknown status must be refused")
 }
 
@@ -94,7 +95,7 @@ func schemaAt(t *testing.T, schema map[string]any, path ...string) any {
 // schema names the statuses, so a status the schema offers but the parser
 // rejects would be a trap.
 func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
-	tasks, _ := findTool(New(maxToolOutput, nil), litTasks)
+	tasks, _ := findTool(tools.New(maxToolOutput, nil), litTasks)
 
 	statuses, ok := schemaAt(t, tasks.Info().Parameters, litTasks, "items", "properties", litStatus, "enum").([]any)
 	require.True(t, ok, "the schema offers no list of statuses")

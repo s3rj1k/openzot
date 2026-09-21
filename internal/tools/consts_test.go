@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 // The strings the tests of this package repeat.
 const (

@@ -29,9 +29,9 @@ import (
 // The file zot looks for under each context directory.
 const agentFile = "AGENTS.md"
 
-// taskKickoff is the user message that starts a run. The goal is in the
+// TaskKickoff is the user message that starts a run. The goal is in the
 // instructions. This only has to get the agent moving.
-const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
+const TaskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
 // LoadProjectContext reads the AGENTS.md found under the given directories, searched in order (typically the config directory
 // then the working directory). Missing files are ignored and duplicate directories are searched once. The config's prompt
@@ -107,9 +107,9 @@ type Options struct {
 	Viewer func(context.Context, tui.Meta, *loop.Options) (loop.Result, error)
 }
 
-// orderEnv is what the prompt can know about the run beyond the order. The
+// OrderEnv is what the prompt can know about the run beyond the order. The
 // tools it really has, where it is working, and what it is talking to.
-func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
+func OrderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
@@ -128,9 +128,9 @@ func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, w
 	return env
 }
 
-// printDigest writes the end-of-run digest. The outcome, what the run spent,
+// PrintDigest writes the end-of-run digest. The outcome, what the run spent,
 // and - when the run was recorded - the session log it was appended to.
-func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
+func PrintDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	digest := tui.Digest{
 		Status:       tui.DigestStatus(string(result.Reason), result.ExitCode()),
 		Session:      sessionPath,
@@ -144,9 +144,9 @@ func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	fmt.Fprintf(w, "\n%s", tui.RenderDigest(digest))
 }
 
-// viewerMeta describes the run to the viewer. Its budgets are the ones the run was resolved with, not the raw config, since
+// ViewerMeta describes the run to the viewer. Its budgets are the ones the run was resolved with, not the raw config, since
 // a per-model max_iterations lowers the engine's limit and a bar counting to a number the run never reaches misreports it.
-func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
+func ViewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
 	// the default is a 1,000,000 fallback, which is not a budget worth displaying.
 	iterLimit := 0
@@ -273,14 +273,14 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	// There is no way to open a run with a prompt of the caller's own. Zot takes a work order, not a
 	// conversation, and anything worth saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(cfg.Prompt, orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
+	prompt, err := o.Render(cfg.Prompt, OrderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
 	}
 
 	opts.Client = client
 	opts.Instructions = prompt
-	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: taskKickoff}}
+	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: TaskKickoff}}
 
 	task := o.Objective
 
@@ -316,7 +316,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	opts.OnConversation = recorder.Conversation
 	opts.OnEvent = recorder.Event
 
-	meta := viewerMeta(cfg, task, workdir, &opts)
+	meta := ViewerMeta(cfg, task, workdir, &opts)
 	meta.Title = options.Title
 
 	viewer := options.Viewer
@@ -331,7 +331,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	if result.Reason != "" {
 		recorder.Result(&result)
 
-		printDigest(os.Stderr, writer.Path(), &result)
+		PrintDigest(os.Stderr, writer.Path(), &result)
 	}
 
 	if failed := recorder.Err(); failed != nil {

@@ -16,7 +16,7 @@ import (
 
 // DefaultOutputPercent is the share of the context window, in percent, that a
 // single tool result may take when the caller does not choose its own. See
-// toolSet.truncate for why a bound exists.
+// ToolSet.truncate for why a bound exists.
 const DefaultOutputPercent = 25
 
 // ShellTool is the name of the tool that acts on the machine.
@@ -30,26 +30,26 @@ type shellInput struct {
 	Timeout int    `json:"timeout,omitempty" description:"Timeout in seconds, default 120"`
 }
 
-// toolSet carries what the tools share, currently the output ceiling. The handlers are its methods so the ceiling is
+// ToolSet carries what the tools share, currently the output ceiling. The handlers are its methods so the ceiling is
 // captured per tool set, not read from a package global that a per-run or per-model override could not vary.
-type toolSet struct {
-	maxOutput int
+type ToolSet struct {
+	MaxOutput int
 }
 
 // truncate bounds what a tool may return. One cat of a large file could evict the conversation that explains why it was
 // read, or be rejected wholesale on a small window. The truncation is visible, so the model knows it saw a fragment.
-func (s toolSet) truncate(text string) string {
-	if s.maxOutput <= 0 || len(text) <= s.maxOutput {
+func (s ToolSet) truncate(text string) string {
+	if s.MaxOutput <= 0 || len(text) <= s.MaxOutput {
 		return text
 	}
 
-	return text[:s.maxOutput] + fmt.Sprintf("\n\n[truncated: %d bytes total]", len(text))
+	return text[:s.MaxOutput] + fmt.Sprintf("\n\n[truncated: %d bytes total]", len(text))
 }
 
-// shell runs a command and returns its combined output. Every outcome is output,
+// Shell runs a command and returns its combined output. Every outcome is output,
 // including a failed or timed-out command. None of them is an error the model
 // could not act on.
-func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) string {
+func (s ToolSet) Shell(ctx context.Context, command string, timeoutSeconds int) string {
 	timeout := 120 * time.Second
 
 	if timeoutSeconds > 0 {
@@ -83,7 +83,7 @@ func (s toolSet) shell(ctx context.Context, command string, timeoutSeconds int) 
 	return s.truncate(string(output))
 }
 
-func (s toolSet) shellTool() fantasy.AgentTool {
+func (s ToolSet) shellTool() fantasy.AgentTool {
 	return fantasy.NewAgentTool(ShellTool,
 		"Run a shell command and return its combined output. This is your only way to act on the machine: read files (cat, head, tail, sed -n 'START,ENDp', grep -n), list directories (ls, find), create and change files, and run builds, tests and linters. Output beyond a size limit is truncated, so read large files in ranges and filter with grep rather than printing them whole.",
 		func(ctx context.Context, in shellInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -91,15 +91,15 @@ func (s toolSet) shellTool() fantasy.AgentTool {
 				return fantasy.NewTextErrorResponse(`missing required argument "command"`), nil
 			}
 
-			return fantasy.NewTextResponse(s.shell(ctx, in.Command, in.Timeout)), nil
+			return fantasy.NewTextResponse(s.Shell(ctx, in.Command, in.Timeout)), nil
 		})
 }
 
-// New returns the standard tool set, with a ceiling of maxOutput bytes on one tool result (zero or negative means none).
+// New returns the standard tool set, with a ceiling of MaxOutput bytes on one tool result (zero or negative means none).
 // It is shell and tasks, plus skills when offered. Shell alone touches the machine, with the process's privileges, so the caller
 // decides what to expose. The ceiling should come from the context window, since an oversized result is rejected wholesale.
 func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {
-	s := toolSet{maxOutput: maxOutput}
+	s := ToolSet{MaxOutput: maxOutput}
 
 	tools := []fantasy.AgentTool{s.shellTool(), tasksTool()}
 
