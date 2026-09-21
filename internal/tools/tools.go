@@ -30,21 +30,14 @@ type shellInput struct {
 	Timeout int    `json:"timeout,omitempty" description:"Timeout in seconds, default 120"`
 }
 
-// toolSet carries the configuration the tools share - currently just the output
-// ceiling. The handlers are its methods so the ceiling is captured per tool set
-// rather than read from a package global, which a per-run or per-model override
-// could not vary.
+// toolSet carries what the tools share, currently the output ceiling. The handlers are its methods so the ceiling is
+// captured per tool set, not read from a package global that a per-run or per-model override could not vary.
 type toolSet struct {
 	maxOutput int
 }
 
-// truncate bounds what a tool may return.
-//
-// An unbounded result is a context-window hazard. One cat of a large file can
-// consume the whole budget and evict the conversation that explains why it was
-// read - or, on an endpoint with a small window, be rejected wholesale so the
-// run cannot even send it. Truncation is visible so the model knows it is
-// seeing a fragment.
+// truncate bounds what a tool may return. One cat of a large file could evict the conversation that explains why it was
+// read, or be rejected wholesale on a small window. The truncation is visible, so the model knows it saw a fragment.
 func (s toolSet) truncate(text string) string {
 	if s.maxOutput <= 0 || len(text) <= s.maxOutput {
 		return text
@@ -102,24 +95,9 @@ func (s toolSet) shellTool() fantasy.AgentTool {
 		})
 }
 
-// New returns the standard tool set, with a ceiling of maxOutput bytes on a
-// single tool result. Zero or negative means no ceiling.
-//
-// The set is two tools. Shell is the only one that touches the machine. The
-// model reads, lists, creates and changes files with ordinary commands, the way
-// anyone does at a terminal, so there is one place a run's effects come from and
-// one place to bound them. The tasks tool changes nothing on disk. It exists so the work
-// a run has set itself, and how far along it is, can be followed. A third, skills,
-// is added when there are skills to offer.
-//
-// Shell runs with the privileges of the process. That is the point - an agent
-// that cannot touch the machine is not much use to a CLI - but it means the
-// caller decides what to expose, and a caller running untrusted instructions
-// should hand over a narrower set.
-//
-// The ceiling is the caller's to derive from the model's context window. A
-// single result that overflows the window is rejected wholesale, and the run
-// cannot recover from a message it cannot even send.
+// New returns the standard tool set, with a ceiling of maxOutput bytes on one tool result (zero or negative means none).
+// It is shell and tasks, plus skills when offered. Shell alone touches the machine, with the process's privileges, so the caller
+// decides what to expose. The ceiling should come from the context window, since an oversized result is rejected wholesale.
 func New(maxOutput int, offered []skills.Skill) []fantasy.AgentTool {
 	s := toolSet{maxOutput: maxOutput}
 

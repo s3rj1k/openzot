@@ -1,24 +1,6 @@
-// Package session records a run to disk, one JSON record per line.
-//
-// An autonomous run is unattended by definition. Nobody watched it, and by the
-// time anyone looks the terminal is gone. A session log is what turns "it
-// failed overnight" into something answerable - what it tried, what the tools
-// returned, and where it stopped.
-//
-// There is one log per task, and it is append-only. A run opens with a meta
-// record and adds a record for every message, event and the outcome, each as one
-// line written in a single call and synced to disk before the next. Nothing is
-// ever rewritten, truncated or reordered. Running the task again appends a new
-// run to the same file rather than replacing the last, so the file is the whole
-// history of the task, one run after another. Because a line is the unit, a log
-// is readable while the run is still going, and a crashed run leaves everything
-// up to the crash. At worst the final line is torn, and the next run starts on a
-// fresh one.
-//
-// Zot itself never reads a log back, and a run is not resumed from one. It is a
-// record for a person, with `cat` and `jq` - and the agent is told where its own
-// is, so what its context window has forgotten it can look up. The log is its
-// long-term memory.
+// Package session records a run to disk, one JSON record per line, append-only, one log per task. Each record is written
+// whole and synced before the next, so a crashed run leaves everything up to the crash and the log is readable mid-run.
+// Zot never reads a log back. It is a record for a person, and the agent's long-term memory when its window forgets.
 package session
 
 import (
@@ -121,10 +103,8 @@ type Result struct {
 	OutputTokens int `json:"outputTokens,omitzero"`
 }
 
-// Writer appends records to a session log.
-//
-// Safe for concurrent use. The engine emits events from its own goroutine while
-// the caller may be recording messages.
+// Writer appends records to a session log. It is safe for concurrent use, since the engine emits events from its own
+// goroutine while the caller may be recording messages.
 type Writer struct {
 	mu   sync.Mutex
 	file *os.File
@@ -159,14 +139,8 @@ func (w *Writer) endTornLine() error {
 	return nil
 }
 
-// write appends one record as a single line and syncs it.
-//
-// The line is built whole and handed to the kernel in one write on an
-// append-only file, so a record is never interleaved with another and never
-// lands anywhere but the end. Synced per record on purpose. The log has to be
-// readable while the run is in flight, and a crashed run has to leave
-// everything up to the crash. Buffering would lose exactly the tail that
-// explains a failure.
+// write appends one record as a single line and syncs it. One write on an append-only file keeps records from
+// interleaving, and syncing per record is on purpose, since buffering would lose exactly the tail that explains a failure.
 func (w *Writer) write(record Record) error {
 	line, err := json.Marshal(record)
 	if err != nil {
@@ -190,13 +164,9 @@ func (w *Writer) write(record Record) error {
 	return w.file.Sync()
 }
 
-// Open starts a run in the log at path, appending to the file if it exists and
-// creating it, and its directory, if not.
-//
-// The file is opened append-only. Whatever an earlier run left is never touched.
-// If that run was killed mid-line, the torn line is ended first, so the new
-// run's meta record starts on a line of its own instead of being glued to the
-// wreckage of the last.
+// Open starts a run in the log at path, appending if it exists and creating it and its directory if not. Whatever an
+// earlier run left is never touched, and a line torn by a killed run is ended first so the new meta record starts
+// on a line of its own.
 func Open(path string, meta Meta) (*Writer, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create session directory: %w", err)

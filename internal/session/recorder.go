@@ -8,16 +8,9 @@ import (
 	"github.com/openzot/openzot/internal/provider"
 )
 
-// Recorder writes a run into a session log as the engine hands it over.
-//
-// The engine knows nothing about files. It gives away the conversation, its events
-// and its result, and this decides where they land. That is what keeps a session
-// log an operational concern rather than something the loop has to carry.
-//
-// A line that cannot be written is not ignored. The log is the agent's long-term
-// memory and the operator's only record, so a run that has stopped being recorded
-// has stopped being what it was asked to be. The first failure is kept, and the
-// callback given to NewRecorder is told of it, so the caller can end the run.
+// Recorder writes a run into a session log as the engine hands it over. The engine knows nothing of files. A line that
+// cannot be written is not ignored, since the log is the agent's long-term memory and the operator's only record. The first
+// failure is kept and reported through the NewRecorder callback, so the caller can end the run.
 type Recorder struct {
 	writer    *Writer
 	onFailure func(error)
@@ -51,12 +44,8 @@ func (r *Recorder) wrote(err error) {
 	}
 }
 
-// Conversation records what the conversation has gained since the last call.
-//
-// The conversation only ever grows - what is sent to the model is trimmed to the
-// window, but the history itself is never rewritten - so this is called with the
-// whole of it and writes the tail it has not seen. Called once with the messages
-// a run is seeded with, it records them ahead of the run, so a session that dies
+// Conversation records what the conversation has gained since the last call. It only ever grows, so this takes the whole
+// of it and writes the unseen tail. Called with the seed messages, it records them ahead of the run, so a session that dies
 // in its first turn still says what it was asked to do.
 func (r *Recorder) Conversation(messages []conversation.Message) {
 	for r.recorded < len(messages) {
@@ -66,11 +55,8 @@ func (r *Recorder) Conversation(messages []conversation.Message) {
 	}
 }
 
-// Event records something that happened.
-//
-// Token-by-token narration is by design dropped. It is the same content the
-// finished message already carries, and keeping it would make the log ten times
-// larger for nothing.
+// Event records something that happened. Token-by-token narration is dropped, since the finished message carries the
+// same content and keeping it would make the log ten times larger.
 func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it is loop.Options.OnEvent, which takes the event by value
 	if event.Kind == loop.EventToken || event.Kind == loop.EventReasoningToken {
 		return
