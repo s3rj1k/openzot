@@ -30,3 +30,7 @@ worked around.
   Modern Go Guidelines skill lists what the target version has. Run
   `govulncheck ./...` when dependencies change.
 - **Match the surrounding code.** Same naming, comment density, and idioms.
+- **Commit messages have one shape.** A conventional title (`feat!:`, `refactor:`,
+  `style:`, `test:`, ...), a blank line, then one short paragraph saying what
+  changed and why, wrapped at 72 columns. No bullet lists, no extra sections and
+  no `Co-Authored-By` or other attribution trailers.
