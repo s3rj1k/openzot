@@ -89,7 +89,7 @@ func TestARequestNeverReachesTheHardMark(t *testing.T) {
 		}
 
 		// what the request carries is what is left after the offset
-		used := conversation.EstimateTokens(engine.instructions())
+		used := conversation.EstimateTokens(engine.options.Instructions)
 
 		for _, message := range messages[forgotten:] {
 			used += conversation.Cost(message)

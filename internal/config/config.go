@@ -21,6 +21,9 @@ import (
 type Config struct {
 	Agent Agent `yaml:"agent"`
 	UI    UI    `yaml:"ui"`
+	// The system prompt every run starts from, a Go text/template that reads the order and the run. Required,
+	// since zot carries no prompt of its own. The starter config holds the default.
+	Prompt string `yaml:"prompt"`
 	// The folder of skills - subdirectories each holding a SKILL.md - loaded at startup and offered
 	// through the skills tool. "~/" is home, a relative path is taken against --dir, empty means none.
 	SkillsDir string `yaml:"skills_dir"`
@@ -279,6 +282,10 @@ func ScrubProviderSecrets(cfg *Config) {
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
 		return errors.New("agent.model must be set in the config: zot has no default model")
+	}
+
+	if strings.TrimSpace(c.Prompt) == "" {
+		return errors.New("prompt must be set in the config: zot has no built-in system prompt (`zot config` seeds one)")
 	}
 
 	if c.Agent.MaxIterations <= 0 {

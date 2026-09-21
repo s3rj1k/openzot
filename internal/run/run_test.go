@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
@@ -31,7 +32,7 @@ import (
 
 // testOrder is an order for a run that never was a file.
 func testOrder(objective string) order.Order {
-	return order.Order{Objective: objective, Body: "{{ .Objective }}"}
+	return order.Order{Objective: objective}
 }
 
 func mustWrite(t *testing.T, path, content string) {
@@ -117,11 +118,12 @@ func declared(names ...string) map[string]config.ModelConfig {
 	return models
 }
 
-// testDefaults is the built-in configuration without the one thing it lacks by
-// design. A model to run.
+// testDefaults is the built-in configuration plus what it lacks by design, a model
+// to run and a prompt, which here is just the goal.
 func testDefaults() *config.Config {
 	cfg := config.Defaults()
 	cfg.Agent.Model = litGlm52
+	cfg.Prompt = "{{ .Objective }}"
 
 	return &cfg
 }
@@ -432,6 +434,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 			defer server.Close()
 
 			path := writeCfg(t, fmt.Sprintf(`
+prompt: '{{ .Objective }}'
 agent:
   model: default
 provider:
@@ -986,6 +989,12 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	cfg.Agent.Model = "m"
 
 	err = cfg.Validate()
+	require.Error(t, err, "want it to name the missing prompt")
+	assert.Contains(t, err.Error(), "prompt", "want it to name the missing prompt")
+
+	cfg.Prompt = "x"
+
+	err = cfg.Validate()
 	require.Error(t, err, "want it to say to declare a provider")
 	assert.Contains(t, err.Error(), "provider", "want it to say to declare a provider")
 
@@ -1005,14 +1014,27 @@ func stubProviderConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// promptOf renders an order the way a run does, with the tools a run really has.
-func promptOf(t *testing.T, o order.Order) string {
+// starterPrompt is the prompt of the starter config `zot config` seeds, which is the one zot ships.
+func starterPrompt(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, configs.ExampleConfigYAML, 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+
+	return cfg.Prompt
+}
+
+// promptOf renders a prompt for an order the way a run does, with the tools a run really has.
+func promptOf(t *testing.T, text string, o order.Order) string {
 	t.Helper()
 
 	client, opts, err := Resolve(t.Context(), stubProviderConfig(t), nil)
 	require.NoError(t, err)
 
-	prompt, err := o.Render(orderEnv(stubProviderConfig(t), client, &opts, "/work", "", ""))
+	prompt, err := o.Render(text, orderEnv(stubProviderConfig(t), client, &opts, "/work", "", ""))
 	require.NoError(t, err)
 
 	return prompt
@@ -1028,11 +1050,11 @@ func newOrderNamed(t *testing.T, objective string) order.Order {
 	return o
 }
 
-// defaultPrompt is what a freshly scaffolded order sends the model.
+// defaultPrompt is what the starter config sends the model for a freshly scaffolded order.
 func defaultPrompt(t *testing.T) string {
 	t.Helper()
 
-	return promptOf(t, newOrderNamed(t, "build a parser"))
+	return promptOf(t, starterPrompt(t), newOrderNamed(t, "build a parser"))
 }
 
 // The task is the durable goal, so it must land in the system prompt, which trimming never drops and always orders first,
@@ -1041,9 +1063,9 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
 	require.NoError(t, err)
 
-	got := promptOf(t, o)
+	got := promptOf(t, starterPrompt(t), o)
 
-	assert.Contains(t, got, "You are zot", "the order's own prompt must be what is sent")
+	assert.Contains(t, got, "You are zot", "the starter config's prompt must be what is sent")
 
 	assert.Contains(t, got, "## Your task\n\nbuild a parser", "the objective must be in the prompt, trimmed")
 }
@@ -1097,7 +1119,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	client, opts, err := Resolve(t.Context(), cfg, offered)
 	require.NoError(t, err)
 
-	with, err := newOrderNamed(t, "x").Render(orderEnv(cfg, client, &opts, "/work", "", ""))
+	with, err := newOrderNamed(t, "x").Render(starterPrompt(t), orderEnv(cfg, client, &opts, "/work", "", ""))
 	require.NoError(t, err)
 
 	assert.Contains(t, with, `- "skills":`, "the prompt must list the skills tool when the run has one")
@@ -1140,10 +1162,10 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	client, opts, err := Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
-	o, err := order.Parse([]byte("---\nobjective: go\n---\n{{ .Workdir }}|{{ .Model }}|{{ .Provider }}|{{ .Date }}|{{ .Project }}|{{ range .Tools }}{{ .Name }},{{ end }}"))
+	o, err := order.Parse([]byte("---\nobjective: go\n---\n"))
 	require.NoError(t, err)
 
-	got, err := o.Render(orderEnv(cfg, client, &opts, "/work/project", "", "Always mention PINECONE."))
+	got, err := o.Render("{{ .Workdir }}|{{ .Model }}|{{ .Provider }}|{{ .Date }}|{{ .Project }}|{{ range .Tools }}{{ .Name }},{{ end }}", orderEnv(cfg, client, &opts, "/work/project", "", "Always mention PINECONE."))
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasPrefix(got, "/work/project|glm-5.2|"+cfg.Provider.Label()+"|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,"))
@@ -1179,60 +1201,50 @@ func assertNonInteractive(t *testing.T, where, instructions string) {
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// The prompt zot scaffolds carries the contract.
-func TestTheDefaultPromptForbidsWaitingForTheUser(t *testing.T) {
+// The starter config's prompt carries the contract, once.
+func TestTheStarterPromptForbidsWaitingForTheUser(t *testing.T) {
 	prompt := defaultPrompt(t)
 
-	assertNonInteractive(t, "the default prompt", prompt)
+	assertNonInteractive(t, "the starter prompt", prompt)
 
 	n := strings.Count(prompt, contractHeading)
-	assert.Equal(t, 1, n, "the contract appears %d times in the default prompt, want once", n)
+	assert.Equal(t, 1, n, "the contract appears %d times in the starter prompt, want once", n)
 }
 
-// The order's prompt is the operator's to rewrite, but it cannot hand the agent an interactivity the run does not have. A prompt
-// that forgot to say "never wait" would produce runs that hang on a question nobody can answer, which looks like a slow model.
-func TestACustomPromptKeepsTheNonInteractiveContract(t *testing.T) {
-	o, err := order.Parse([]byte("---\nobjective: write a haiku\n---\nYou are a haiku bot. Write only haiku about {{ .Objective }}.\n"))
+// The prompt is the config's and zot adds no instructions to it, so the system message is what its template renders to.
+func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
+	bodies := make(chan string, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		body, _ := io.ReadAll(r.Body)
+
+		select {
+		case bodies <- string(body):
+		default:
+		}
+
+		fmt.Fprintf(w, "data: %s\n\n",
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`)
+
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+
+	t.Cleanup(server.Close)
+
+	cfg := stubProvider(t)
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg.Prompt = "You are a haiku bot. Write only haiku about {{ .Objective }}."
+
+	_, err := quietly(t, func() error {
+		return Run(t.Context(), cfg, testOrder("the sea"), logged(t))
+	})
 	require.NoError(t, err)
 
-	got := promptOf(t, o)
+	body := <-bodies
 
-	// the custom prompt really is what is sent...
-	assert.True(t, strings.HasPrefix(got, "You are a haiku bot. Write only haiku about write a haiku."), "the order's own prompt was not used")
-
-	assert.NotContains(t, got, "Your tools:", "a custom prompt replaces zot's, it is not appended to it")
-
-	// ...and the contract came along anyway
-	assertNonInteractive(t, "a custom prompt", got)
-}
-
-// The contract must not pile up. A prompt that carries it - the default one does,
-// or one that places it with {{ .Contract }} - must not get it again.
-func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
-	custom := func(body string) order.Order {
-		o, err := order.Parse([]byte("---\nobjective: x\n---\n" + body))
-		require.NoError(t, err)
-
-		return o
-	}
-
-	for _, test := range []struct {
-		name  string
-		order order.Order
-	}{
-		{"the scaffolded prompt", newOrderNamed(t, "x")},
-		{"a custom prompt", custom("Do the thing.")},
-		{"a custom prompt that places the contract itself", custom("Do the thing.\n\n{{ .Contract }}\n")},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got := promptOf(t, test.order)
-
-			assertNonInteractive(t, test.name, got)
-
-			n := strings.Count(got, contractHeading)
-			assert.Equal(t, 1, n, "want the contract exactly once")
-		})
-	}
+	assert.Contains(t, body, `{"content":"You are a haiku bot. Write only haiku about the sea.","role":"system"}`, "want the rendered prompt as the whole system message")
 }
 
 // The settle and call budgets are configurable, and the config values must actually reach the run, or the knob in the
@@ -1341,6 +1353,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg.Prompt = starterPrompt(t)
 
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 

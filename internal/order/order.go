@@ -1,6 +1,6 @@
 // Package order defines the work order, the document a zot run is dispatched from. An order is a file, so it outlives the
-// invocation, and its whole system prompt is a Go template that reads a front matter block (goal, acceptance criteria,
-// constraints). It is advisory input and may live anywhere. How the result is judged belongs to the operator's config.
+// invocation, and holds a front matter block (goal, acceptance criteria, constraints) that the config's prompt template
+// reads. It is advisory input and may live anywhere. How the result is judged belongs to the operator's config.
 package order
 
 import (
@@ -28,15 +28,14 @@ const (
 
 	ordersName = "orders"
 
-	// Ext is the extension of an order file. Front matter and a prompt, which is
-	// Markdown-shaped text.
+	// Ext is the extension of an order file, front matter in a Markdown-shaped file.
 	Ext = ".md"
 )
 
 // OrdersDir is where new orders for the project rooted at dir are created.
 func OrdersDir(dir string) string { return filepath.Join(dir, BookDir, ordersName) }
 
-// Order is one work order. A single run's brief, and the prompt it is run with.
+// Order is one work order, a single run's brief.
 type Order struct {
 	// An optional short label for people rather than the agent, to recognize the order in a list or the
 	// viewer. The prompt may use it, but nothing does by default.
@@ -54,9 +53,6 @@ type Order struct {
 	// goals.
 	Constraints []string
 
-	// Body is the system prompt, as a Go text/template. See Render.
-	Body string
-
 	// Path is where the order was loaded from, for reporting. Empty for an
 	// order that never was a file (a synthesized one).
 	Path string
@@ -70,9 +66,8 @@ type frontMatter struct {
 	Constraints []string `yaml:"constraints"`
 }
 
-// splitFrontMatter separates the data block from the prompt. The block opens the
-// file with a line of three dashes and closes with another. The prompt is what
-// follows.
+// splitFrontMatter separates the data block from what follows it. The block opens the
+// file with a line of three dashes and closes with another.
 func splitFrontMatter(text string) (header, body string, err error) {
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 
@@ -109,9 +104,9 @@ func cleanList(items []string) []string {
 	return out
 }
 
-// Parse reads an order, the front matter then the prompt. Unknown front matter keys are rejected, so a misspelled key
-// cannot silently drop the criteria the operator thought they set. The prompt is parsed and run once against stand-in
-// data, so a template error is found at load, before a provider is touched.
+// Parse reads an order, which is its front matter and nothing after it. Unknown front matter keys are rejected, so a
+// misspelled key cannot silently drop the criteria the operator thought they set. Text after the front matter is
+// rejected too, since the system prompt is the config's.
 func Parse(data []byte) (Order, error) {
 	header, body, err := splitFrontMatter(string(data))
 	if err != nil {
@@ -132,19 +127,14 @@ func Parse(data []byte) (Order, error) {
 		Objective:   strings.TrimSpace(front.Objective),
 		Acceptance:  cleanList(front.Acceptance),
 		Constraints: cleanList(front.Constraints),
-		Body:        body,
 	}
 
 	if order.Objective == "" {
 		return Order{}, errors.New("no objective")
 	}
 
-	if strings.TrimSpace(order.Body) == "" {
-		return Order{}, errors.New("no prompt: the text after the front matter is the system prompt, and it is empty")
-	}
-
-	if err := order.check(); err != nil {
-		return Order{}, err
+	if strings.TrimSpace(body) != "" {
+		return Order{}, errors.New("an order is front matter only, since the system prompt is the config's (prompt:)")
 	}
 
 	return order, nil

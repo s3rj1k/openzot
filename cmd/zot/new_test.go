@@ -20,7 +20,7 @@ import (
 func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
+	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\n' > "$1"`)
 
 	var out strings.Builder
 

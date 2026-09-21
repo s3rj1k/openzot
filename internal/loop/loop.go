@@ -422,27 +422,12 @@ func turnsHeld(turnStarts []int, forgotten int) int {
 	return turns
 }
 
-// instructions renders the system prompt.
-func (e *Engine) instructions() string {
-	var builder strings.Builder
-
-	builder.WriteString(e.options.Instructions)
-
-	fmt.Fprintf(&builder,
-		"\n\nWhen the objective is met, call %s. If it cannot be met, call %s. "+
-			"The run is not finished until you call one of them.",
-		SuccessTool, FailureTool,
-	)
-
-	return builder.String()
-}
-
 // forgetOldest moves the offset forward as far as the window calls for, and
 // reports whether it moved.
 func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
 	// the system prompt and the tool schemas are sent on every request and are
 	// part of what fills the window
-	used := conversation.EstimateTokens(e.instructions()) + e.toolSchemaTokens(tools)
+	used := conversation.EstimateTokens(e.options.Instructions) + e.toolSchemaTokens(tools)
 
 	for _, message := range messages[*forgotten:] {
 		used += conversation.Cost(message)

@@ -65,10 +65,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// orderText is an order file with the given goal and the smallest prompt
-// that uses it. The contract is not in it, because the run supplies that.
+// orderText is an order file with the given goal.
 func orderText(objective string) string {
-	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n{{ .Objective }}\n"
+	return "---\nobjective: " + fmt.Sprintf("%q", objective) + "\n---\n"
 }
 
 // orderFileIn writes an order with the given goal to dir/name.
@@ -128,6 +127,7 @@ func TestRunNeedsATerminal(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
 provider:
@@ -456,6 +456,7 @@ func TestRunEndToEnd(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	configYAML := fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
   max_iterations: 5
@@ -484,15 +485,14 @@ provider:
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// The whole loop of the new order. Zot new scaffolds the file with the full prompt, the operator writes the goal, and what the
-// model is sent is that prompt rendered, with the goal, the real tools, the working directory, AGENTS.md and the contract once.
-func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
+// The whole loop of the new order. Zot new scaffolds the order, the operator writes the goal, and what the model is sent
+// is the seeded config's prompt rendered, with the goal, the real tools, AGENTS.md and the contract once.
+func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 	project := t.TempDir()
 
 	mustWrite(t, filepath.Join(project, "AGENTS.md"), "Always mention PINECONE.")
 
-	// the operator fills in the goal and a criterion and leaves the prompt as
-	// zot wrote it
+	// the operator fills in the goal and a criterion
 	withEditor(t, `sed -i 's/^objective:$/objective: build the parser\nacceptance:\n  - it parses/' "$1"`)
 
 	var out strings.Builder
@@ -529,16 +529,11 @@ func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	mustWrite(t, configPath, fmt.Sprintf(`
-agent:
-  model: test-model
-provider:
-  base_url: %s
-  api_key: test-key
-  models:
-    test-model:
-      context: 100000
-`, server.URL))
+	// the config is the one `zot config` seeds, pointed at the test server
+	seeded := strings.Replace(string(configs.ExampleConfigYAML), "https://gateway.internal.example.com/v1", server.URL, 1)
+	mustWrite(t, configPath, seeded)
+
+	t.Setenv("GATEWAY_KEY", "test-key")
 
 	withArgs(t, "--config", configPath, litDir, project, written[0])
 
@@ -581,7 +576,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	// every path on the command line is relative to the invoking directory -
 	// none of them exist inside --dir, so they must resolve before the chdir
-	require.NoError(t, os.WriteFile("order.md", []byte(orderText("do the thing")+"{{ .Project }}\n"), 0o644))
+	require.NoError(t, os.WriteFile("order.md", []byte(orderText("do the thing")), 0o644))
 
 	var (
 		requests             atomic.Int32
@@ -614,6 +609,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	defer server.Close()
 
 	require.NoError(t, os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
 skills_dir: skills
@@ -665,6 +661,7 @@ func TestRunAnOrder(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.yaml")
 
 		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
 provider:
@@ -718,6 +715,7 @@ func TestRunRefusesAModelWithNoContextWindow(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	require.NoError(t, os.WriteFile(configPath, []byte(`
+prompt: x
 agent:
   model: my-model
 provider:
@@ -750,6 +748,21 @@ provider: {}
 	require.Error(t, command(), "an unreachable provider must fail before any request")
 }
 
+// zot carries no prompt of its own, so a config without one is rejected before anything else, and the error says how to get one.
+func TestRunRefusesAConfigWithNoPrompt(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	mustWrite(t, configPath, "agent:\n  model: my-model\nprovider:\n  base_url: http://127.0.0.1:1\n  models:\n    my-model:\n      context: 1000\n")
+
+	withArgs(t, "--config", configPath, orderFile(t, "a task"))
+
+	err := command()
+	require.Error(t, err)
+
+	assert.Contains(t, err.Error(), "prompt")
+	assert.Contains(t, err.Error(), "zot config")
+}
+
 func TestRunRejectsAMissingConfigFile(t *testing.T) {
 	withArgs(t, "--config", filepath.Join(t.TempDir(), "nope.yaml"), orderFile(t, "a task"))
 
@@ -775,6 +788,7 @@ func TestRunRecordsASession(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	configYAML := fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
   max_iterations: 5
@@ -864,6 +878,7 @@ func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
 	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
+prompt: '{{ .Objective }} {{ .Project }}'
 agent:
   model: test-model
 provider:
@@ -890,12 +905,12 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 	}{
 		{
 			name: "a declared title",
-			body: "---\ntitle: Rate limiting\nobjective: add rate limiting to the api\n---\nbody\n",
+			body: "---\ntitle: Rate limiting\nobjective: add rate limiting to the api\n---\n",
 			want: "Rate limiting",
 		},
 		{
 			name: "otherwise the file name",
-			body: "---\nobjective: add rate limiting to the api\n---\nbody\n",
+			body: "---\nobjective: add rate limiting to the api\n---\n",
 			want: "Fix the flaky test", // from fix-the-flaky-test.md
 		},
 	}

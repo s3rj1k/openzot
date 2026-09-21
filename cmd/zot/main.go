@@ -1,5 +1,5 @@
 // Command zot is an automated software factory you watch, not drive. It takes work orders, not prompts. An order is one file,
-// a front matter block (goal, acceptance criteria, constraints) then the system prompt as a Go template, run as one autonomous
+// a front matter block (goal, acceptance criteria, constraints) that the config's prompt template reads, run as one autonomous
 // run while the terminal streams a read-only view. The commands are `zot config`, `zot new` and `zot <order.md>`.
 package main
 
@@ -50,9 +50,9 @@ func usage() {
 
 zot takes work orders, not prompts. A work order is one file: a front matter
 block with the durable objective, the acceptance criteria that define "done",
-and the constraints the work must hold to, then the system prompt itself - a Go
-template that reads that block, so the order says what to do and how the agent
-works. Each order is one autonomous run.
+and the constraints the work must hold to. The system prompt is the config's,
+a Go template under prompt: that reads the order. Each order is one autonomous
+run.
 
 Usage:
   zot [flags] <order.md>
@@ -80,9 +80,9 @@ it is a record for you, with cat and jq.
 
 Commands:
   new        create a work order under ./.zot/orders - under <dir>/.zot/orders
-             with --dir - and open it in $EDITOR, the way zot config does. The file holds the full default prompt
-             and a blank objective: write the objective, and change the prompt
-             if you want the agent to work differently. It takes no prose
+             with --dir - and open it in $EDITOR, the way zot config does. The file holds
+             a blank objective: write it, with the acceptance criteria and constraints.
+             It takes no prose
   config     edit the config file in $EDITOR (creates it on first run)
 
 Flags:`)

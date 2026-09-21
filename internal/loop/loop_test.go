@@ -431,26 +431,6 @@ func TestEventsAreEmitted(t *testing.T) {
 	}
 }
 
-func TestInstructionsRendersTheSettleInstruction(t *testing.T) {
-	engine, err := New(&Options{
-		ContextWindow: testWindow,
-		Client:        stub(t, []string{stop()}),
-		Instructions:  "you are an agent",
-		MaxSettles:    5,
-	})
-	require.NoError(t, err)
-
-	instructions := engine.instructions()
-
-	for _, want := range []string{
-		"you are an agent",
-		SuccessTool,
-		FailureTool,
-	} {
-		assert.Contains(t, instructions, want)
-	}
-}
-
 // The terminal tools are always offered. The model cannot settle without them.
 func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 	engine, err := New(&Options{

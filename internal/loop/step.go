@@ -125,7 +125,7 @@ func (e *Engine) newAgent(state *step) fantasy.Agent {
 	}
 
 	options := []fantasy.AgentOption{
-		fantasy.WithSystemPrompt(e.instructions()),
+		fantasy.WithSystemPrompt(e.options.Instructions),
 		fantasy.WithTools(wrapped...),
 
 		// No retries here. The engine retries, on its own schedule and budget.

@@ -34,7 +34,7 @@ const agentFile = "AGENTS.md"
 const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
 // LoadProjectContext reads the AGENTS.md found under the given directories, searched in order (typically the config directory
-// then the working directory). Missing files are ignored and duplicate directories are searched once. An order's prompt
+// then the working directory). Missing files are ignored and duplicate directories are searched once. The config's prompt
 // decides whether and where to use them, as .Project.
 func LoadProjectContext(dirs ...string) string {
 	seen := map[string]bool{}
@@ -95,7 +95,7 @@ type Options struct {
 	Title string
 
 	// Project is the instructions found in the AGENTS.md files of the config
-	// directory and the project, for an order's prompt to use as .Project.
+	// directory and the project, for the config's prompt to use as .Project.
 	Project string
 
 	// Skills are the skills loaded at startup, offered to the model through the
@@ -107,7 +107,7 @@ type Options struct {
 	Viewer func(context.Context, tui.Meta, *loop.Options) (loop.Result, error)
 }
 
-// orderEnv is what an order's prompt can know about the run beyond the order. The
+// orderEnv is what the prompt can know about the run beyond the order. The
 // tools it really has, where it is working, and what it is talking to.
 func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
@@ -268,12 +268,12 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	workdir, _ := os.Getwd()
 
-	// The order is the system prompt. Its goal, criteria and constraints survive trimming there, and the
-	// opening user message only gets the agent moving. Rendered after the secrets leave the environment.
+	// The config's prompt, filled in from the order, is the system prompt. The goal, criteria and constraints survive
+	// trimming there, and the opening user message only gets the agent moving. Rendered after the secrets leave the environment.
 
 	// There is no way to open a run with a prompt of the caller's own. Zot takes a work order, not a
 	// conversation, and anything worth saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
+	prompt, err := o.Render(cfg.Prompt, orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
 	}

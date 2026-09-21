@@ -23,7 +23,8 @@ func writeConfig(t *testing.T, body string) string {
 // validConfig returns a minimal config that passes Validate, optionally tweaked.
 func validConfig(tweak func(*Config)) *Config {
 	c := &Config{
-		Agent: Agent{Model: "m", MaxIterations: 1},
+		Agent:  Agent{Model: "m", MaxIterations: 1},
+		Prompt: "{{ .Objective }}",
 		Provider: ProviderConfig{
 			BaseURL: litHTTPSGwExampleCom, APIKey: "x",
 			Models: map[string]ModelConfig{"m": {Context: 100_000}},
@@ -36,11 +37,12 @@ func validConfig(tweak func(*Config)) *Config {
 	return c
 }
 
-// There is no default provider or model. Both name something the operator runs
-// against, so the defaults carry neither and Validate says what is missing.
-func TestDefaultsCarryNoProviderOrModel(t *testing.T) {
+// There is no default provider, model or prompt. They name something the operator runs
+// against, so the defaults carry none and Validate says what is missing.
+func TestDefaultsCarryNoProviderModelOrPrompt(t *testing.T) {
 	c := Defaults()
 	assert.Empty(t, c.Agent.Model)
+	assert.Empty(t, c.Prompt)
 
 	assert.Empty(t, c.Provider.BaseURL)
 	assert.Empty(t, c.Provider.Models)
@@ -390,6 +392,7 @@ func TestConfigDir(t *testing.T) {
 func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	cfg := Defaults()
 	cfg.Agent.Model = "m"
+	cfg.Prompt = "x"
 
 	require.Error(t, cfg.Validate(), "a provider with no base_url must be rejected")
 
@@ -465,7 +468,8 @@ func TestNoConventionalVariableIsRead(t *testing.T) {
 func TestMaxTimeIsValidated(t *testing.T) {
 	base := func() Config {
 		return Config{
-			Agent: Agent{Model: "m", MaxIterations: 10},
+			Agent:  Agent{Model: "m", MaxIterations: 10},
+			Prompt: "x",
 			Provider: ProviderConfig{
 				BaseURL: litHTTPSGwExampleCom, APIKey: "k",
 				Models: map[string]ModelConfig{"m": {Context: 100_000}},
@@ -593,6 +597,17 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 
 // skills_dir names the folder skills are loaded from. It is read as written and
 // expanded by the caller, which knows the working directory.
+// The system prompt is the config's, so a config without one does not validate, and the file's own text is what is read.
+func TestThePromptIsRequiredAndReadAsWritten(t *testing.T) {
+	require.Error(t, validConfig(func(c *Config) { c.Prompt = "" }).Validate(), "a config with no prompt validated")
+	require.Error(t, validConfig(func(c *Config) { c.Prompt = " \n " }).Validate(), "a blank prompt validated")
+
+	cfg, err := Load(writeConfig(t, "prompt: |\n  Hello {{ .Objective }}.\n\n  Bye.\n"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello {{ .Objective }}.\n\nBye.\n", cfg.Prompt)
+}
+
 func TestSkillsDirIsRead(t *testing.T) {
 	cfg, err := Load(writeConfig(t, "skills_dir: ~/skills\n"))
 	require.NoError(t, err)
@@ -604,6 +619,7 @@ func TestSkillsDirIsRead(t *testing.T) {
 // written, and an effort the provider would reject is rejected at load.
 func TestAModelCarriesItsRequestSettings(t *testing.T) {
 	cfg, err := Load(writeConfig(t, `
+prompt: x
 agent:
   model: local
 provider:
