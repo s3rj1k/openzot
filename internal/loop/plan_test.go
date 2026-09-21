@@ -19,8 +19,8 @@ const planArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"
 // planCall is the model calling its plan tool and being answered.
 func planCall(id, args, answer string) []conversation.Message {
 	return []conversation.Message{
-		activity(conversation.ActivityRequest, id, litTasks, args, nil),
-		activity(conversation.ActivityResponse, id, litTasks, args, answer),
+		testutils.Activity(conversation.ActivityRequest, id, litTasks, args, nil),
+		testutils.Activity(conversation.ActivityResponse, id, litTasks, args, answer),
 	}
 }
 
@@ -88,7 +88,7 @@ func TestRepostedPlan(t *testing.T) {
 	t.Run("a refused call is not the plan", func(t *testing.T) {
 		refused := append([]conversation.Message(nil), messages[:4]...)
 		refused = append(refused,
-			activity(conversation.ActivityRequest, "c", litTasks, `{"tasks":[]}`, nil),
+			testutils.Activity(conversation.ActivityRequest, "c", litTasks, `{"tasks":[]}`, nil),
 			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: "c", Name: litTasks, Arguments: `{"tasks":[]}`, Failure: "tasks needs at least one task"}},
 			conversation.Message{Type: conversation.TypeUser, Text: litLater},
 		)
@@ -99,7 +99,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("another tool is not the plan", func(t *testing.T) {
-		other := []conversation.Message{activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: litLater}}
+		other := []conversation.Message{testutils.Activity(conversation.ActivityResponse, "x", "shell", "{}", "out"), {Type: conversation.TypeUser, Text: litLater}}
 
 		_, ok := engine.RepostedPlan(other, 1)
 		assert.False(t, ok, "a shell result was taken for the plan")
@@ -124,8 +124,8 @@ func history(n int, filler string) []conversation.Message {
 		id := fmt.Sprintf("c%d", i)
 
 		messages = append(messages,
-			activity(conversation.ActivityRequest, id, litRead, `{"path":"x"}`, nil),
-			activity(conversation.ActivityResponse, id, litRead, `{"path":"x"}`, filler),
+			testutils.Activity(conversation.ActivityRequest, id, litRead, `{"path":"x"}`, nil),
+			testutils.Activity(conversation.ActivityResponse, id, litRead, `{"path":"x"}`, filler),
 		)
 	}
 
@@ -160,7 +160,7 @@ func TestForgettingLeavesTooFewTurnsSoThePlanIsPosted(t *testing.T) {
 	var posted bool
 
 	for _, message := range request.Messages {
-		if call, ok := toolCallOf(message); ok && call.ToolName == litTasks && call.Input == planArgs {
+		if call, ok := testutils.ToolCallOf(message); ok && call.ToolName == litTasks && call.Input == planArgs {
 			posted = true
 		}
 	}
@@ -238,8 +238,8 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 
 	// the next request forgets again, but the posted plan is well inside the window
 	messages = append(messages,
-		activity(conversation.ActivityRequest, "n", litRead, `{"path":"y"}`, nil),
-		activity(conversation.ActivityResponse, "n", litRead, `{"path":"y"}`, strings.Repeat("file content ", 60)),
+		testutils.Activity(conversation.ActivityRequest, "n", litRead, `{"path":"y"}`, nil),
+		testutils.Activity(conversation.ActivityResponse, "n", litRead, `{"path":"y"}`, strings.Repeat("file content ", 60)),
 	)
 
 	messages = engine.FitToWindow(messages, &forgotten, append(starts(messages[:size]), size, len(messages)), nil, func(loop.Event) {})

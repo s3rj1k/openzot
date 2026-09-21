@@ -7,32 +7,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/plan"
+	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tools"
 )
-
-// taskCall builds the arguments of a call to the tasks tool the way the model
-// sends them. JSON-decoded, so lists are []any and objects are map[string]any.
-func taskCall(tasks ...map[string]any) map[string]any {
-	list := make([]any, 0, len(tasks))
-
-	for _, task := range tasks {
-		list = append(list, task)
-	}
-
-	return map[string]any{litTasks: list}
-}
-
-func task(title, status string) map[string]any {
-	return map[string]any{litTitle: title, litStatus: status}
-}
 
 // The tool answers with the list, so the model reads its own state back on every
 // call - the latest result is the one place the whole list is always in view.
 func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
-	got, err := call(t, tools.New(maxToolOutput, nil), litTasks, taskCall(
-		task("read the parser", "done"),
+	got, err := call(t, tools.New(maxToolOutput, nil), litTasks, testutils.TaskCall(
+		testutils.Task("read the parser", "done"),
 		map[string]any{litTitle: "fix the lexer", litStatus: "in_progress", "note": "hit in TestLex"},
-		task("add a test", "pending"),
+		testutils.Task("add a test", "pending"),
 		map[string]any{litTitle: litDeploy, litStatus: "blocked", "note": "needs credentials"},
 	))
 	require.NoError(t, err)
@@ -52,10 +37,10 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
 	set := tools.New(maxToolOutput, nil)
 
-	_, err := call(t, set, litTasks, taskCall(task("first", "pending"), task("second", "pending")))
+	_, err := call(t, set, litTasks, testutils.TaskCall(testutils.Task("first", "pending"), testutils.Task("second", "pending")))
 	require.NoError(t, err)
 
-	got, err := call(t, set, litTasks, taskCall(task("third", "in_progress")))
+	got, err := call(t, set, litTasks, testutils.TaskCall(testutils.Task("third", "in_progress")))
 	require.NoError(t, err)
 
 	text := asString(t, got)
@@ -71,7 +56,7 @@ func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
 	_, err := call(t, tools.New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}})
 	require.Error(t, err, "an empty list must be refused")
 
-	_, err = call(t, tools.New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished")))
+	_, err = call(t, tools.New(maxToolOutput, nil), litTasks, testutils.TaskCall(testutils.Task("a", "finished")))
 	require.Error(t, err, "an unknown status must be refused")
 }
 
@@ -105,7 +90,7 @@ func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
 	for _, offered := range statuses {
 		status := asString(t, offered)
 
-		_, err := plan.ParseTasks(taskCall(task("a task", status)))
+		_, err := plan.ParseTasks(testutils.TaskCall(testutils.Task("a task", status)))
 		require.NoError(t, err, "the schema offers %q but the parser refuses it", status)
 	}
 }

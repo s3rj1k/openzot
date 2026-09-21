@@ -7,29 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/plan"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
-// taskCall builds the arguments of a call to the tasks tool the way the model
-// sends them. JSON-decoded, so lists are []any and objects are map[string]any.
-func taskCall(tasks ...map[string]any) map[string]any {
-	list := make([]any, 0, len(tasks))
-
-	for _, task := range tasks {
-		list = append(list, task)
-	}
-
-	return map[string]any{litTasks: list}
-}
-
-func task(title, status string) map[string]any {
-	return map[string]any{litTitle: title, litStatus: status}
-}
-
 func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
-	tasks, err := plan.ParseTasks(taskCall(
-		task("read the parser", "done"),
+	tasks, err := plan.ParseTasks(testutils.TaskCall(
+		testutils.Task("read the parser", "done"),
 		map[string]any{litTitle: "  fix the lexer  ", litStatus: "in_progress", "note": " hit in TestLex "},
-		task("add a test", "pending"),
+		testutils.Task("add a test", "pending"),
 		map[string]any{litTitle: "deploy", litStatus: "blocked", "note": litNeedsCredentials},
 	))
 	require.NoError(t, err)
@@ -51,7 +36,7 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 // A model listing the work for the first time often leaves the status off. That
 // is a pending task, not a reason to reject the list.
 func TestATaskWithNoStatusIsPending(t *testing.T) {
-	tasks, err := plan.ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
+	tasks, err := plan.ParseTasks(testutils.TaskCall(map[string]any{litTitle: "write it"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, plan.TaskPending, tasks[0].Status)
@@ -69,9 +54,9 @@ func TestParseTasksRefusesAMalformedList(t *testing.T) {
 		{"an empty list", map[string]any{litTasks: []any{}}, litAtLeastOneTask},
 		{"tasks that is not a list", map[string]any{litTasks: "do it"}, litAtLeastOneTask},
 		{"a task that is not an object", map[string]any{litTasks: []any{"do it"}}, "task 1: expected an object"},
-		{"a blank title", taskCall(task("   ", "pending")), "task 1: a task needs a title"},
-		{"a missing title", taskCall(map[string]any{litStatus: "done"}), "task 1: a task needs a title"},
-		{"an unknown status", taskCall(task("a", "done"), task("b", "started")), `task 2: unknown status "started"`},
+		{"a blank title", testutils.TaskCall(testutils.Task("   ", "pending")), "task 1: a task needs a title"},
+		{"a missing title", testutils.TaskCall(map[string]any{litStatus: "done"}), "task 1: a task needs a title"},
+		{"an unknown status", testutils.TaskCall(testutils.Task("a", "done"), testutils.Task("b", "started")), `task 2: unknown status "started"`},
 	}
 
 	for _, test := range tests {

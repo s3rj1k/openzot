@@ -1,7 +1,6 @@
 package conversation_test
 
 import (
-	"strings"
 	"testing"
 
 	"charm.land/fantasy"
@@ -9,52 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/testutils"
 )
-
-// activity builds one half of a tool-call pair.
-func activity(kind conversation.ActivityKind, name, arguments string, result any) conversation.Message {
-	entry := &conversation.Activity{Kind: kind, ID: "c1", Name: name, Arguments: arguments}
-
-	if kind == conversation.ActivityResponse {
-		entry.Result = result
-	}
-
-	return conversation.Message{Type: conversation.TypeActivity, Text: entry.ResultText(), Activity: entry}
-}
-
-// toolCallOf returns the call an assistant message carries, if it carries one.
-func toolCallOf(message fantasy.Message) (fantasy.ToolCallPart, bool) {
-	for _, part := range message.Content {
-		if call, ok := part.(fantasy.ToolCallPart); ok {
-			return call, true
-		}
-	}
-
-	return fantasy.ToolCallPart{}, false
-}
-
-// textOf joins the text parts of a message.
-func textOf(message fantasy.Message) string {
-	var text string
-
-	var textSb35 strings.Builder
-
-	for _, part := range message.Content {
-		if piece, ok := part.(fantasy.TextPart); ok {
-			textSb35.WriteString(piece.Text)
-		}
-	}
-
-	text += textSb35.String()
-
-	return text
-}
 
 func TestToPromptPairsToolCalls(t *testing.T) {
 	messages := []conversation.Message{
 		{Type: conversation.TypeUser, Text: "list the files"},
-		activity(conversation.ActivityRequest, "shell", `{"command":"ls"}`, nil),
-		activity(conversation.ActivityResponse, "shell", `{"command":"ls"}`, "README.md"),
+		testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{"command":"ls"}`, nil),
+		testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{"command":"ls"}`, "README.md"),
 		{Type: conversation.TypeBot, Text: "there is a README"},
 	}
 
@@ -64,7 +25,7 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 
 	assert.Equal(t, fantasy.MessageRoleUser, prompt[0].Role)
 
-	call, ok := toolCallOf(prompt[1])
+	call, ok := testutils.ToolCallOf(prompt[1])
 	require.Equal(t, fantasy.MessageRoleAssistant, prompt[1].Role, "prompt[1] should be an assistant turn carrying one tool call")
 	require.True(t, ok, "prompt[1] should be an assistant turn carrying one tool call")
 
@@ -87,7 +48,7 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 func TestToPromptDropsOrphanedResult(t *testing.T) {
 	messages := []conversation.Message{
 		{Type: conversation.TypeUser, Text: "go"},
-		activity(conversation.ActivityResponse, "shell", `{}`, "output"),
+		testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{}`, "output"),
 	}
 
 	for _, message := range conversation.ToPrompt(messages) {
@@ -100,13 +61,13 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 func TestToPromptDropsDanglingRequest(t *testing.T) {
 	messages := []conversation.Message{
 		{Type: conversation.TypeUser, Text: "go"},
-		activity(conversation.ActivityRequest, "shell", `{}`, nil),
+		testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{}`, nil),
 	}
 
 	prompt := conversation.ToPrompt(messages)
 
 	for _, message := range prompt {
-		_, ok := toolCallOf(message)
+		_, ok := testutils.ToolCallOf(message)
 		require.False(t, ok, "a request with no result must be dropped: %+v", message)
 	}
 
@@ -126,7 +87,7 @@ func TestToPromptRoleMapping(t *testing.T) {
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
 	for _, message := range prompt {
-		require.NotEqual(t, "thinking out loud", textOf(message), "reasoning must not be replayed to the provider")
+		require.NotEqual(t, "thinking out loud", testutils.TextOf(message), "reasoning must not be replayed to the provider")
 	}
 
 	want := []fantasy.MessageRole{
@@ -144,8 +105,8 @@ func TestToPromptRoleMapping(t *testing.T) {
 
 func TestToPromptEncodesStructuredResults(t *testing.T) {
 	messages := []conversation.Message{
-		activity(conversation.ActivityRequest, "search", `{}`, nil),
-		activity(conversation.ActivityResponse, "search", `{}`, map[string]any{"records": []any{}}),
+		testutils.Activity(conversation.ActivityRequest, "c1", "search", `{}`, nil),
+		testutils.Activity(conversation.ActivityResponse, "c1", "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
 	prompt := conversation.ToPrompt(messages)

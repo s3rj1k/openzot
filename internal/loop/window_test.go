@@ -31,8 +31,8 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 
 	for range 4 {
 		messages = append(messages,
-			activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
-			activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, "same"),
+			testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
+			testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, "same"),
 		)
 	}
 
@@ -43,8 +43,8 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 
 	for _, answer := range []string{"a", "b", "c", "d"} {
 		polling = append(polling,
-			activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
-			activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, answer),
+			testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{"cmd":"ls"}`, nil),
+			testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{"cmd":"ls"}`, answer),
 		)
 	}
 

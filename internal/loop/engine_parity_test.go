@@ -63,8 +63,8 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	args := fmt.Sprintf(`{"content":%q}`, huge)
 
 	messages := []conversation.Message{
-		request("big", "write", args),
-		response("big", "write", args, "ok"),
+		testutils.Request("big", "write", args),
+		testutils.Response("big", "write", args, "ok"),
 		{Type: conversation.TypeUser, Text: "a short recent question"},
 		{Type: conversation.TypeBot, Text: "a short recent answer"},
 	}
@@ -74,7 +74,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	assert.NotEqual(t, 0, forgotten, "the argument-heavy tool call was kept - its arguments were priced as empty, which is the bug")
 
 	for _, message := range req.Messages {
-		if call, ok := toolCallOf(message); ok {
+		if call, ok := testutils.ToolCallOf(message); ok {
 			assert.NotContains(t, call.Input, huge, "the argument-heavy tool call reached the request")
 		}
 	}
@@ -83,7 +83,7 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	var keptRecent bool
 
 	for _, message := range req.Messages {
-		if strings.Contains(textOf(message), "short recent") {
+		if strings.Contains(testutils.TextOf(message), "short recent") {
 			keptRecent = true
 		}
 	}

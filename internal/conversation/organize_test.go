@@ -8,41 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // These cases are the shapes that reached production - a result whose call was trimmed away, two matching
 // calls in one turn, a trigger stranded mid-history - each a request a provider rejects.
-
-// request builds a tool-call message.
-func request(id, name, arguments string) conversation.Message {
-	return conversation.Message{
-		Type:     conversation.TypeActivity,
-		Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: name, Arguments: arguments},
-	}
-}
-
-// response builds the result half of a tool call.
-func response(id, name, arguments, result string) conversation.Message {
-	return conversation.Message{
-		Type: conversation.TypeActivity,
-		Text: result,
-		Activity: &conversation.Activity{
-			Kind:      conversation.ActivityResponse,
-			ID:        id,
-			Name:      name,
-			Arguments: arguments,
-			Result:    result,
-		},
-	}
-}
-
-// trigger builds a trigger activity.
-func trigger(name string) conversation.Message {
-	return conversation.Message{
-		Type:     conversation.TypeActivity,
-		Activity: &conversation.Activity{Kind: conversation.ActivityTrigger, Name: name},
-	}
-}
 
 // kinds renders a conversation as a comparable shape.
 func kinds(messages []conversation.Message) []string {
@@ -65,8 +35,8 @@ func TestOrganizeKeepsAWellFormedConversation(t *testing.T) {
 	messages := []conversation.Message{
 		{Type: conversation.TypeInstructions, Text: litYouAreACoding},
 		{Type: conversation.TypeUser, Text: "run the tests"},
-		request("call_1", "shell", `{"command":"go test"}`),
-		response("call_1", "shell", `{"command":"go test"}`, "ok"),
+		testutils.Request("call_1", "shell", `{"command":"go test"}`),
+		testutils.Response("call_1", "shell", `{"command":"go test"}`, "ok"),
 		{Type: conversation.TypeBot, Text: "they pass"},
 	}
 
@@ -78,9 +48,9 @@ func TestOrganizeKeepsAWellFormedConversation(t *testing.T) {
 // The rule providers enforce. A result immediately follows the call it answers.
 func TestOrganizeClustersASeparatedPair(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("call_1", "shell", "{}"),
+		testutils.Request("call_1", "shell", "{}"),
 		{Type: conversation.TypeBot, Text: "thinking about it"},
-		response("call_1", "shell", "{}", "ok"),
+		testutils.Response("call_1", "shell", "{}", "ok"),
 	})
 
 	want := []string{litActivityRequestCall1, litActivityResponseCall1, "bot/thinking about it"}
@@ -90,10 +60,10 @@ func TestOrganizeClustersASeparatedPair(t *testing.T) {
 
 func TestOrganizeClustersInterleavedPairs(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("call_1", "read", `{"path":"a"}`),
-		request("call_2", "read", `{"path":"b"}`),
-		response("call_2", "read", `{"path":"b"}`, "b contents"),
-		response("call_1", "read", `{"path":"a"}`, "a contents"),
+		testutils.Request("call_1", "read", `{"path":"a"}`),
+		testutils.Request("call_2", "read", `{"path":"b"}`),
+		testutils.Response("call_2", "read", `{"path":"b"}`, "b contents"),
+		testutils.Response("call_1", "read", `{"path":"a"}`, "a contents"),
 	})
 
 	want := []string{
@@ -118,14 +88,14 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 			name: "a call whose result was trimmed away",
 			messages: []conversation.Message{
 				{Type: conversation.TypeUser, Text: "go"},
-				request("call_1", "shell", "{}"),
+				testutils.Request("call_1", "shell", "{}"),
 			},
 			want: []string{litUserGo},
 		},
 		{
 			name: "a result whose call was trimmed away",
 			messages: []conversation.Message{
-				response("call_1", "shell", "{}", "ok"),
+				testutils.Response("call_1", "shell", "{}", "ok"),
 				{Type: conversation.TypeBot, Text: "done"},
 			},
 			want: []string{"bot/done"},
@@ -133,9 +103,9 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 		{
 			name: "one good pair and one orphan",
 			messages: []conversation.Message{
-				request("call_1", "shell", "{}"),
-				response("call_1", "shell", "{}", "ok"),
-				request("call_2", "shell", "{}"),
+				testutils.Request("call_1", "shell", "{}"),
+				testutils.Response("call_1", "shell", "{}", "ok"),
+				testutils.Request("call_2", "shell", "{}"),
 			},
 			want: []string{litActivityRequestCall1, litActivityResponseCall1},
 		},
@@ -152,10 +122,10 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 // the pairing prefers it over the arguments.
 func TestOrganizePairsIdenticalCallsByID(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("call_1", "read", `{"path":"a"}`),
-		request("call_2", "read", `{"path":"a"}`),
-		response("call_2", "read", `{"path":"a"}`, "second"),
-		response("call_1", "read", `{"path":"a"}`, "first"),
+		testutils.Request("call_1", "read", `{"path":"a"}`),
+		testutils.Request("call_2", "read", `{"path":"a"}`),
+		testutils.Response("call_2", "read", `{"path":"a"}`, "second"),
+		testutils.Response("call_1", "read", `{"path":"a"}`, "first"),
 	})
 
 	require.Len(t, got, 4, "both calls must keep their own result")
@@ -168,9 +138,9 @@ func TestOrganizePairsIdenticalCallsByID(t *testing.T) {
 // pair up, which is what the TypeScript engine matched on.
 func TestOrganizePairsWithoutIDs(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("", "shell", `{"command":"ls"}`),
+		testutils.Request("", "shell", `{"command":"ls"}`),
 		{Type: conversation.TypeReasoning, Text: "let me look"},
-		response("", "shell", `{"command":"ls"}`, "a\nb"),
+		testutils.Response("", "shell", `{"command":"ls"}`, "a\nb"),
 	})
 
 	want := []string{"activity/request/", "activity/response/", "reasoning/let me look"}
@@ -180,8 +150,8 @@ func TestOrganizePairsWithoutIDs(t *testing.T) {
 
 func TestOrganizeDoesNotPairDifferentCalls(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("", "read", `{"path":"a"}`),
-		response("", "read", `{"path":"b"}`, "b contents"),
+		testutils.Request("", "read", `{"path":"a"}`),
+		testutils.Response("", "read", `{"path":"b"}`, "b contents"),
 	})
 
 	assert.Empty(t, got, "a result for a different call is not a partner")
@@ -190,15 +160,15 @@ func TestOrganizeDoesNotPairDifferentCalls(t *testing.T) {
 // Two calls cannot pair with each other, nor two results.
 func TestOrganizeRequiresOneOfEach(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("call_1", "shell", "{}"),
-		request("call_1", "shell", "{}"),
+		testutils.Request("call_1", "shell", "{}"),
+		testutils.Request("call_1", "shell", "{}"),
 	})
 
 	assert.Empty(t, got, "two calls do not make a pair")
 
 	got = conversation.Organize([]conversation.Message{
-		response("call_1", "shell", "{}", "ok"),
-		response("call_1", "shell", "{}", "ok"),
+		testutils.Response("call_1", "shell", "{}", "ok"),
+		testutils.Response("call_1", "shell", "{}", "ok"),
 	})
 
 	assert.Empty(t, got, "two results do not make a pair")
@@ -209,13 +179,13 @@ func TestOrganizeRequiresOneOfEach(t *testing.T) {
 func TestOrganizeKeepsATriggerOnlyWhenItIsLast(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
 		{Type: conversation.TypeUser, Text: "go"},
-		trigger("wake"),
+		testutils.Trigger("wake"),
 	})
 
 	assert.Equal(t, []string{litUserGo, "activity/trigger/"}, kinds(got))
 
 	got = conversation.Organize([]conversation.Message{
-		trigger("wake"),
+		testutils.Trigger("wake"),
 		{Type: conversation.TypeUser, Text: "go"},
 	})
 
@@ -227,7 +197,7 @@ func TestOrganizeKeepsATriggerOnlyWhenItIsLast(t *testing.T) {
 func TestOrganizeTriggerIgnoresTrailingInstructions(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
 		{Type: conversation.TypeUser, Text: "go"},
-		trigger("wake"),
+		testutils.Trigger("wake"),
 		{Type: conversation.TypeInstructions, Text: litYouAreACoding},
 	})
 
@@ -305,10 +275,10 @@ func TestOrganizeCollapsesConsecutiveDuplicates(t *testing.T) {
 // Collapsing them would hide the repetition the cycle guards exist to catch.
 func TestOrganizeDoesNotCollapseRepeatedToolCalls(t *testing.T) {
 	got := conversation.Organize([]conversation.Message{
-		request("call_1", "read", `{"path":"a"}`),
-		response("call_1", "read", `{"path":"a"}`, "contents"),
-		request("call_2", "read", `{"path":"a"}`),
-		response("call_2", "read", `{"path":"a"}`, "contents"),
+		testutils.Request("call_1", "read", `{"path":"a"}`),
+		testutils.Response("call_1", "read", `{"path":"a"}`, "contents"),
+		testutils.Request("call_2", "read", `{"path":"a"}`),
+		testutils.Response("call_2", "read", `{"path":"a"}`, "contents"),
 	})
 
 	assert.Len(t, got, 4, "repeated calls must stay visible")
@@ -324,9 +294,9 @@ func TestOrganizeHandlesAnEmptyConversation(t *testing.T) {
 // record of what happened and must not be rewritten under it.
 func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 	messages := []conversation.Message{
-		request("call_1", "shell", "{}"),
+		testutils.Request("call_1", "shell", "{}"),
 		{Type: conversation.TypeBot, Text: "thinking"},
-		response("call_1", "shell", "{}", "ok"),
+		testutils.Response("call_1", "shell", "{}", "ok"),
 	}
 
 	before := kinds(messages)
@@ -342,13 +312,13 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 	chat := conversation.ToPrompt([]conversation.Message{
 		{Type: conversation.TypeInstructions, Text: litYouAreACoding},
 		// this result's call fell outside the trimmed window
-		response("gone", "read", "{}", "old contents"),
+		testutils.Response("gone", "read", "{}", "old contents"),
 		{Type: conversation.TypeUser, Text: "run the tests"},
-		request("call_1", "shell", `{"command":"go test"}`),
+		testutils.Request("call_1", "shell", `{"command":"go test"}`),
 		{Type: conversation.TypeReasoning, Text: "waiting on it"},
-		response("call_1", "shell", `{"command":"go test"}`, "ok"),
+		testutils.Response("call_1", "shell", `{"command":"go test"}`, "ok"),
 		// and this call never got an answer before the run was interrupted
-		request("call_2", "shell", `{"command":"go vet"}`),
+		testutils.Request("call_2", "shell", `{"command":"go vet"}`),
 	})
 
 	roles := make([]string, 0, len(chat))
@@ -361,7 +331,7 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 
 	assert.Equal(t, want, roles)
 
-	call, isCall := toolCallOf(chat[2])
+	call, isCall := testutils.ToolCallOf(chat[2])
 	result, isResult := chat[3].Content[0].(fantasy.ToolResultPart)
 
 	assert.True(t, isCall, "the surviving pair must reference the same call id: %+v", chat[2:])
