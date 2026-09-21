@@ -6,17 +6,21 @@ service. `cmd/cli` is the whole integration: it reads the flags and the config,
 resolves them into a provider client and engine options, renders the prompt, opens
 the session log, runs the viewer and prints the digest. Everything beneath it is a
 feature package that does one job and imports as little as it can. `loop` is the
-engine, `repeat` its repetition guards, `provider` the model connection, `failure`
-what a provider error means, `conversation` the messages and their forgetting,
-`plan`, `skills` and `tools` what the model can use, `session` the log format,
-`order` the work order, `render` the terminal text, `tui` the viewer, and `config`
-the settings and the rules for them. Only `cmd/cli` may import many of them. The
-feature packages depend on each other only where they must (`loop` on `conversation`,
-`failure` and `repeat`, `tui` on `loop` and `render`, `tools` on `plan` and
-`skills`), and `config`, `order`, `plan`, `skills`, `conversation` and `failure`
-import nothing else of the module. Nothing is importable - agent is a binary, not a
-library - and it supports Linux only: no other platform is built, tested or
-worked around.
+engine. Around it `outcome` is how a run is bounded and ended, `window` what fits
+in the context window, `request` what a model call carries, and `cycle` and
+`runaway` its repetition guards. `provider` is the model connection and `failure`
+what a provider error means and how long to wait on it. `conversation` is the
+messages, `plan`, `skills` and `tools` what the model can use, `session` the log
+format, `order` the work order, `render` the terminal text, `tui` the viewer, and
+`config` the settings and the rules for them. Only `cmd/cli` may import many of
+them. The feature packages depend on each other only where they must (`loop` on
+`conversation`, `failure`, `outcome`, `window`, `request`, `cycle` and `runaway`,
+`cycle` on `runaway`, `window` and `request` on `conversation`, `provider` on
+`failure`, `tui` on `loop` and `render`, `tools` on `plan` and `skills`), and
+`config`, `order`, `plan`, `skills`, `conversation`, `failure`, `outcome` and
+`runaway` import nothing else of the module. Nothing is importable - agent is a
+binary, not a library - and it supports Linux only: no other platform is built,
+tested or worked around.
 
 ## Working here
 
