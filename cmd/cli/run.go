@@ -1,7 +1,4 @@
-// Package run is one run of an order, from a configuration to a finished log. It resolves the provider and the engine's
-// options, renders the prompt, opens the session log, shows the run in the viewer and prints its digest. The command
-// line is only how it is asked for.
-package run
+package main
 
 import (
 	"cmp"
@@ -30,14 +27,14 @@ import (
 // The file agent looks for under each context directory.
 const agentFile = "AGENTS.md"
 
-// TaskKickoff is the user message that starts a run. The goal is in the
+// taskKickoff is the user message that starts a run. The goal is in the
 // instructions. This only has to get the agent moving.
-const TaskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
+const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
-// LoadProjectContext reads the AGENTS.md found under the given directories, searched in order (typically the config directory
+// loadProjectContext reads the AGENTS.md found under the given directories, searched in order (typically the config directory
 // then the working directory). Missing files are ignored and duplicate directories are searched once. The config's prompt
 // decides whether and where to use them, as .Project.
-func LoadProjectContext(dirs ...string) string {
+func loadProjectContext(dirs ...string) string {
 	seen := map[string]bool{}
 
 	var found []string
@@ -59,10 +56,10 @@ func LoadProjectContext(dirs ...string) string {
 	return strings.Join(found, "\n\n---\n\n")
 }
 
-// LoadSkills reads the skills folder named by skills_dir. An unset skills_dir
+// loadSkills reads the skills folder named by skills_dir. An unset skills_dir
 // means no skills. A set one that cannot be read is an error, since the config
 // asked for skills the run would otherwise silently lack.
-func LoadSkills(skillsDir string) ([]skills.Skill, error) {
+func loadSkills(skillsDir string) ([]skills.Skill, error) {
 	dir := strings.TrimSpace(skillsDir)
 	if dir == "" {
 		return nil, nil
@@ -85,8 +82,8 @@ func LoadSkills(skillsDir string) ([]skills.Skill, error) {
 	return loaded, nil
 }
 
-// Options configures a run beyond the configuration itself.
-type Options struct {
+// runOptions configures a run beyond the configuration itself.
+type runOptions struct {
 	// SessionPath is the log this run is appended to. One file per task, so a
 	// run of the same task again adds to it. Empty disables recording.
 	SessionPath string
@@ -108,9 +105,9 @@ type Options struct {
 	Viewer func(context.Context, tui.Meta, *loop.Options) (loop.Result, error)
 }
 
-// OrderEnv is what the prompt can know about the run beyond the order. The
+// orderEnv is what the prompt can know about the run beyond the order. The
 // tools it really has, where it is working, and what it is talking to.
-func OrderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
+func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, workdir, sessionPath, project string) order.Env {
 	env := order.Env{
 		Workdir:  workdir,
 		Date:     time.Now().Format("2006-01-02"),
@@ -129,9 +126,9 @@ func OrderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, w
 	return env
 }
 
-// DigestStatus maps a run's stop reason and exit code to the one human word a
+// digestStatus maps a run's stop reason and exit code to the one human word a
 // digest shows. "done", "failed", or "canceled".
-func DigestStatus(reason string, code int) string {
+func digestStatus(reason string, code int) string {
 	switch reason {
 	case string(loop.StopAborted):
 		return "canceled"
@@ -146,11 +143,11 @@ func DigestStatus(reason string, code int) string {
 	return "done"
 }
 
-// PrintDigest writes the end-of-run digest. The outcome, what the run spent,
+// printDigest writes the end-of-run digest. The outcome, what the run spent,
 // and - when the run was recorded - the session log it was appended to.
-func PrintDigest(w io.Writer, sessionPath string, result *loop.Result) {
+func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	digest := render.Digest{
-		Status:       DigestStatus(string(result.Reason), result.ExitCode()),
+		Status:       digestStatus(string(result.Reason), result.ExitCode()),
 		Session:      sessionPath,
 		Iterations:   result.Budget.Iterations,
 		Calls:        result.Budget.Calls,
@@ -162,9 +159,9 @@ func PrintDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	fmt.Fprintf(w, "\n%s", render.RenderDigest(digest))
 }
 
-// ViewerMeta describes the run to the viewer. Its budgets are the ones the run was resolved with, not the raw config, since
+// viewerMeta describes the run to the viewer. Its budgets are the ones the run was resolved with, not the raw config, since
 // a per-model max_iterations lowers the engine's limit and a bar counting to a number the run never reaches misreports it.
-func ViewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
+func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
 	// the default is a 1,000,000 fallback, which is not a budget worth displaying.
 	iterLimit := 0
@@ -183,9 +180,9 @@ func ViewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tu
 	}
 }
 
-// Resolve turns a configuration into a provider client and the agent options a
+// resolve turns a configuration into a provider client and the agent options a
 // run uses. The returned options carry no messages. Callers supply those.
-func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
+func resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*provider.Client, loop.Options, error) {
 	var empty loop.Options
 
 	providerConfig := cfg.Provider
@@ -195,7 +192,7 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 			"no provider: declare one under provider: in the config, with a base_url, an api_key and its models")
 	}
 
-	// Resolve the model against the provider's model definitions. An entry's
+	// resolve the model against the provider's model definitions. An entry's
 	// settings take priority over the run defaults.
 	model := cfg.Agent.Model
 	maxIterations := cfg.Agent.MaxIterations
@@ -275,13 +272,13 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	return client, opts, nil
 }
 
-// Run executes one autonomous coding task, rendering the agent's activity in the read-only TUI. The tools operate on the
+// runOrder executes one autonomous coding task, rendering the agent's activity in the read-only TUI. The tools operate on the
 // current working directory, so the caller chdirs into the project first. It blocks until the user quits the viewer or the
 // run errors.
-func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options) error {
+func runOrder(ctx context.Context, cfg *config.Config, o order.Order, options runOptions) error {
 	config.ScrubProviderSecrets(cfg)
 
-	client, opts, err := Resolve(ctx, cfg, options.Skills)
+	client, opts, err := resolve(ctx, cfg, options.Skills)
 	if err != nil {
 		return err
 	}
@@ -293,13 +290,13 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 
 	// There is no way to open a run with a prompt of the caller's own. Agent takes a work order, not a
 	// conversation, and anything worth saying to the agent belongs in the order, where it is durable.
-	prompt, err := o.Render(cfg.Prompt, OrderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
+	prompt, err := o.Render(cfg.Prompt, orderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {
 		return fmt.Errorf("order %s: %w", cmp.Or(o.Path, "(unsaved)"), err)
 	}
 
 	opts.Instructions = prompt
-	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: TaskKickoff}}
+	opts.Messages = []conversation.Message{{Type: conversation.TypeUser, Text: taskKickoff}}
 
 	task := o.Objective
 
@@ -326,7 +323,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	recorder := session.NewRecorder(writer, func(error) { stop() })
+	recorder := newRecorder(writer, func(error) { stop() })
 
 	// The seed is recorded before the run starts so a session that dies in its
 	// first turn still says what it was asked to do.
@@ -335,7 +332,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	opts.OnConversation = recorder.Conversation
 	opts.OnEvent = recorder.Event
 
-	meta := ViewerMeta(cfg, task, workdir, &opts)
+	meta := viewerMeta(cfg, task, workdir, &opts)
 	meta.Title = options.Title
 
 	viewer := options.Viewer
@@ -350,7 +347,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	if result.Reason != "" {
 		recorder.Result(&result)
 
-		PrintDigest(os.Stderr, writer.Path(), &result)
+		printDigest(os.Stderr, writer.Path(), &result)
 	}
 
 	if failed := recorder.Err(); failed != nil {

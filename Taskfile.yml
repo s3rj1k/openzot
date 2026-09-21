@@ -20,7 +20,7 @@ tasks:
     desc: Build agent for Linux
     cmds:
       - echo "Building agent..."
-      - CGO_ENABLED=0 {{.GO}} build -trimpath -ldflags "-s -w" -o agent ./cmd/agent
+      - CGO_ENABLED=0 {{.GO}} build -trimpath -ldflags "-s -w" -o agent ./cmd/cli
 
   test:
     desc: Run the test suite

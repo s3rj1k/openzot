@@ -1,4 +1,4 @@
-package session_test
+package main
 
 import (
 	"encoding/json"
@@ -27,12 +27,12 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint})
 	require.NoError(t, err)
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	recorder.Conversation([]conversation.Message{
 		{Type: conversation.TypeUser, Text: litAddAHealthEndpoint},
 		{Type: conversation.TypeReasoning, Text: "I should look at the router first,\nthen add the handler."},
-		{Type: conversation.TypeBot, Text: "on it"},
+		{Type: conversation.TypeBot, Text: litOnIt},
 	})
 
 	records := testutils.ReadLog(t, path)
@@ -58,7 +58,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint})
 	require.NoError(t, err)
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	messages := make([]conversation.Message, 0, 2)
 	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: litAddAHealthEndpoint})
@@ -88,7 +88,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 
 	records := testutils.ReadLog(t, path)
 
-	got := kinds(records)
+	got := testutils.Kinds(records)
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindEvent, session.KindMessage, session.KindResult}
 
 	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
@@ -127,7 +127,7 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	for _, kind := range []loop.EventKind{loop.EventToken, loop.EventReasoningToken} {
 		recorder.Event(loop.Event{Kind: kind, Text: "hello", Iteration: 1})
@@ -139,7 +139,7 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	records := testutils.ReadLog(t, path)
 
-	require.Equal(t, fmt.Sprint([]session.Kind{session.KindMeta, session.KindEvent}), fmt.Sprint(kinds(records)), "want the meta and the one real event")
+	require.Equal(t, fmt.Sprint([]session.Kind{session.KindMeta, session.KindEvent}), fmt.Sprint(testutils.Kinds(records)), "want the meta and the one real event")
 
 	assert.Equal(t, "iteration", records[1].Event.Kind)
 }
@@ -152,7 +152,7 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 
 	var told []error
 
-	recorder := session.NewRecorder(writer, func(err error) { told = append(told, err) })
+	recorder := newRecorder(writer, func(err error) { told = append(told, err) })
 
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
@@ -178,7 +178,7 @@ func TestARecorderKeepsAFailureNobodyAskedAbout(t *testing.T) {
 
 	writer.Close()
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
 	require.Error(t, recorder.Err())
@@ -190,7 +190,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	writer, err := session.Open(path, session.Meta{Task: "x"})
 	require.NoError(t, err)
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	recorder.Result(&loop.Result{
 		Reason:  loop.StopError,
@@ -224,7 +224,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 	writer, err := session.Open(path, session.Meta{Task: "x"})
 	require.NoError(t, err)
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	messages := make([]conversation.Message, 0, 3)
 	messages = append(messages,
@@ -261,7 +261,7 @@ func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 
 	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	recorder := session.NewRecorder(writer, nil)
+	recorder := newRecorder(writer, nil)
 
 	recorder.Event(loop.Event{Kind: loop.EventUsage, InputTokens: 567000, OutputTokens: 1200, Iteration: 4})
 
@@ -282,7 +282,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 
 		writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-		session.NewRecorder(writer, nil).Result(&loop.Result{Reason: reason})
+		newRecorder(writer, nil).Result(&loop.Result{Reason: reason})
 
 		records := testutils.ReadLog(t, path)
 
@@ -297,7 +297,7 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 
 	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	session.NewRecorder(writer, nil).Conversation([]conversation.Message{{
+	newRecorder(writer, nil).Conversation([]conversation.Message{{
 		Type: conversation.TypeActivity,
 		Text: "ok",
 		Activity: &conversation.Activity{

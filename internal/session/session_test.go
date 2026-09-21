@@ -18,16 +18,6 @@ import (
 	"github.com/openzot/openzot/internal/testutils"
 )
 
-func kinds(records []session.Record) []session.Kind {
-	out := make([]session.Kind, 0, len(records))
-
-	for _, record := range records {
-		out = append(out, record.Kind)
-	}
-
-	return out
-}
-
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".agent", "orders", "1758300000.jsonl")
 
@@ -87,7 +77,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 		require.NoError(t, step(), "step %d", i+1)
 	}
 
-	got := kinds(testutils.ReadLog(t, path))
+	got := testutils.Kinds(testutils.ReadLog(t, path))
 
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindMessage, session.KindMessage, session.KindEvent, session.KindResult}
 
@@ -177,7 +167,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 
 	require.True(t, bytes.HasPrefix(after, before), "the second run changed what the first run wrote")
 
-	got := kinds(testutils.ReadLog(t, path))
+	got := testutils.Kinds(testutils.ReadLog(t, path))
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindResult, session.KindMeta, session.KindMessage, session.KindResult}
 
 	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "records = %v, want two runs one after the other", got)

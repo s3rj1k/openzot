@@ -133,3 +133,14 @@ func SilenceStderr(t *testing.T) {
 		devNull.Close()
 	})
 }
+
+// Kinds is the kind of each record of a session log, in order.
+func Kinds(records []session.Record) []session.Kind {
+	out := make([]session.Kind, 0, len(records))
+
+	for _, record := range records {
+		out = append(out, record.Kind)
+	}
+
+	return out
+}

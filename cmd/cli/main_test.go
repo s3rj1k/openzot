@@ -277,7 +277,7 @@ func TestRunEndToEnd(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	server := testutils.Script(t,
-		testutils.Frames(testutils.Text("on it"), testutils.Stop()),
+		testutils.Frames(testutils.Text(litOnIt), testutils.Stop()),
 		testutils.Frames(testutils.Settle("complete")),
 	)
 
@@ -301,18 +301,15 @@ provider:
 
 	require.NoError(t, os.WriteFile(configPath, []byte(configYAML), 0o644))
 
-	withArgs(t, "--config", configPath, litDir, workdir, orderFile(t, "do the thing"))
+	withArgs(t, "--config", configPath, litDir, workdir, orderFile(t, litDoTheThing))
 
 	output, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err, "run")
 
-	for _, want := range []string{"do the thing", "on it", "complete"} {
+	for _, want := range []string{litDoTheThing, litOnIt, "complete"} {
 		assert.Contains(t, output, want)
 	}
 }
-
-// contractHeading is how the contract is spotted in an assembled prompt.
-const contractHeading = "## Non-interactive contract"
 
 // The whole loop of the new order. Agent new scaffolds the order, the operator writes the goal, and what the model is sent
 // is the seeded config's prompt rendered, with the goal, the real tools, AGENTS.md and the contract once.
@@ -399,10 +396,10 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	// every path on the command line is relative to the invoking directory -
 	// none of them exist inside --dir, so they must resolve before the chdir
-	require.NoError(t, os.WriteFile("order.md", []byte(orderText("do the thing")), 0o644))
+	require.NoError(t, os.WriteFile("order.md", []byte(orderText(litDoTheThing)), 0o644))
 
 	server := testutils.Script(t,
-		testutils.Frames(testutils.Text("on it"), testutils.Stop()),
+		testutils.Frames(testutils.Text(litOnIt), testutils.Stop()),
 		testutils.Frames(testutils.Settle("complete")),
 	)
 
@@ -424,7 +421,7 @@ provider:
 	output, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err, "run")
 
-	for _, want := range []string{"do the thing", "on it", "complete"} {
+	for _, want := range []string{litDoTheThing, litOnIt, "complete"} {
 		assert.Contains(t, output, want)
 	}
 

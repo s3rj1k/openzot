@@ -1,4 +1,4 @@
-package session
+package main
 
 import (
 	"fmt"
@@ -6,13 +6,14 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/session"
 )
 
-// Recorder writes a run into a session log as the engine hands it over. The engine knows nothing of files. A line that
+// A recorder writes a run into a session log as the engine hands it over. The engine knows nothing of files. A line that
 // cannot be written is not ignored, since the log is the agent's long-term memory and the operator's only record. The first
-// failure is kept and reported through the NewRecorder callback, so the caller can end the run.
-type Recorder struct {
-	writer    *Writer
+// failure is kept and reported through the newRecorder callback, so the caller can end the run.
+type recorder struct {
+	writer    *session.Writer
 	onFailure func(error)
 
 	// recorded is how many messages of the conversation are in the log already.
@@ -22,17 +23,17 @@ type Recorder struct {
 	failed error
 }
 
-// NewRecorder wraps a writer. OnFailure, when set, is called once, with the first
+// The newRecorder function wraps a writer. The callback, when set, is called once, with the first
 // write that fails.
-func NewRecorder(writer *Writer, onFailure func(error)) *Recorder {
-	return &Recorder{writer: writer, onFailure: onFailure}
+func newRecorder(writer *session.Writer, onFailure func(error)) *recorder {
+	return &recorder{writer: writer, onFailure: onFailure}
 }
 
 // Err is the first write that failed, or nil if every one went through.
-func (r *Recorder) Err() error { return r.failed }
+func (r *recorder) Err() error { return r.failed }
 
 // wrote keeps the first failure and reports it.
-func (r *Recorder) wrote(err error) {
+func (r *recorder) wrote(err error) {
 	if err == nil || r.failed != nil {
 		return
 	}
@@ -47,7 +48,7 @@ func (r *Recorder) wrote(err error) {
 // Conversation records what the conversation has gained since the last call. It only ever grows, so this takes the whole
 // of it and writes the unseen tail. Called with the seed messages, it records them ahead of the run, so a session that dies
 // in its first turn still says what it was asked to do.
-func (r *Recorder) Conversation(messages []conversation.Message) {
+func (r *recorder) Conversation(messages []conversation.Message) {
 	for r.recorded < len(messages) {
 		r.wrote(r.writer.Message(messages[r.recorded]))
 
@@ -57,7 +58,7 @@ func (r *Recorder) Conversation(messages []conversation.Message) {
 
 // Event records something that happened. Token-by-token narration is dropped, since the finished message carries the
 // same content and keeping it would make the log ten times larger.
-func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it is loop.Options.OnEvent, which takes the event by value
+func (r *recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it is loop.Options.OnEvent, which takes the event by value
 	if event.Kind == loop.EventToken || event.Kind == loop.EventReasoningToken {
 		return
 	}
@@ -70,12 +71,12 @@ func (r *Recorder) Event(event loop.Event) { //nolint:gocritic // hugeParam: it 
 		text = fmt.Sprintf("input %d output %d", event.InputTokens, event.OutputTokens)
 	}
 
-	r.wrote(r.writer.Event(Event{Kind: string(event.Kind), Tool: event.Tool, Text: text, Iteration: event.Iteration}))
+	r.wrote(r.writer.Event(session.Event{Kind: string(event.Kind), Tool: event.Tool, Text: text, Iteration: event.Iteration}))
 }
 
 // Result records the ending. The last of the conversation, then the outcome, which
 // closes the log.
-func (r *Recorder) Result(result *loop.Result) {
+func (r *recorder) Result(result *loop.Result) {
 	// the run's last turn happened after the final hand-over, so the ending is
 	// written down here
 	r.Conversation(result.Messages)
@@ -86,7 +87,7 @@ func (r *Recorder) Result(result *loop.Result) {
 		cause = result.Err.Error()
 	}
 
-	r.wrote(r.writer.Result(Result{
+	r.wrote(r.writer.Result(session.Result{
 		Reason:        string(result.Reason),
 		Message:       result.Message,
 		Error:         cause,

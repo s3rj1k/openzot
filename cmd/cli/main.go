@@ -17,7 +17,6 @@ import (
 
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/run"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -27,19 +26,19 @@ var (
 	isTerminal = tui.IsInteractive
 	runViewer  = tui.Run
 
-	// The engine entry point - run.Run everywhere in production,
+	// The engine entry point - runOrder everywhere in production,
 	// replaced by tests so no provider is ever reached.
-	execute = run.Run
+	execute = runOrder
 )
 
 // orderOptions is how an order is run. Its log goes in logs, named after it, and
 // the viewer calls it by its title, or by its file name.
-func orderOptions(logs string, o order.Order) run.Options {
+func orderOptions(logs string, o order.Order) runOptions {
 	// The log is the order's name with .jsonl for an extension, so the record of a task sits beside it.
 	// One file per task, and every run appends to it.
 	base := filepath.Base(o.Path)
 
-	return run.Options{
+	return runOptions{
 		SessionPath: filepath.Join(logs, strings.TrimSuffix(base, filepath.Ext(base))+".jsonl"),
 		Title:       o.DisplayTitle(),
 	}
@@ -193,11 +192,11 @@ func command() error {
 	// Fold in AGENTS.md from the config directory, then the working directory
 	// (project-level context wins / appends last).
 	workDir, _ := os.Getwd()
-	project := run.LoadProjectContext(configDir, workDir)
+	project := loadProjectContext(configDir, workDir)
 
 	// Skills are read once, here, into memory. The run offers them through the skills tool and never
 	// touches the folder again. Loaded after the chdir, so a relative skills_dir means the project.
-	offered, err := run.LoadSkills(cfg.SkillsDir)
+	offered, err := loadSkills(cfg.SkillsDir)
 	if err != nil {
 		return err
 	}
