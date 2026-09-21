@@ -8,23 +8,12 @@ import (
 	"text/template"
 )
 
-// The prompt an order is run with.
-//
-// An order's body is a Go text/template. What it can read is documented in the
-// front matter of the file zot new writes - the order's own fields, a few facts
-// about the run, and three functions - and is defined by Env and data here.
+// The prompt an order is run with. An order's body is a Go text/template. What it can read is documented in the front
+// matter `zot new` writes (the order's fields, a few facts about the run, and three functions) and defined by Env and data.
 
-// Contract is the half of the prompt no order may leave out. Every other prompt
-// rule is a preference. This one is a fact about the machine the agent is running
-// on. Zot has no input channel at all - a run is a work order, a provider and a
-// read-only viewer - so an agent that asks a question is not answered tersely, it
-// is not answered at all. It waits until a guard kills the run, and everything it
-// had not yet written is lost. That failure is silent and expensive, and it costs
-// a whole run to discover, so the contract is re-attached to whatever an order
-// renders to rather than left to whoever wrote it.
-//
-// It is written to stand alone, naming the terminal tools itself, because an
-// order's own prompt need not mention them at all.
+// Contract is the half of the prompt no order may leave out. Zot has no input channel, so an agent that asks a question
+// is not answered but waits until a guard kills the run, losing what it had not written. That is silent and costly, so it is
+// re-attached to whatever an order renders to. It names the terminal tools itself, since an order's prompt need not.
 const Contract = `## Non-interactive contract
 
 Nothing you address to the user is delivered. There is no reader, no reply, and no approval on its way. A question you ask is discarded unheard, and a run that stops to wait for an answer waits until a guard kills it, losing the work it had not yet finished.
@@ -60,10 +49,8 @@ const promptRules = `Operating rules:
 - Never run interactive or long-lived commands.
 - Act, do not narrate. The deliverable is the changed working tree, not an explanation of it; there is no reader to address. Do not pause to summarize, interpret, or analyze tool output - keep working, and use "tasks" for status.`
 
-// promptMemory tells the agent where its long-term memory is. The context window
-// is short-term memory and is forgotten oldest first as it fills. The session log
-// keeps every message, so a model that knows it exists can go back for what it
-// lost. Every run has one. Zot will not run without one.
+// promptMemory tells the agent where its long-term memory is. The context window forgets oldest first, while the session
+// log keeps every message, so a model that knows it exists can go back for what it lost. Every run has one.
 const promptMemory = `
 
 ## Memory
@@ -84,11 +71,8 @@ const promptProject = `
 {{ .Project }}
 {{- end }}`
 
-// promptTask is where the goal goes. It lives in the system prompt rather
-// than as a user message so it survives trimming. The oldest messages are dropped
-// first to fit the window, so a user message can fall out of a long run, and an
-// autonomous agent that forgets its own goal is the worst way for a run to
-// fail. The instructions are never dropped and always ordered first.
+// promptTask is where the goal goes. It lives in the system prompt, not a user message, so it survives trimming, since the
+// oldest messages are dropped first and an agent that forgets its own goal fails worst. Instructions are never dropped.
 const promptTask = `
 
 ## Your task
@@ -231,15 +215,9 @@ func (o Order) execute(env Env, funcs template.FuncMap) (string, error) {
 
 func inc(n int) int { return n + 1 }
 
-// functions are what a prompt may call.
-//
-//   - file "path" inlines a file. Relative to the working directory, or absolute,
-//     or under ~. A house style guide or a checklist stays a file of its own.
-//   - env "NAME" reads an environment variable.
-//   - inc N is N+1, for numbering a list. Templates have no arithmetic of their own.
-//
-// An order is trusted the way a script is. It can already tell the agent to run
-// anything, so what it can read into its own prompt is no larger a power.
+// The template functions are what a prompt may call. The file function inlines a file, env reads an environment variable,
+// and inc adds one, for numbering a list. An order is trusted the way a script is, since it can already tell the agent to
+// run anything.
 func functions(workdir string) template.FuncMap {
 	return template.FuncMap{
 		"file": func(path string) (string, error) {
@@ -286,11 +264,9 @@ func (o Order) Render(env Env) (string, error) {
 	return strings.TrimRight(rendered, "\n") + "\n\n" + Contract, nil
 }
 
-// check runs the prompt once against stand-in data, so that a template that
-// cannot be rendered - a syntax error, a field that does not exist - is found
-// when the order is loaded. The stand-in fills every field, so the branches that
-// depend on a field being there are exercised too. The file and env functions are
-// stubs, as what they read is a fact about the machine, not about the order.
+// check runs the prompt once against stand-in data, so a template that cannot render is found when the order is loaded. The
+// stand-in fills every field, so branches that depend on one are exercised too. The file and env functions are stubs,
+// since what they read is a fact about the machine, not the order.
 func (o Order) check() error {
 	stub := template.FuncMap{
 		"file": func(string) (string, error) { return "", nil },
