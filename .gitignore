@@ -1,10 +1,10 @@
-/zot
+/agent
 /.local/
-/.zot/
+/.agent/
 
-configs/zot.yaml
+configs/agent.yaml
 
-# Go workspace files, if anyone creates one locally. zot has no local module
+# Go workspace files, if anyone creates one locally. agent has no local module
 # dependencies, so a go.work here is only ever a personal experiment - and one
 # that will cap the toolchain below what go.mod requires if its go line drifts.
 go.work

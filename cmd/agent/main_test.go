@@ -98,8 +98,8 @@ func withArgs(t *testing.T, args ...string) {
 	// command chdirs into --dir. This registers the return to where the test began
 	t.Chdir(".")
 
-	os.Args = append([]string{"zot"}, args...)
-	pflag.CommandLine = pflag.NewFlagSet("zot", pflag.ContinueOnError)
+	os.Args = append([]string{"agent"}, args...)
+	pflag.CommandLine = pflag.NewFlagSet("agent", pflag.ContinueOnError)
 	pflag.CommandLine.SetOutput(io.Discard)
 
 	t.Cleanup(func() {
@@ -108,7 +108,7 @@ func withArgs(t *testing.T, args ...string) {
 	})
 }
 
-// With no terminal there is nothing to show a run in, so zot rejects before it
+// With no terminal there is nothing to show a run in, so agent rejects before it
 // reads an order or touches a provider.
 func TestRunNeedsATerminal(t *testing.T) {
 	original := isTerminal
@@ -141,8 +141,8 @@ provider:
 	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "a task"))
 
 	err := command()
-	require.Error(t, err, "want it to say zot needs a terminal")
-	require.Contains(t, err.Error(), "terminal", "want it to say zot needs a terminal")
+	require.Error(t, err, "want it to say agent needs a terminal")
+	require.Contains(t, err.Error(), "terminal", "want it to say agent needs a terminal")
 
 	assert.EqualValues(t, 0, requests.Load(), "a run with no terminal must not reach the provider")
 }
@@ -184,7 +184,7 @@ func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	_, err := loadOrder([]string{"add a health endpoint"})
 	require.Error(t, err)
 
-	assert.Contains(t, err.Error(), "zot new", "the error should point at `zot new`")
+	assert.Contains(t, err.Error(), "agent new", "the error should point at `agent new`")
 }
 
 // quietStderr silences stderr for a test that by design triggers the usage
@@ -213,11 +213,11 @@ func TestLoadOrderNeedsExactlyOne(t *testing.T) {
 
 	_, err := loadOrder(nil)
 	require.Error(t, err, "want it to say how to write one")
-	assert.Contains(t, err.Error(), "zot new", "want it to say how to write one")
+	assert.Contains(t, err.Error(), "agent new", "want it to say how to write one")
 
 	_, err = loadOrder([]string{orderFile(t, "a"), orderFile(t, "b")})
-	require.Error(t, err, "want it to say zot runs one at a time")
-	assert.Contains(t, err.Error(), "one order per invocation", "want it to say zot runs one at a time")
+	require.Error(t, err, "want it to say agent runs one at a time")
+	assert.Contains(t, err.Error(), "one order per invocation", "want it to say agent runs one at a time")
 }
 
 // withEditor makes $VISUAL a script that runs the given shell body against the
@@ -288,22 +288,22 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 
 	text := builder.String()
 
-	for _, want := range []string{"zot [flags] <order.md>", "zot new", "zot config", litDir, ".jsonl"} {
+	for _, want := range []string{"agent [flags] <order.md>", "agent new", "agent config", litDir, ".jsonl"} {
 		assert.Contains(t, text, want, "usage does not mention %q", want)
 	}
 
-	// --dir belongs to both shapes. Where a run works, and where `zot new`
+	// --dir belongs to both shapes. Where a run works, and where `agent new`
 	// scaffolds - someone standing outside the project needs it either way
 	n := strings.Count(text, litDir)
-	assert.GreaterOrEqual(t, n, 2, "usage should document --dir for both running an order and `zot new` (%d mentions):\n%s", n, text)
+	assert.GreaterOrEqual(t, n, 2, "usage should document --dir for both running an order and `agent new` (%d mentions):\n%s", n, text)
 
 	// The book is a convention, so --help is where someone finds out where
 	// their orders went.
-	assert.Contains(t, text, order.BookDir+"/orders", "usage does not say where zot new files an order")
+	assert.Contains(t, text, order.BookDir+"/orders", "usage does not say where agent new files an order")
 
 	assert.NotContains(t, text, "--orders-dir", "usage still mentions --orders-dir")
 
-	// ACP is gone. Zot runs unattended and has no protocol server
+	// ACP is gone. Agent runs unattended and has no protocol server
 	assert.NotContains(t, strings.ToLower(text), "acp", "usage still mentions acp")
 
 	// nothing is resumed, skipped or recorded between runs, and the help must
@@ -313,10 +313,10 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 	}
 }
 
-// The CLI uses pflag, so a flag may come after the positional order paths, as in `zot orders/a.md --dir proj`. The stdlib flag
+// The CLI uses pflag, so a flag may come after the positional order paths, as in `agent orders/a.md --dir proj`. The stdlib flag
 // package stopped at the first non-flag and folded the flag into the positionals, which motivated the switch.
 func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
-	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
+	set := pflag.NewFlagSet("agent", pflag.ContinueOnError)
 	dir := set.String("dir", ".", "")
 
 	require.NoError(t, set.Parse([]string{"a.md", "b.md", litDir, "proj"}))
@@ -368,7 +368,7 @@ func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
 }
 
 // captureStderr collects what a function prints to stderr. Stdout and stderr are
-// worth telling apart. Stdout is the transcript, stderr is where zot talks about
+// worth telling apart. Stdout is the transcript, stderr is where agent talks about
 // itself, and something that belongs on one must not leak onto the other.
 func captureStderr(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
@@ -400,7 +400,7 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 }
 
 func TestRunConfigPath(t *testing.T) {
-	t.Setenv("ZOT_CONFIG", "/some/where/config.yaml")
+	t.Setenv("AGENT_CONFIG", "/some/where/config.yaml")
 
 	withArgs(t, "config", "path")
 
@@ -485,7 +485,7 @@ provider:
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// The whole loop of the new order. Zot new scaffolds the order, the operator writes the goal, and what the model is sent
+// The whole loop of the new order. Agent new scaffolds the order, the operator writes the goal, and what the model is sent
 // is the seeded config's prompt rendered, with the goal, the real tools, AGENTS.md and the contract once.
 func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 	project := t.TempDir()
@@ -529,7 +529,7 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	// the config is the one `zot config` seeds, pointed at the test server
+	// the config is the one `agent config` seeds, pointed at the test server
 	seeded := strings.Replace(string(configs.ExampleConfigYAML), "https://gateway.internal.example.com/v1", server.URL, 1)
 	mustWrite(t, configPath, seeded)
 
@@ -555,7 +555,7 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 }
 
 // A run pointed at another directory works end to end. Relative paths on the command line resolve from the invoking directory
-// before zot chdirs into --dir, the session records the real working directory, and project context comes from --dir.
+// before agent chdirs into --dir, the session records the real working directory, and project context comes from --dir.
 func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	invocation := t.TempDir()
 
@@ -634,7 +634,7 @@ provider:
 	assert.True(t, sawSkill.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
 
 	// the log lands in the project being worked on, named after the order
-	records := readLog(t, filepath.Join(target, ".zot", "orders", "order.jsonl"))
+	records := readLog(t, filepath.Join(target, ".agent", "orders", "order.jsonl"))
 
 	assert.NotNil(t, records[0].Meta)
 	assert.Equal(t, target, records[0].Meta.Workdir)
@@ -687,7 +687,7 @@ provider:
 		_, err := captureStdout(t, command)
 		require.NoError(t, err)
 
-		records := readLog(t, filepath.Join(project, ".zot", "orders", "first.jsonl"))
+		records := readLog(t, filepath.Join(project, ".agent", "orders", "first.jsonl"))
 
 		assert.NotNil(t, records[0].Meta, "want the order's objective as the task")
 		assert.Equal(t, "the first order", records[0].Meta.Task, "want the order's objective as the task")
@@ -748,7 +748,7 @@ provider: {}
 	require.Error(t, command(), "an unreachable provider must fail before any request")
 }
 
-// zot carries no prompt of its own, so a config without one is rejected before anything else, and the error says how to get one.
+// agent carries no prompt of its own, so a config without one is rejected before anything else, and the error says how to get one.
 func TestRunRefusesAConfigWithNoPrompt(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
@@ -760,7 +760,7 @@ func TestRunRefusesAConfigWithNoPrompt(t *testing.T) {
 	require.Error(t, err)
 
 	assert.Contains(t, err.Error(), "prompt")
-	assert.Contains(t, err.Error(), "zot config")
+	assert.Contains(t, err.Error(), "agent config")
 }
 
 func TestRunRejectsAMissingConfigFile(t *testing.T) {
@@ -769,7 +769,7 @@ func TestRunRejectsAMissingConfigFile(t *testing.T) {
 	require.Error(t, command(), "an explicit but missing --config must be an error")
 }
 
-// A run leaves a record. One log per order, in .zot/orders of the project,
+// A run leaves a record. One log per order, in .agent/orders of the project,
 // with the task and the outcome. Running the order again appends a new run to
 // the same log rather than starting another file.
 func TestRunRecordsASession(t *testing.T) {
@@ -811,7 +811,7 @@ provider:
 	_, err := captureStdout(t, command)
 	require.NoError(t, err)
 
-	logPath := filepath.Join(workdir, ".zot", "orders", "1758300000.jsonl")
+	logPath := filepath.Join(workdir, ".agent", "orders", "1758300000.jsonl")
 
 	first := readLog(t, logPath)
 
@@ -931,7 +931,7 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 	}
 }
 
-// The example config is what `zot config` writes on first run, so its knobs drifting from the code's defaults would give a copier
+// The example config is what `agent config` writes on first run, so its knobs drifting from the code's defaults would give a copier
 // different behavior from someone with no config file. The provider and model are the exception, since there are no defaults for them.
 func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 	var example config.Config

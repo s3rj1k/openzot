@@ -91,7 +91,7 @@ func TestCycleDetailCoversEveryHeuristic(t *testing.T) {
 	assert.Empty(t, detail, "an unknown heuristic should fall back to the generic notice, got %q", detail)
 }
 
-// A caller scripting against zot tells success from everything else by the exit
+// A caller scripting against agent tells success from everything else by the exit
 // code. Only a run that settled is a success.
 func TestExitCodeSeparatesSuccessFromEverythingElse(t *testing.T) {
 	for reason, want := range map[loop.StopReason]int{

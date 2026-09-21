@@ -2,7 +2,7 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// The brand color (accent) is zot's neutral identity. The rest are
+// The brand color (accent) is agent's neutral identity. The rest are
 // fixed semantic and neutral colors for state and log text.
 var (
 	colAccent = lipgloss.Color("#6B7280") // neutral slate (brand accent)

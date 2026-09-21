@@ -14,7 +14,7 @@ import (
 // frontMatterBlank is the data block a new order starts from. The goal is
 // left empty, so the order will not run until it is written.
 const frontMatterBlank = `---
-# zot work order. This block says what to do and what "done" means. The system
+# agent work order. This block says what to do and what "done" means. The system
 # prompt that turns it into a run is the config's, under prompt:.
 
 # An optional short label for this order, shown in the viewer. Without

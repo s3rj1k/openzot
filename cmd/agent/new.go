@@ -44,8 +44,8 @@ func openInEditor(path string) error {
 	return cmd.Run()
 }
 
-// newOrder creates a blank work order under ./.zot/orders (or <dir>/.zot/orders with --dir) and opens it in the editor, the way
-// `zot config` opens the config. It takes no prose, so the goal, criteria and constraints are written in the file where they can be
+// newOrder creates a blank work order under ./.agent/orders (or <dir>/.agent/orders with --dir) and opens it in the editor, the way
+// `agent config` opens the config. It takes no prose, so the goal, criteria and constraints are written in the file where they can be
 // reviewed. The file is named for its creation moment, so orders sort as written. --dir is for a project elsewhere.
 func newOrder(args []string, out io.Writer) error {
 	set := pflag.NewFlagSet("new", pflag.ContinueOnError)
@@ -57,7 +57,7 @@ func newOrder(args []string, out io.Writer) error {
 	}
 
 	if set.NArg() > 0 {
-		return errors.New("zot new takes no arguments: it opens a blank order in your editor - write the objective there")
+		return errors.New("agent new takes no arguments: it opens a blank order in your editor - write the objective there")
 	}
 
 	path, err := order.Create(order.OrdersDir(*dir), time.Now())
@@ -71,7 +71,7 @@ func newOrder(args []string, out io.Writer) error {
 		return err
 	}
 
-	// An order left exactly as made is not an order, and a blank one in .zot/orders would only fail
+	// An order left exactly as made is not an order, and a blank one in .agent/orders would only fail
 	// when someone ran it. Nothing was written, so nothing is kept.
 	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() { //nolint:gosec // G304: the order path is the one the operator named
 		if err := os.Remove(path); err != nil {
@@ -83,7 +83,7 @@ func newOrder(args []string, out io.Writer) error {
 		return nil
 	}
 
-	fmt.Fprintf(out, "wrote %s\n\nrun it with:\n\n  zot %s\n", path, path)
+	fmt.Fprintf(out, "wrote %s\n\nrun it with:\n\n  agent %s\n", path, path)
 
 	return nil
 }

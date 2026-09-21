@@ -1,6 +1,6 @@
-// Command zot is an automated software factory you watch, not drive. It takes work orders, not prompts. An order is one file,
+// Command agent is an automated software factory you watch, not drive. It takes work orders, not prompts. An order is one file,
 // a front matter block (goal, acceptance criteria, constraints) that the config's prompt template reads, run as one autonomous
-// run while the terminal streams a read-only view. The commands are `zot config`, `zot new` and `zot <order.md>`.
+// run while the terminal streams a read-only view. The commands are `agent config`, `agent new` and `agent <order.md>`.
 package main
 
 import (
@@ -46,41 +46,41 @@ func orderOptions(logs string, o order.Order) run.Options {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `zot - an automated software factory powered by an autonomous coding harness
+	fmt.Fprintln(os.Stderr, `agent - an automated software factory powered by an autonomous coding harness
 
-zot takes work orders, not prompts. A work order is one file: a front matter
+Agent takes work orders, not prompts. A work order is one file: a front matter
 block with the durable objective, the acceptance criteria that define "done",
 and the constraints the work must hold to. The system prompt is the config's,
 a Go template under prompt: that reads the order. Each order is one autonomous
 run.
 
 Usage:
-  zot [flags] <order.md>
-  zot new [--dir <dir>]
-  zot config
+  agent [flags] <order.md>
+  agent new [--dir <dir>]
+  agent config
 
 Examples:
-  zot new
-  zot .zot/orders/1758300000.md
-  zot --dir ./scratch .zot/orders/1758300000.md
+  agent new
+  agent .agent/orders/1758300000.md
+  agent --dir ./scratch .agent/orders/1758300000.md
 
-zot new files an order under .zot/orders in the project, named for the moment it
+agent new files an order under .agent/orders in the project, named for the moment it
 was made, and opens it in your editor; you then run it by naming it. An order
-can live anywhere - running one needs no .zot directory at all - and zot runs
-one order per invocation: to run several, run zot once for each.
+can live anywhere - running one needs no .agent directory at all - and agent runs
+one order per invocation: to run several, run agent once for each.
 
 Every run starts from zero. Nothing of an earlier run of the same order is
 continued or skipped, so running an order again is running it fresh.
 
-Every run is recorded. The log is one file per order, .zot/orders/<name>.jsonl
+Every run is recorded. The log is one file per order, .agent/orders/<name>.jsonl
 in the project being worked on (--dir), appended to line by line as the run
 goes: a meta line, a line for each message and event, and the outcome. Running
-the order again adds a new run to the same file. Nothing in zot reads it back;
+the order again adds a new run to the same file. Nothing in agent reads it back;
 it is a record for you, with cat and jq.
 
 Commands:
-  new        create a work order under ./.zot/orders - under <dir>/.zot/orders
-             with --dir - and open it in $EDITOR, the way zot config does. The file holds
+  new        create a work order under ./.agent/orders - under <dir>/.agent/orders
+             with --dir - and open it in $EDITOR, the way agent config does. The file holds
              a blank objective: write it, with the acceptance criteria and constraints.
              It takes no prose
   config     edit the config file in $EDITOR (creates it on first run)
@@ -90,17 +90,17 @@ Flags:`)
 }
 
 // loadOrder loads the one order this invocation is about. It explains itself
-// rather than failing silently when there is none or more than one. Zot runs a
+// rather than failing silently when there is none or more than one. Agent runs a
 // single order per invocation, and running several is a shell loop away.
 func loadOrder(args []string) (order.Order, error) {
 	switch len(args) {
 	case 0:
 		usage()
 
-		return order.Order{}, errors.New("no order given (write one with `zot new`)")
+		return order.Order{}, errors.New("no order given (write one with `agent new`)")
 	case 1:
 	default:
-		return order.Order{}, fmt.Errorf("zot runs one order per invocation; %d were named - run them one at a time", len(args))
+		return order.Order{}, fmt.Errorf("agent runs one order per invocation; %d were named - run them one at a time", len(args))
 	}
 
 	path := args[0]
@@ -110,7 +110,7 @@ func loadOrder(args []string) (order.Order, error) {
 		// The retraining moment. Someone typed prose where an order file goes. The
 		// error has to teach the new shape, not just report a missing file.
 		if _, statErr := os.Stat(path); statErr != nil && strings.ContainsAny(path, " \t") {
-			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  zot new")
+			return order.Order{}, errors.New("work orders are files, not prose - write the order first:\n\n  agent new")
 		}
 
 		return order.Order{}, err
@@ -125,8 +125,8 @@ func loadOrder(args []string) (order.Order, error) {
 }
 
 func command() error {
-	// `zot config` opens the config file in $EDITOR, seeding it from the embedded
-	// template on first run. `zot config path` prints its location.
+	// `agent config` opens the config file in $EDITOR, seeding it from the embedded
+	// template on first run. `agent config path` prints its location.
 	if len(os.Args) > 1 && os.Args[1] == "config" {
 		if len(os.Args) > 2 && os.Args[2] == "path" {
 			fmt.Println(config.DefaultConfigPath())
@@ -136,13 +136,13 @@ func command() error {
 		return editConfig()
 	}
 
-	// `zot new` scaffolds an order. The pause between writing it and running it is where acceptance
-	// criteria get written, and it keeps zot from feeling like a prompt box.
+	// `agent new` scaffolds an order. The pause between writing it and running it is where acceptance
+	// criteria get written, and it keeps agent from feeling like a prompt box.
 	if len(os.Args) > 1 && os.Args[1] == "new" {
 		return newOrder(os.Args[2:], os.Stdout)
 	}
 
-	configPath := pflag.String("config", "", "path to zot config (default: "+config.DefaultConfigPath()+", optional)")
+	configPath := pflag.String("config", "", "path to agent config (default: "+config.DefaultConfigPath()+", optional)")
 	dir := pflag.String("dir", ".", "working directory the agent reads, writes and runs commands in")
 	pflag.Usage = usage
 
@@ -151,10 +151,10 @@ func command() error {
 	// The run is shown in the viewer and nowhere else, so with no terminal there is nothing to show it in.
 	// Say so before any order is read or any provider is touched.
 	if !isTerminal() {
-		return errors.New("zot runs in a terminal: stdout is not one")
+		return errors.New("agent runs in a terminal: stdout is not one")
 	}
 
-	// Every run leaves a log beside its orders in .zot/. The path is made absolute while the original
+	// Every run leaves a log beside its orders in .agent/. The path is made absolute while the original
 	// working directory is current, so a relative --dir means what the user typed.
 	logs := order.OrdersDir(*dir)
 	if abs, err := filepath.Abs(logs); err == nil {
@@ -219,7 +219,7 @@ func command() error {
 
 func main() {
 	if err := command(); err != nil {
-		fmt.Fprintln(os.Stderr, "zot: "+err.Error())
+		fmt.Fprintln(os.Stderr, "agent: "+err.Error())
 		os.Exit(1)
 	}
 }

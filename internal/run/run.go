@@ -26,7 +26,7 @@ import (
 	"github.com/openzot/openzot/internal/tui"
 )
 
-// The file zot looks for under each context directory.
+// The file agent looks for under each context directory.
 const agentFile = "AGENTS.md"
 
 // TaskKickoff is the user message that starts a run. The goal is in the
@@ -271,7 +271,7 @@ func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options
 	// The config's prompt, filled in from the order, is the system prompt. The goal, criteria and constraints survive
 	// trimming there, and the opening user message only gets the agent moving. Rendered after the secrets leave the environment.
 
-	// There is no way to open a run with a prompt of the caller's own. Zot takes a work order, not a
+	// There is no way to open a run with a prompt of the caller's own. Agent takes a work order, not a
 	// conversation, and anything worth saying to the agent belongs in the order, where it is durable.
 	prompt, err := o.Render(cfg.Prompt, OrderEnv(cfg, client, &opts, workdir, options.SessionPath, options.Project))
 	if err != nil {

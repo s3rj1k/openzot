@@ -92,7 +92,7 @@ func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool)
 		return nil, false
 	}
 
-	// Zot's activities always carry their arguments, and only a response carries a result. A record
+	// Agent's activities always carry their arguments, and only a response carries a result. A record
 	// that says otherwise is a shape the typed model cannot tell apart from the ones it can.
 	arguments, present := function["arguments"]
 	if !present {

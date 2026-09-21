@@ -400,7 +400,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-			t.Setenv("ZOT_CONFIG", "")
+			t.Setenv("AGENT_CONFIG", "")
 
 			seen := make(chan []json.RawMessage, 1)
 
@@ -495,7 +495,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 	assert.Equal(t, tools.ShellTool, opts.Unrepaired[0], "want just the shell tool")
 }
 
-// The window is the operator's to state and zot keeps no table of what models
+// The window is the operator's to state and agent keeps no table of what models
 // can take, so a model with none cannot run. Load-time validation says so first.
 // Resolve holds the same rule for a config that skipped it.
 func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
@@ -526,7 +526,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 // reports.
 func TestResolveSelectsTheModelFromTheOneProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+	t.Setenv("AGENT_CONFIG", "")
 	t.Setenv("ALPHA_KEY", "sk-alpha")
 
 	cfg, err := config.Load(writeCfg(t, `
@@ -595,7 +595,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 // priority over the run defaults.
 func TestResolveCustomModelAlias(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+	t.Setenv("AGENT_CONFIG", "")
 	path := writeCfg(t, `
 agent:
   model: fast
@@ -774,7 +774,7 @@ func readSession(t *testing.T, path string) []session.Record {
 func TestRunWithRecordsASession(t *testing.T) {
 	cfg := stubProvider(t)
 
-	path := filepath.Join(t.TempDir(), ".zot", "orders", "task.jsonl")
+	path := filepath.Join(t.TempDir(), ".agent", "orders", "task.jsonl")
 
 	_, err := quietly(t, func() error {
 		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
@@ -926,10 +926,10 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 
 	var recorded, unrecorded strings.Builder
 
-	run.PrintDigest(&recorded, "/w/.zot/orders/1758300000.jsonl", &result)
+	run.PrintDigest(&recorded, "/w/.agent/orders/1758300000.jsonl", &result)
 	run.PrintDigest(&unrecorded, "", &result)
 
-	assert.Contains(t, recorded.String(), "/w/.zot/orders/1758300000.jsonl", "the digest must say where the log is")
+	assert.Contains(t, recorded.String(), "/w/.agent/orders/1758300000.jsonl", "the digest must say where the log is")
 
 	assert.NotContains(t, unrecorded.String(), "session", "no log was written, so the digest must not mention one")
 }
@@ -1015,7 +1015,7 @@ func stubProviderConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// starterPrompt is the prompt of the starter config `zot config` seeds, which is the one zot ships.
+// starterPrompt is the prompt of the starter config `agent config` seeds, which is the one agent ships.
 func starterPrompt(t *testing.T) string {
 	t.Helper()
 
@@ -1041,7 +1041,7 @@ func promptOf(t *testing.T, text string, o order.Order) string {
 	return prompt
 }
 
-// newOrderNamed is the order zot new scaffolds, with its goal written in.
+// newOrderNamed is the order agent new scaffolds, with its goal written in.
 func newOrderNamed(t *testing.T, objective string) order.Order {
 	t.Helper()
 
@@ -1066,7 +1066,7 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 
 	got := promptOf(t, starterPrompt(t), o)
 
-	assert.Contains(t, got, "You are zot", "the starter config's prompt must be what is sent")
+	assert.Contains(t, got, "You are agent", "the starter config's prompt must be what is sent")
 
 	assert.Contains(t, got, "## Your task\n\nbuild a parser", "the objective must be in the prompt, trimmed")
 }
@@ -1172,7 +1172,7 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	assert.True(t, strings.HasPrefix(got, "/work/project|glm-5.2|"+cfg.Provider.Label()+"|"+time.Now().Format("2006-01-02")+"|Always mention PINECONE.|shell,tasks,"))
 }
 
-// Zot has no input channel, so an agent that asks a question and waits is fatal in a way no other prompt mistake is. These
+// Agent has no input channel, so an agent that asks a question and waits is fatal in a way no other prompt mistake is. These
 // pin the directives that prevent it. They are loose by design, asserting the directive survives a rewrite of the wording,
 // since a prompt cannot be tested against a model here.
 var nonInteractiveDirectives = []struct {
@@ -1212,7 +1212,7 @@ func TestTheStarterPromptForbidsWaitingForTheUser(t *testing.T) {
 	assert.Equal(t, 1, n, "the contract appears %d times in the starter prompt, want once", n)
 }
 
-// The prompt is the config's and zot adds no instructions to it, so the system message is what its template renders to.
+// The prompt is the config's and agent adds no instructions to it, so the system message is what its template renders to.
 func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 	bodies := make(chan string, 1)
 
@@ -1249,7 +1249,7 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 }
 
 // The settle and call budgets are configurable, and the config values must actually reach the run, or the knob in the
-// example config is a lie. The max_settles key matters most, since it sets how hard zot pushes the model to record an outcome.
+// example config is a lie. The max_settles key matters most, since it sets how hard agent pushes the model to record an outcome.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest, Models: declared(litGlm52)}

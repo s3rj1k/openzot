@@ -39,7 +39,7 @@ type Meta struct {
 }
 
 // IsInteractive reports whether stdout is a terminal capable of the full-screen
-// viewer. The viewer is the only way zot shows a run, so a caller checks this
+// viewer. The viewer is the only way agent shows a run, so a caller checks this
 // before starting anything.
 func IsInteractive() bool {
 	fd := os.Stdout.Fd()

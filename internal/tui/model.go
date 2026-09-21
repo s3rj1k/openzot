@@ -409,7 +409,7 @@ func (m *Model) Badge() string {
 }
 
 func (m *Model) TitleBar() string {
-	left := titleStyle.Render("✦ zot") + " " + m.Badge()
+	left := titleStyle.Render("✦ agent") + " " + m.Badge()
 
 	room := m.Width - lipgloss.Width(left) - 2
 	if room < 8 {
@@ -533,7 +533,7 @@ func (m *Model) Footer() string {
 
 func (m *Model) View() string {
 	if !m.Ready {
-		return "starting zot…"
+		return "starting agent…"
 	}
 
 	return strings.Join([]string{

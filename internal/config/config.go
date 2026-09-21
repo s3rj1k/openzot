@@ -1,4 +1,4 @@
-// Package config loads zot's configuration, layering built-in defaults under a YAML file. Zot ships no provider.
+// Package config loads agent's configuration, layering built-in defaults under a YAML file. Agent ships no provider.
 // The one connection every run uses is declared under `provider:` with its endpoint, credential and models, and
 // agent.model picks which of them runs.
 package config
@@ -17,12 +17,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the fully-resolved zot configuration.
+// Config is the fully-resolved agent configuration.
 type Config struct {
 	Agent Agent `yaml:"agent"`
 	UI    UI    `yaml:"ui"`
 	// The system prompt every run starts from, a Go text/template that reads the order and the run. Required,
-	// since zot carries no prompt of its own. The starter config holds the default.
+	// since agent carries no prompt of its own. The starter config holds the default.
 	Prompt string `yaml:"prompt"`
 	// The folder of skills - subdirectories each holding a SKILL.md - loaded at startup and offered
 	// through the skills tool. "~/" is home, a relative path is taken against --dir, empty means none.
@@ -32,7 +32,7 @@ type Config struct {
 	Provider ProviderConfig `yaml:"provider"`
 }
 
-// ProviderConfig is the model-provider connection zot runs against. It
+// ProviderConfig is the model-provider connection agent runs against. It
 // authenticates with a Bearer credential.
 type ProviderConfig struct {
 	// BaseURL is the API endpoint root. Required, and https unless loopback.
@@ -53,7 +53,7 @@ type ModelConfig struct {
 	Model string `yaml:"model"`
 	// MaxIterations overrides the global iteration cap for this model.
 	MaxIterations int `yaml:"max_iterations"`
-	// The model's context window, in tokens. Required, and the only source of it. Zot keeps no table
+	// The model's context window, in tokens. Required, and the only source of it. Agent keeps no table
 	// of models, since the endpoint's real ceiling can be below the model's card. It sizes what is kept.
 	Context int `yaml:"context"`
 
@@ -281,11 +281,11 @@ func ScrubProviderSecrets(cfg *Config) {
 // Validate checks the fully-merged configuration.
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Agent.Model) == "" {
-		return errors.New("agent.model must be set in the config: zot has no default model")
+		return errors.New("agent.model must be set in the config: agent has no default model")
 	}
 
 	if strings.TrimSpace(c.Prompt) == "" {
-		return errors.New("prompt must be set in the config: zot has no built-in system prompt (`zot config` seeds one)")
+		return errors.New("prompt must be set in the config: agent has no built-in system prompt (`agent config` seeds one)")
 	}
 
 	if c.Agent.MaxIterations <= 0 {
@@ -317,7 +317,7 @@ func (c *Config) Validate() error {
 	// there is no built-in endpoint to fall back on, and finding out mid-run that
 	// there is nowhere to send the request is worse than at load
 	if p.BaseURL == "" {
-		return errors.New("no provider: declare one under provider: in the config, with a base_url, an api_key and its models - zot has no built-in provider")
+		return errors.New("no provider: declare one under provider: in the config, with a base_url, an api_key and its models - agent has no built-in provider")
 	}
 
 	if len(p.Models) == 0 {

@@ -10,14 +10,14 @@ LDFLAGS = -s -w
 GOTOOLCHAIN = auto
 export GOTOOLCHAIN
 
-CMDS = zot
+CMDS = agent
 
 .PHONY: help build clean test race cover vet lint fmt
 
 help:
-	@echo "zot - an automated software factory in a single binary"
+	@echo "agent - an automated software factory in a single binary"
 	@echo
-	@echo "  make build      Build zot for Linux"
+	@echo "  make build      Build agent for Linux"
 	@echo "  make test       Run the test suite"
 	@echo "  make race       Run the test suite under the race detector"
 	@echo "  make cover      Report per-package test coverage"

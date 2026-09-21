@@ -1,4 +1,4 @@
-// Package provider is zot's connection to a model. An OpenAI-compatible endpoint reached through fantasy, the
+// Package provider is agent's connection to a model. An OpenAI-compatible endpoint reached through fantasy, the
 // classification of what goes wrong with it (retriable, rate limited, context too long), and the evidence a
 // failed exchange leaves. It knows nothing of the conversation being had over it.
 package provider
@@ -42,7 +42,7 @@ func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
 		openaicompat.WithAPIKey(resolved.APIKey),
 		openaicompat.WithHTTPClient(newHTTPClient()),
 		openaicompat.WithSDKOptions(sdkOptions(resolved)...),
-		openaicompat.WithUserAgent("zot"),
+		openaicompat.WithUserAgent("agent"),
 		openaicompat.WithLanguageModelOptions(languageModelOptions(resolved)...),
 	}
 

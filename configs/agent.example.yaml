@@ -1,8 +1,8 @@
-# zot configuration.
+# agent configuration.
 #
-# zot has no built-in provider, model or prompt. Declare the provider and its
+# agent has no built-in provider, model or prompt. Declare the provider and its
 # models, set agent.model to the one to run, and keep the prompt. Everything
-# else is optional. Copy this file to ~/.config/zot/config.yaml, or pass it
+# else is optional. Copy this file to ~/.config/agent/config.yaml, or pass it
 # with --config.
 #
 # An api_key can be written directly or as an $ENV_VAR reference. No
@@ -74,10 +74,10 @@ agent:
 #   Session                                     the log of this run, the long-term memory
 # and the functions file "path", env "NAME" and inc N.
 #
-# Zot adds nothing to it, so keep the non-interactive contract. A run has no
+# Agent adds nothing to it, so keep the non-interactive contract. A run has no
 # one to answer a question, and an agent that asks waits until a guard kills it.
 prompt: |
-  You are zot, a fully autonomous software engineering agent operating inside a real working directory on the user's machine.
+  You are agent, a fully autonomous software engineering agent operating inside a real working directory on the user's machine.
 
   This is a non-interactive session running in the background. No one is watching, and no questions or further guidance can be answered - you will receive NO further input. Complete the assigned task end to end on your own, using your tools.
 
@@ -144,7 +144,7 @@ ui:
 # A folder of skills, each a subdirectory with a SKILL.md (a name, a short
 # description, then the instructions). They are loaded at startup and offered
 # through a skills tool. "~/" is home, and a relative path is taken against --dir.
-# skills_dir: ~/.config/zot/skills
+# skills_dir: ~/.config/agent/skills
 
 # The one provider every run uses, a model service, a local server or a gateway.
 # The viewer and the session log call it by the host of its base_url.
@@ -158,7 +158,7 @@ provider:
   # context window.
   models:
     my-model:
-      # The context window in tokens. Required. Zot keeps no table of models, so
+      # The context window in tokens. Required. Agent keeps no table of models, so
       # give the endpoint's real limit, which can be below the model's card.
       context: 128000
       # the real model ID, when this key is only an alias

@@ -176,7 +176,7 @@ func CommandOutput(m map[string]any) string {
 }
 
 // RenderToolEnd produces an optional follow-up line summarizing a tool result, or "" when there is nothing worth showing.
-// Zot's tools return plain strings, handled first. The map form is for a caller whose own tool returns something structured.
+// Agent's tools return plain strings, handled first. The map form is for a caller whose own tool returns something structured.
 func RenderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
 		return renderTextResult(name, text)
@@ -206,7 +206,7 @@ func RenderToolEnd(name string, result any) string {
 }
 
 // ShortPath fits a directory into limit columns from the right, since the informative end of a path is the last segment.
-// Whole leading segments are dropped and the cut marked with "…/", so a long path reads "…/repos/zot/tool". Only when the
+// Whole leading segments are dropped and the cut marked with "…/", so a long path reads "…/repos/agent/tool". Only when the
 // final segment alone will not fit is it cut, from the left.
 func ShortPath(path string, limit int) string {
 	if limit <= 0 {

@@ -1,6 +1,6 @@
 // Package session records a run to disk, one JSON record per line, append-only, one log per task. Each record is written
 // whole and synced before the next, so a crashed run leaves everything up to the crash and the log is readable mid-run.
-// Zot never reads a log back. It is a record for a person, and the agent's long-term memory when its window forgets.
+// Agent never reads a log back. It is a record for a person, and the agent's long-term memory when its window forgets.
 package session
 
 import (

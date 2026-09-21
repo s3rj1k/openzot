@@ -53,7 +53,7 @@ func TestIsRetriableUsesStatusOverProse(t *testing.T) {
 }
 
 // With no status to go by, what the error is decides. A stream that ended
-// mid-turn, a reset connection and zot's own stall are transient however they
+// mid-turn, a reset connection and agent's own stall are transient however they
 // are worded around.
 func TestIsRetriableRecognisesTransportFailuresByType(t *testing.T) {
 	reset := &url.Error{Op: litPost, URL: litHTTPGw, Err: &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}}

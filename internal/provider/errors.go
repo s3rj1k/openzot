@@ -34,7 +34,7 @@ func IsProviderError(err error) bool {
 }
 
 // IsRetriable reports whether an error is a transient provider failure worth retrying. It goes by what the error is,
-// never what it says, using fantasy's rule for provider answers plus resets, broken pipes, EOF and zot's own stall.
+// never what it says, using fantasy's rule for provider answers plus resets, broken pipes, EOF and agent's own stall.
 // 429 is excluded on purpose, since a rate limit needs a Retry-After wait. The caller checks IsRateLimited first.
 func IsRetriable(err error) bool {
 	if err == nil {

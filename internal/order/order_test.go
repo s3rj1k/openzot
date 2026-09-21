@@ -112,7 +112,7 @@ var testEnv = order.Env{
 	Model:    "glm-5.2",
 	Provider: "gateway",
 	Project:  "Always mention PINECONE.",
-	Session:  "/work/.zot/orders/1.jsonl",
+	Session:  "/work/.agent/orders/1.jsonl",
 }
 
 func TestRenderSubstitutesTheOrderAndTheRun(t *testing.T) {
@@ -143,7 +143,7 @@ constraints:
 		"- no new deps",
 		"[shell: runs commands][tasks: keeps the plan]",
 		"/work/project 2026-09-19 glm-5.2 gateway",
-		"Always mention PINECONE. /work/.zot/orders/1.jsonl",
+		"Always mention PINECONE. /work/.agent/orders/1.jsonl",
 	} {
 		assert.Contains(t, got, want, "rendered prompt is missing %q", want)
 	}
@@ -186,9 +186,9 @@ func TestTheFileAndEnvFunctions(t *testing.T) {
 	absolute := filepath.Join(t.TempDir(), "abs.txt")
 	write(t, absolute, "absolute")
 
-	t.Setenv("ZOT_TEST_VALUE", "from-the-environment")
+	t.Setenv("AGENT_TEST_VALUE", "from-the-environment")
 
-	got, err := parsed(t).Render(`{{ file "style.txt" }}|{{ file "`+absolute+`" }}|{{ env "ZOT_TEST_VALUE" }}|{{ env "ZOT_TEST_UNSET" }}|`, order.Env{Workdir: workdir})
+	got, err := parsed(t).Render(`{{ file "style.txt" }}|{{ file "`+absolute+`" }}|{{ env "AGENT_TEST_VALUE" }}|{{ env "AGENT_TEST_UNSET" }}|`, order.Env{Workdir: workdir})
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasPrefix(got, "use tabs|absolute|from-the-environment||"))
@@ -234,12 +234,12 @@ func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 	}{
 		{
 			name:  "a declared title wins",
-			order: order.Order{Title: litRateLimiting, Path: "/book/.zot/orders/add-rate-limiting-to-the-api.md"},
+			order: order.Order{Title: litRateLimiting, Path: "/book/.agent/orders/add-rate-limiting-to-the-api.md"},
 			want:  litRateLimiting,
 		},
 		{
 			name:  "the file name becomes one",
-			order: order.Order{Path: "/book/.zot/orders/fix-the-flaky-test.md"},
+			order: order.Order{Path: "/book/.agent/orders/fix-the-flaky-test.md"},
 			want:  "Fix the flaky test",
 		},
 		{

@@ -13,7 +13,7 @@ func HomeDir() string {
 	}
 
 	// Fallback for unusual environments.
-	return "/tmp/zot-" + strconv.Itoa(os.Getuid())
+	return "/tmp/agent-" + strconv.Itoa(os.Getuid())
 }
 
 func xdgConfigHome() string {
@@ -24,14 +24,14 @@ func xdgConfigHome() string {
 	return filepath.Join(HomeDir(), ".config")
 }
 
-// DefaultConfigPath returns the config file path. That is $ZOT_CONFIG when set and non-empty, else
-// $XDG_CONFIG_HOME/zot/config.yaml when XDG_CONFIG_HOME is set, else ~/.config/zot/config.yaml.
+// DefaultConfigPath returns the config file path. That is $AGENT_CONFIG when set and non-empty, else
+// $XDG_CONFIG_HOME/agent/config.yaml when XDG_CONFIG_HOME is set, else ~/.config/agent/config.yaml.
 func DefaultConfigPath() string {
-	if envPath := strings.TrimSpace(os.Getenv("ZOT_CONFIG")); envPath != "" {
+	if envPath := strings.TrimSpace(os.Getenv("AGENT_CONFIG")); envPath != "" {
 		return envPath
 	}
 
-	return filepath.Join(xdgConfigHome(), "zot", "config.yaml")
+	return filepath.Join(xdgConfigHome(), "agent", "config.yaml")
 }
 
 // ConfigDir returns the directory that holds the config file - and any global

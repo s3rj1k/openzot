@@ -56,7 +56,7 @@ func TestDefaultsCarryNoProviderModelOrPrompt(t *testing.T) {
 // that declares no provider has none, whatever the environment holds.
 func TestLoadSeedsNoProvider(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+	t.Setenv("AGENT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 
@@ -316,7 +316,7 @@ func TestScrubProviderSecrets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ZOT_TEST_UNRELATED", "keep-me")
+	t.Setenv("AGENT_TEST_UNRELATED", "keep-me")
 	path := writeConfig(t, `
 provider:
   api_key: $ZAI_API_KEY
@@ -333,39 +333,39 @@ provider:
 	got := os.Getenv("OPENAI_API_KEY")
 	assert.Equal(t, "sk-openai", got, "a variable the config never named was touched: OPENAI_API_KEY = %q", got)
 
-	assert.Equal(t, "keep-me", os.Getenv("ZOT_TEST_UNRELATED"), "want keep-me")
+	assert.Equal(t, "keep-me", os.Getenv("AGENT_TEST_UNRELATED"), "want keep-me")
 }
 
 // The config path resolves through an explicit override, then XDG, then the
 // home fallback - so a container that sets neither still lands somewhere real.
 func TestConfigPathResolution(t *testing.T) {
-	t.Run("an explicit ZOT_CONFIG wins", func(t *testing.T) {
-		t.Setenv("ZOT_CONFIG", "/custom/zot.yaml")
+	t.Run("an explicit AGENT_CONFIG wins", func(t *testing.T) {
+		t.Setenv("AGENT_CONFIG", "/custom/agent.yaml")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		assert.Equal(t, "/custom/zot.yaml", config.DefaultConfigPath())
+		assert.Equal(t, "/custom/agent.yaml", config.DefaultConfigPath())
 	})
 
 	t.Run("then XDG_CONFIG_HOME", func(t *testing.T) {
-		t.Setenv("ZOT_CONFIG", "")
+		t.Setenv("AGENT_CONFIG", "")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		assert.Equal(t, "/xdg/zot/config.yaml", config.DefaultConfigPath())
+		assert.Equal(t, "/xdg/agent/config.yaml", config.DefaultConfigPath())
 	})
 
 	t.Run("then the home directory", func(t *testing.T) {
-		t.Setenv("ZOT_CONFIG", "")
+		t.Setenv("AGENT_CONFIG", "")
 		t.Setenv("XDG_CONFIG_HOME", "")
 		t.Setenv("HOME", "/home/someone")
 
-		assert.Equal(t, "/home/someone/.config/zot/config.yaml", config.DefaultConfigPath())
+		assert.Equal(t, "/home/someone/.config/agent/config.yaml", config.DefaultConfigPath())
 	})
 
 	t.Run("whitespace counts as unset", func(t *testing.T) {
-		t.Setenv("ZOT_CONFIG", "   ")
+		t.Setenv("AGENT_CONFIG", "   ")
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
 
-		assert.Equal(t, "/xdg/zot/config.yaml", config.DefaultConfigPath(), "want the blank override ignored")
+		assert.Equal(t, "/xdg/agent/config.yaml", config.DefaultConfigPath(), "want the blank override ignored")
 	})
 }
 
@@ -384,9 +384,9 @@ func TestHomeDirHasAFallback(t *testing.T) {
 // ConfigDir is where a global AGENTS.md and skills live, so it has to track
 // whichever config path is in play.
 func TestConfigDir(t *testing.T) {
-	assert.Equal(t, "/somewhere", config.ConfigDir("/somewhere/zot.yaml"))
+	assert.Equal(t, "/somewhere", config.ConfigDir("/somewhere/agent.yaml"))
 
-	t.Setenv("ZOT_CONFIG", "/fallback/zot.yaml")
+	t.Setenv("AGENT_CONFIG", "/fallback/agent.yaml")
 
 	assert.Equal(t, "/fallback", config.ConfigDir("   "), "want the default's directory")
 }
@@ -409,15 +409,15 @@ func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 // A `$VAR` reference is the documented way to keep a key out of the config file. It once did not expand, sending
 // the literal text "$MY_KEY" to the provider and a 401 that reads like a bad key rather than a config that never resolved.
 func TestAnEnvReferenceIsExpanded(t *testing.T) {
-	t.Setenv("ZOT_TEST_PROVIDER_KEY", "sk-resolved")
+	t.Setenv("AGENT_TEST_PROVIDER_KEY", "sk-resolved")
 
 	tests := []struct {
 		name     string
 		provider config.ProviderConfig
 	}{
-		{name: "api_key", provider: config.ProviderConfig{APIKey: "$ZOT_TEST_PROVIDER_KEY"}},
-		{name: "braced", provider: config.ProviderConfig{APIKey: "${ZOT_TEST_PROVIDER_KEY}"}},
-		{name: "padded", provider: config.ProviderConfig{APIKey: "  $ZOT_TEST_PROVIDER_KEY  "}},
+		{name: "api_key", provider: config.ProviderConfig{APIKey: "$AGENT_TEST_PROVIDER_KEY"}},
+		{name: "braced", provider: config.ProviderConfig{APIKey: "${AGENT_TEST_PROVIDER_KEY}"}},
+		{name: "padded", provider: config.ProviderConfig{APIKey: "  $AGENT_TEST_PROVIDER_KEY  "}},
 	}
 
 	for _, test := range tests {
@@ -434,9 +434,9 @@ func TestAnEnvReferenceIsExpanded(t *testing.T) {
 // An unset variable must resolve to nothing, so the run fails with "no API key
 // configured" rather than sending the literal reference to the provider.
 func TestAnUnsetEnvReferenceResolvesToNothing(t *testing.T) {
-	t.Setenv("ZOT_TEST_UNSET_KEY", "")
+	t.Setenv("AGENT_TEST_UNSET_KEY", "")
 
-	cfg := config.Config{Provider: config.ProviderConfig{APIKey: "$ZOT_TEST_UNSET_KEY"}}
+	cfg := config.Config{Provider: config.ProviderConfig{APIKey: "$AGENT_TEST_UNSET_KEY"}}
 
 	config.ResolveProvider(&cfg)
 
@@ -690,7 +690,7 @@ ui:
 // variable plays no part.
 func TestAConfiguredKeyIsTheOneUsed(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("ZOT_CONFIG", "")
+	t.Setenv("AGENT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("PROXY_KEY", "sk-proxy")
 	path := writeConfig(t, `

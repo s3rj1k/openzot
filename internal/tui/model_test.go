@@ -15,11 +15,11 @@ func TestStartupLineThenTitleBadge(t *testing.T) {
 	m := tui.NewModel("hunt bugs", "model", "openai", "/tmp")
 
 	got := m.View()
-	assert.Contains(t, got, "starting zot…", "startup line must name zot, got %q", got)
+	assert.Contains(t, got, "starting agent…", "startup line must name agent, got %q", got)
 
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = asModel(t, sized)
 
 	title := m.TitleBar()
-	assert.Contains(t, title, "zot", "title badge must name zot, got %q", title)
+	assert.Contains(t, title, "agent", "title badge must name agent, got %q", title)
 }

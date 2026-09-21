@@ -15,7 +15,7 @@ import (
 	"github.com/openzot/openzot/internal/order"
 )
 
-// `zot new` opens a blank order in the editor, named for the moment it was
+// `agent new` opens a blank order in the editor, named for the moment it was
 // made. What the operator writes there is the order.
 func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -38,7 +38,7 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 
 	assert.Equal(t, "fix the typo", o.Objective)
 
-	// the book is one dotted directory. Zot does not claim the generic
+	// the book is one dotted directory. Agent does not claim the generic
 	// top-level names in the root of somebody else's project
 	_, err = os.Stat("orders")
 	require.Error(t, err, "a top-level orders/ was created; the book lives under %s", order.BookDir)
@@ -54,13 +54,13 @@ func TestNewOrderTakesNoProse(t *testing.T) {
 	err := newOrder([]string{"fix", "the", "typo"}, io.Discard)
 	require.Error(t, err)
 
-	assert.Contains(t, err.Error(), "no arguments", "the error should say zot new takes none")
+	assert.Contains(t, err.Error(), "no arguments", "the error should say agent new takes none")
 
 	_, statErr := os.Stat(order.BookDir)
 	assert.True(t, os.IsNotExist(statErr), "a refused invocation must create nothing")
 }
 
-// `zot new --dir` creates the order in another working directory, not the one
+// `agent new --dir` creates the order in another working directory, not the one
 // the command was invoked from - the order belongs to the project it is for.
 func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 	invocation := t.TempDir()
@@ -80,7 +80,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 }
 
 // An order closed without a word written is not an order, and a blank one left
-// in the book would fail every bare `zot` after it. Nothing was written, so
+// in the book would fail every bare `agent` after it. Nothing was written, so
 // nothing is kept.
 func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -111,7 +111,7 @@ func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 }
 
 // With no editor to be found the order is still created, and the operator is
-// told where it is, the way `zot config` does.
+// told where it is, the way `agent config` does.
 func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -132,7 +132,7 @@ func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 func TestEditConfigSeedsTheTemplate(t *testing.T) {
 	dir := t.TempDir()
 
-	t.Setenv("ZOT_CONFIG", filepath.Join(dir, "nested", "config.yaml"))
+	t.Setenv("AGENT_CONFIG", filepath.Join(dir, "nested", "config.yaml"))
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")
 	t.Setenv("PATH", dir) // no nano/vi/vim reachable
@@ -154,7 +154,7 @@ func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
 
 	path := filepath.Join(dir, "config.yaml")
 
-	t.Setenv("ZOT_CONFIG", path)
+	t.Setenv("AGENT_CONFIG", path)
 
 	// a no-op "editor" that just succeeds. $VISUAL wins over $EDITOR, which here
 	// would fail the edit if it were the one run

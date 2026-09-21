@@ -419,7 +419,7 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 	}
 }
 
-// zot's tools return strings, so a summary that only understood maps rendered
+// agent's tools return strings, so a summary that only understood maps rendered
 // nothing at all.
 func TestRenderToolEndHandlesStringResults(t *testing.T) {
 	tests := []struct {

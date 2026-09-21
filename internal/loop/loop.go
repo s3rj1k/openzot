@@ -117,7 +117,7 @@ type Result struct {
 
 // ExitCode is the process-style exit code the run's ending maps onto. Zero means the model settled with success, and
 // everything else means the task did not get done, whether the model declared it could not (StopFailed) or a guard cut it
-// short. A caller scripting against zot can tell those apart from success without parsing prose.
+// short. A caller scripting against agent can tell those apart from success without parsing prose.
 func (r *Result) ExitCode() int {
 	switch r.Reason {
 	case StopSettled:

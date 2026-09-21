@@ -1,13 +1,13 @@
 # AGENTS.md
 
-zot is an autonomous coding agent in a single Go binary. The engine runs
+Agent is an autonomous coding agent in a single Go binary. The engine runs
 in-process and talks straight to any OpenAI-compatible model provider - no hosted
-service. `cmd/zot` is the CLI; `internal/run` is one run of an order, from a
+service. `cmd/agent` is the CLI; `internal/run` is one run of an order, from a
 configuration to a finished log. Beneath it: `loop` is the engine, `provider` the
 model connection, `conversation` the messages and their forgetting, `plan`,
 `skills` and `tools` what the model can use, `session` the log, `order` the work
 order, `tui` the viewer, and `config` the settings and the rules for them, which
-imports nothing else of the module. Nothing is importable - zot is a binary, not
+imports nothing else of the module. Nothing is importable - agent is a binary, not
 a library - and it supports Linux only: no other platform is built, tested or
 worked around.
 
@@ -25,7 +25,7 @@ worked around.
   assert _behaviour_, not constants; a test that restates a value it reads is
   worse than none. Tests live in the external `x_test` package and reach only
   what `x` exports. Export what a test needs instead of bridging it with an
-  `export_test.go` or an alias. Only `cmd/zot` is tested in `package main`, since
+  `export_test.go` or an alias. Only `cmd/agent` is tested in `package main`, since
   a `main` package cannot be imported.
 - **It vets clean, in modern Go.** `make vet` runs `go vet` and fails on anything
   `go fix` would rewrite (the modernizers: `any`, `range n`, `min`/`max`, `slices`,

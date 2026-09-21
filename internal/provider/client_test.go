@@ -369,7 +369,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	}
 }
 
-// Off by default. Every endpoint zot reaches out of the box takes the string.
+// Off by default. Every endpoint agent reaches out of the box takes the string.
 func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 	var seen wireRequest
 

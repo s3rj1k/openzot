@@ -573,7 +573,7 @@ func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 }
 
 // A run with no window has nothing to decide how much of a conversation to keep,
-// and guessing one is exactly what the operator is asked not to leave to zot.
+// and guessing one is exactly what the operator is asked not to leave to agent.
 func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 	client := stub(t, []string{stop()})
 

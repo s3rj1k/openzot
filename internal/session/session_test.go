@@ -58,7 +58,7 @@ func kinds(records []session.Record) []session.Kind {
 }
 
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
+	path := filepath.Join(t.TempDir(), "nested", ".agent", "orders", "1758300000.jsonl")
 
 	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint, Model: "m", Provider: "p", Workdir: "/w"})
 	require.NoError(t, err)

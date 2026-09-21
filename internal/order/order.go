@@ -1,4 +1,4 @@
-// Package order defines the work order, the document a zot run is dispatched from. An order is a file, so it outlives the
+// Package order defines the work order, the document a agent run is dispatched from. An order is a file, so it outlives the
 // invocation, and holds a front matter block (goal, acceptance criteria, constraints) that the config's prompt template
 // reads. It is advisory input and may live anywhere. How the result is judged belongs to the operator's config.
 package order
@@ -19,12 +19,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The book's layout. A project's orders live under one dotted directory, .zot/orders/<name>.md, since a top-level
+// The book's layout. A project's orders live under one dotted directory, .agent/orders/<name>.md, since a top-level
 // orders/ would claim a generic name in someone else's repository. Only the default lives here. An order may be
 // read from anywhere, so this names the convention rather than enforcing it.
 const (
 	// BookDir is the per-project directory holding the orders.
-	BookDir = ".zot"
+	BookDir = ".agent"
 
 	ordersName = "orders"
 

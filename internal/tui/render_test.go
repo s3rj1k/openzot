@@ -27,9 +27,9 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 		},
 		{
 			name: "leading segments are dropped, not trailing characters",
-			path: "/workspaces/monorepo-zot/repos/zot/tool",
+			path: "/workspaces/monorepo-agent/repos/agent/tool",
 			max:  28,
-			want: "…/repos/zot/tool",
+			want: "…/repos/agent/tool",
 		},
 		{
 			name: "segments are kept whole rather than half-named",
@@ -45,9 +45,9 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 		},
 		{
 			name: "a trailing separator does not become an empty segment",
-			path: "/workspaces/monorepo-zot/repos/zot/tool/",
+			path: "/workspaces/monorepo-agent/repos/agent/tool/",
 			max:  28,
-			want: "…/repos/zot/tool",
+			want: "…/repos/agent/tool",
 		},
 		{
 			name: "no room at all yields nothing rather than a stray ellipsis",
@@ -73,7 +73,7 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 // The header shows the project you are in, not the machine you are on.
 func TestTheDirStatShowsTheProjectEnd(t *testing.T) {
 	m := sized(t, 400, 30)
-	m.Workdir = "/workspaces/monorepo-zot/repos/zot/tool"
+	m.Workdir = "/workspaces/monorepo-agent/repos/agent/tool"
 
 	bar := stripANSI(m.MetaBar())
 

@@ -217,7 +217,7 @@ func TestBudgetDefaults(t *testing.T) {
 
 // Deep agentic loops must be stack-safe. The TypeScript engine recursed per
 // round and had to be rewritten when a long run overflowed. This documents that
-// zot's loop is iterative and cannot.
+// agent's loop is iterative and cannot.
 func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 	calls := 0
 
@@ -382,7 +382,7 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 	assert.NotEqual(t, 0, requests, "want them paired")
 }
 
-// A finish reason zot has no special handling for - content_filter is the one
+// A finish reason agent has no special handling for - content_filter is the one
 // providers actually send - must not derail the run.
 func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
