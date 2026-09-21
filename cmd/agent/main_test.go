@@ -23,6 +23,7 @@ import (
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -157,14 +158,6 @@ func TestLoadOrderLoadsTheFile(t *testing.T) {
 	assert.Equal(t, path, o.Path)
 }
 
-func mustWrite(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-}
-
 // A broken order fails the run before a provider is touched.
 func TestLoadOrderFailsUpFront(t *testing.T) {
 	_, err := loadOrder([]string{filepath.Join(t.TempDir(), "nope.md")})
@@ -172,7 +165,7 @@ func TestLoadOrderFailsUpFront(t *testing.T) {
 
 	broken := filepath.Join(t.TempDir(), "broken.md")
 
-	mustWrite(t, broken, "---\nobjective: x\n---\n{{ .Objectve }}")
+	testutils.Write(t, broken, "---\nobjective: x\n---\n{{ .Objectve }}")
 
 	_, err = loadOrder([]string{broken})
 	require.Error(t, err, "an order whose prompt names a field that does not exist must not load")
@@ -187,29 +180,10 @@ func TestLoadOrderTeachesProseTypers(t *testing.T) {
 	assert.Contains(t, err.Error(), "agent new", "the error should point at `agent new`")
 }
 
-// quietStderr silences stderr for a test that by design triggers the usage
-// block.
-func quietStderr(t *testing.T) {
-	t.Helper()
-
-	original := os.Stderr
-
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	require.NoError(t, err)
-
-	os.Stderr = devNull
-
-	t.Cleanup(func() {
-		os.Stderr = original
-
-		devNull.Close()
-	})
-}
-
 // One order per invocation. None is told how to make one, several are told to
 // run them one at a time.
 func TestLoadOrderNeedsExactlyOne(t *testing.T) {
-	quietStderr(t)
+	testutils.SilenceStderr(t)
 
 	_, err := loadOrder(nil)
 	require.Error(t, err, "want it to say how to write one")
@@ -231,29 +205,6 @@ func withEditor(t *testing.T, body string) {
 
 	t.Setenv("VISUAL", script)
 	t.Setenv("EDITOR", "")
-}
-
-// readLog decodes every line of a session log, failing on any line that is not
-// a JSON record.
-func readLog(t *testing.T, path string) []session.Record {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-	records := make([]session.Record, 0, len(lines))
-
-	for i, line := range lines {
-		var record session.Record
-
-		err := json.Unmarshal([]byte(line), &record)
-		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
-
-		records = append(records, record)
-	}
-
-	return records
 }
 
 // The usage text is what a user sees when they get it wrong, so it has to name
@@ -326,62 +277,12 @@ func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	assert.Equal(t, "a.md b.md", strings.Join(set.Args(), " "), "want the paths before the flag")
 }
 
-// capture redirects one of the process's standard streams for the duration of a
-// call and returns what was written to it.
-func capture(t *testing.T, stream **os.File, fn func() error) (string, error) {
-	t.Helper()
-
-	original := *stream
-
-	read, write, err := os.Pipe()
-	require.NoError(t, err)
-
-	*stream = write
-
-	done := make(chan string)
-
-	go func() {
-		var builder strings.Builder
-
-		buffer := make([]byte, 4096)
-
-		for {
-			n, err := read.Read(buffer)
-
-			builder.Write(buffer[:n])
-
-			if err != nil {
-				break
-			}
-		}
-
-		done <- builder.String()
-	}()
-
-	runErr := fn()
-
-	write.Close()
-
-	*stream = original
-
-	return <-done, runErr
-}
-
-// captureStderr collects what a function prints to stderr. Stdout and stderr are
-// worth telling apart. Stdout is the transcript, stderr is where agent talks about
-// itself, and something that belongs on one must not leak onto the other.
-func captureStderr(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	return capture(t, &os.Stderr, fn)
-}
-
 // Everything the config can say, the config alone says. A flag that duplicated a
 // key would be a second place to look for what a run was told.
 func TestConfigKeysAreNotFlags(t *testing.T) {
 	withArgs(t, "--config", filepath.Join(t.TempDir(), "missing.yaml"), orderFile(t, "a task"))
 
-	_, _ = captureStderr(t, command)
+	_, _ = testutils.CaptureStderr(t, command)
 
 	for _, name := range []string{"provider", "model", "max-iterations", "plain", "color", "orders-dir"} {
 		assert.Nil(t, pflag.CommandLine.Lookup(name), "--%s is a flag, but the config already says it", name)
@@ -392,26 +293,19 @@ func TestConfigKeysAreNotFlags(t *testing.T) {
 	}
 }
 
-// captureStdout collects what a function prints to stdout.
-func captureStdout(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	return capture(t, &os.Stdout, fn)
-}
-
 func TestRunConfigPath(t *testing.T) {
 	t.Setenv("AGENT_CONFIG", "/some/where/config.yaml")
 
 	withArgs(t, "config", "path")
 
-	output, err := captureStdout(t, command)
+	output, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
 	assert.Contains(t, output, "/some/where/config.yaml")
 }
 
 func TestRunRequiresAnOrder(t *testing.T) {
-	quietStderr(t)
+	testutils.SilenceStderr(t)
 	withArgs(t)
 
 	require.Error(t, command())
@@ -474,7 +368,7 @@ provider:
 
 	withArgs(t, "--config", configPath, litDir, workdir, orderFile(t, "do the thing"))
 
-	output, err := captureStdout(t, command)
+	output, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err, "run")
 
 	for _, want := range []string{"do the thing", "on it", "complete"} {
@@ -490,7 +384,7 @@ const contractHeading = "## Non-interactive contract"
 func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 	project := t.TempDir()
 
-	mustWrite(t, filepath.Join(project, "AGENTS.md"), "Always mention PINECONE.")
+	testutils.Write(t, filepath.Join(project, "AGENTS.md"), "Always mention PINECONE.")
 
 	// the operator fills in the goal and a criterion
 	withEditor(t, `sed -i 's/^objective:$/objective: build the parser\nacceptance:\n  - it parses/' "$1"`)
@@ -531,13 +425,13 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 
 	// the config is the one `agent config` seeds, pointed at the test server
 	seeded := strings.Replace(string(configs.ExampleConfigYAML), "https://gateway.internal.example.com/v1", server.URL, 1)
-	mustWrite(t, configPath, seeded)
+	testutils.Write(t, configPath, seeded)
 
 	t.Setenv("GATEWAY_KEY", "test-key")
 
 	withArgs(t, "--config", configPath, litDir, project, written[0])
 
-	_, err = captureStdout(t, command)
+	_, err = testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
 	for _, want := range []string{
@@ -571,7 +465,7 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 
 	// a relative skills_dir means the project. The skills tool only exists if
 	// this folder, inside --dir, was found
-	mustWrite(t, filepath.Join(target, "skills", "deploy", "SKILL.md"),
+	testutils.Write(t, filepath.Join(target, "skills", "deploy", "SKILL.md"),
 		"---\nname: deploy\ndescription: ship it\n---\nDeploy carefully.\n")
 
 	// every path on the command line is relative to the invoking directory -
@@ -623,7 +517,7 @@ provider:
 
 	withArgs(t, "--config", "config.yaml", litDir, target, "order.md")
 
-	output, err := captureStdout(t, command)
+	output, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err, "run")
 
 	for _, want := range []string{"do the thing", "on it", "complete"} {
@@ -634,7 +528,7 @@ provider:
 	assert.True(t, sawSkill.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
 
 	// the log lands in the project being worked on, named after the order
-	records := readLog(t, filepath.Join(target, ".agent", "orders", "order.jsonl"))
+	records := testutils.ReadLog(t, filepath.Join(target, ".agent", "orders", "order.jsonl"))
 
 	assert.NotNil(t, records[0].Meta)
 	assert.Equal(t, target, records[0].Meta.Workdir)
@@ -684,10 +578,10 @@ provider:
 		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "first.md", "the first order"))
 
-		_, err := captureStdout(t, command)
+		_, err := testutils.CaptureStdout(t, command)
 		require.NoError(t, err)
 
-		records := readLog(t, filepath.Join(project, ".agent", "orders", "first.jsonl"))
+		records := testutils.ReadLog(t, filepath.Join(project, ".agent", "orders", "first.jsonl"))
 
 		assert.NotNil(t, records[0].Meta, "want the order's objective as the task")
 		assert.Equal(t, "the first order", records[0].Meta.Task, "want the order's objective as the task")
@@ -702,9 +596,9 @@ provider:
 		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "doomed.md", "the doomed order"))
 
-		quietStderr(t)
+		testutils.SilenceStderr(t)
 
-		_, err := captureStdout(t, command)
+		_, err := testutils.CaptureStdout(t, command)
 		require.Error(t, err, "a failed order must fail the run")
 	})
 }
@@ -752,7 +646,7 @@ provider: {}
 func TestRunRefusesAConfigWithNoPrompt(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	mustWrite(t, configPath, "agent:\n  model: my-model\nprovider:\n  base_url: http://127.0.0.1:1\n  models:\n    my-model:\n      context: 1000\n")
+	testutils.Write(t, configPath, "agent:\n  model: my-model\nprovider:\n  base_url: http://127.0.0.1:1\n  models:\n    my-model:\n      context: 1000\n")
 
 	withArgs(t, "--config", configPath, orderFile(t, "a task"))
 
@@ -808,12 +702,12 @@ provider:
 
 	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
-	_, err := captureStdout(t, command)
+	_, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
 	logPath := filepath.Join(workdir, ".agent", "orders", "1758300000.jsonl")
 
-	first := readLog(t, logPath)
+	first := testutils.ReadLog(t, logPath)
 
 	// the task is the durable goal, recorded in the meta (and placed in the
 	// instructions), not as the opening user message
@@ -832,10 +726,10 @@ provider:
 	// running the order again adds a run to the same log, after the first
 	withArgs(t, "--config", configPath, litDir, workdir, orderPath)
 
-	_, err = captureStdout(t, command)
+	_, err = testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
-	second := readLog(t, logPath)
+	second := testutils.ReadLog(t, logPath)
 
 	require.Len(t, second, 2*len(first), "the log holds %d records after two runs, want the first run's %d twice", len(second), len(first))
 
@@ -891,7 +785,7 @@ provider:
 
 	withArgs(t, "--config", configPath, litDir, t.TempDir(), orderFile(t, "fix the lexer"))
 
-	_, err := captureStdout(t, command)
+	_, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
 	assert.EqualValues(t, 2, requests.Load(), "want the tasks turn and the settling turn")

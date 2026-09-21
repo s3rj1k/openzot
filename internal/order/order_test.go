@@ -11,13 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/testutils"
 )
-
-func write(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-}
 
 // validOrder is the smallest order that parses.
 const validOrder = "---\nobjective: do the thing\n---\n"
@@ -35,7 +30,7 @@ func parsed(t *testing.T) order.Order {
 func TestLoadReadsAFullOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "order.md")
 
-	write(t, path, `
+	testutils.Write(t, path, `
 ---
 title: Rate limiting
 objective: |-
@@ -181,10 +176,10 @@ func TestRenderErrors(t *testing.T) {
 func TestTheFileAndEnvFunctions(t *testing.T) {
 	workdir := t.TempDir()
 
-	write(t, filepath.Join(workdir, "style.txt"), "use tabs\n")
+	testutils.Write(t, filepath.Join(workdir, "style.txt"), "use tabs\n")
 
 	absolute := filepath.Join(t.TempDir(), "abs.txt")
-	write(t, absolute, "absolute")
+	testutils.Write(t, absolute, "absolute")
 
 	t.Setenv("AGENT_TEST_VALUE", "from-the-environment")
 
@@ -203,7 +198,7 @@ func TestFileExpandsTheHomeDirectory(t *testing.T) {
 	home := t.TempDir()
 
 	t.Setenv("HOME", home)
-	write(t, filepath.Join(home, "notes.txt"), "from home")
+	testutils.Write(t, filepath.Join(home, "notes.txt"), "from home")
 
 	got, err := parsed(t).Render(`{{ file "~/notes.txt" }}`, order.Env{Workdir: t.TempDir()})
 	require.NoError(t, err)
@@ -304,7 +299,7 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 	first, err := order.Create(dir, now)
 	require.NoError(t, err)
 
-	write(t, first, "keep me")
+	testutils.Write(t, first, "keep me")
 
 	second, err := order.Create(dir, now)
 	require.NoError(t, err)
@@ -326,7 +321,7 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "file")
 
-	write(t, blocker, "x")
+	testutils.Write(t, blocker, "x")
 
 	_, err := order.Create(filepath.Join(blocker, "orders"), time.Now())
 	require.Error(t, err, "creating under a file must fail")

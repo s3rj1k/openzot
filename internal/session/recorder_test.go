@@ -15,6 +15,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // The model's reasoning is part of the record. The scratchpad is often the only
@@ -34,7 +35,7 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 		{Type: conversation.TypeBot, Text: "on it"},
 	})
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	got := make([]string, 0, len(records)-1)
 
@@ -85,7 +86,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 		Budget:   loop.Budget{Iterations: 3, Calls: 2, Cycles: 1, Settles: 1, InputTokens: 1200, OutputTokens: 340},
 	})
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	got := kinds(records)
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindEvent, session.KindMessage, session.KindResult}
@@ -136,7 +137,7 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	_ = writer.Close()
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	require.Equal(t, fmt.Sprint([]session.Kind{session.KindMeta, session.KindEvent}), fmt.Sprint(kinds(records)), "want the meta and the one real event")
 
@@ -201,7 +202,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 		}),
 	})
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	result := records[len(records)-1].Result
 
@@ -242,7 +243,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	var got []string
 
-	for _, record := range readLog(t, path) {
+	for _, record := range testutils.ReadLog(t, path) {
 		if record.Kind == session.KindMessage {
 			got = append(got, record.Message.Text)
 		}
@@ -266,7 +267,7 @@ func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 
 	_ = writer.Close()
 
-	events := readLog(t, path)
+	events := testutils.ReadLog(t, path)
 
 	event := events[len(events)-1].Event
 	assert.NotNil(t, event, "want the token counts in its text")
@@ -283,7 +284,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 
 		session.NewRecorder(writer, nil).Result(&loop.Result{Reason: reason})
 
-		records := readLog(t, path)
+		records := testutils.ReadLog(t, path)
 
 		assert.Equal(t, want, records[len(records)-1].Result.Code, "%s: code", reason)
 	}

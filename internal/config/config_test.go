@@ -10,17 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/config"
+	"github.com/openzot/openzot/internal/testutils"
 )
-
-func writeConfig(t *testing.T, body string) string {
-	t.Helper()
-	dir := t.TempDir()
-
-	path := filepath.Join(dir, "config.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
-
-	return path
-}
 
 // validConfig returns a minimal config that passes Validate, optionally tweaked.
 func validConfig(tweak func(*config.Config)) *config.Config {
@@ -76,7 +67,7 @@ func TestAnEmptyProviderGetsNothing(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 agent:
   model: gpt-5.4
 provider: {}
@@ -159,7 +150,7 @@ provider:
 
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := config.Load(writeConfig(t, body))
+			_, err := config.Load(testutils.WriteConfig(t, body))
 			require.Error(t, err, "removed provider configuration keys must be rejected")
 		})
 	}
@@ -175,7 +166,7 @@ func TestLoadExplicitMissingIsError(t *testing.T) {
 func TestSecretEnvReference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MY_PROVIDER_KEY", "sk-from-env")
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 provider:
   api_key: '$MY_PROVIDER_KEY'
 `)
@@ -190,7 +181,7 @@ provider:
 func TestAuthorizationEnvReference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("GATEWAY_DEFAULT_KEY", "sk-gateway-default")
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 provider:
   api_key: '${GATEWAY_DEFAULT_KEY}'
 `)
@@ -317,7 +308,7 @@ func TestScrubProviderSecrets(t *testing.T) {
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("AGENT_TEST_UNRELATED", "keep-me")
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 provider:
   api_key: $ZAI_API_KEY
 `)
@@ -502,7 +493,7 @@ func TestMaxTimeIsValidated(t *testing.T) {
 // (max_continuations, max_recoveries) are the easy ones to misspell, and a
 // misspelled key is rejected at load rather than silently ignored.
 func TestEveryBudgetIsReadFromTheFile(t *testing.T) {
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 agent:
   max_settles: 3
   max_calls: 4
@@ -540,7 +531,7 @@ agent:
 // The thresholds are validated at load, where the operator is looking, not when
 // the run starts.
 func TestContextThresholdsAreReadAndValidated(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "agent:\n  context_soft: 30\n  context_hard: 70\n"))
+	cfg, err := config.Load(testutils.WriteConfig(t, "agent:\n  context_soft: 30\n  context_hard: 70\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, 30, cfg.Agent.ContextSoft)
@@ -555,7 +546,7 @@ func TestContextThresholdsAreReadAndValidated(t *testing.T) {
 }
 
 func TestPlanKnobsAreReadAndValidated(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "agent:\n  plan_nudge_every: -1\n  plan_min_turns: 8\n"))
+	cfg, err := config.Load(testutils.WriteConfig(t, "agent:\n  plan_nudge_every: -1\n  plan_min_turns: 8\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, -1, cfg.Agent.PlanNudgeEvery)
@@ -568,7 +559,7 @@ func TestPlanKnobsAreReadAndValidated(t *testing.T) {
 }
 
 func TestToolOutputPercentIsReadAndValidated(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "agent:\n  max_tool_output_percent: 10\n"))
+	cfg, err := config.Load(testutils.WriteConfig(t, "agent:\n  max_tool_output_percent: 10\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, 10, cfg.Agent.MaxToolOutputPercent, "max_tool_output_percent = %d, want 10", cfg.Agent.MaxToolOutputPercent)
@@ -589,7 +580,7 @@ func TestRemovedContextKnobsAreRejected(t *testing.T) {
 		"max_tool_output: 32000",
 	} {
 		t.Run(key, func(t *testing.T) {
-			path := writeConfig(t, "agent:\n  "+key+"\n")
+			path := testutils.WriteConfig(t, "agent:\n  "+key+"\n")
 
 			_, err := config.Load(path)
 			require.Error(t, err, "agent.%s must be rejected", key)
@@ -604,14 +595,14 @@ func TestThePromptIsRequiredAndReadAsWritten(t *testing.T) {
 	require.Error(t, validConfig(func(c *config.Config) { c.Prompt = "" }).Validate(), "a config with no prompt validated")
 	require.Error(t, validConfig(func(c *config.Config) { c.Prompt = " \n " }).Validate(), "a blank prompt validated")
 
-	cfg, err := config.Load(writeConfig(t, "prompt: |\n  Hello {{ .Objective }}.\n\n  Bye.\n"))
+	cfg, err := config.Load(testutils.WriteConfig(t, "prompt: |\n  Hello {{ .Objective }}.\n\n  Bye.\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "Hello {{ .Objective }}.\n\nBye.\n", cfg.Prompt)
 }
 
 func TestSkillsDirIsRead(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, "skills_dir: ~/skills\n"))
+	cfg, err := config.Load(testutils.WriteConfig(t, "skills_dir: ~/skills\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, "~/skills", cfg.SkillsDir, "skills_dir = %q, want it as written", cfg.SkillsDir)
@@ -620,7 +611,7 @@ func TestSkillsDirIsRead(t *testing.T) {
 // reasoning_effort and extra_body are per-model request settings. Read as
 // written, and an effort the provider would reject is rejected at load.
 func TestAModelCarriesItsRequestSettings(t *testing.T) {
-	cfg, err := config.Load(writeConfig(t, `
+	cfg, err := config.Load(testutils.WriteConfig(t, `
 prompt: x
 agent:
   model: local
@@ -659,7 +650,7 @@ provider:
 // The viewer scrollback is a scalar UI field read from the file, and an
 // out-of-range value is rejected at load.
 func TestUIScrollbackIsReadAndValidated(t *testing.T) {
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 ui:
   scrollback: 20000
 `)
@@ -676,7 +667,7 @@ ui:
 // still sets it must fail at load and name the key, not show a header
 // the operator did not ask for.
 func TestUIStatsIsNoLongerAKey(t *testing.T) {
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 ui:
   stats: [model, iter]
 `)
@@ -693,7 +684,7 @@ func TestAConfiguredKeyIsTheOneUsed(t *testing.T) {
 	t.Setenv("AGENT_CONFIG", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("PROXY_KEY", "sk-proxy")
-	path := writeConfig(t, `
+	path := testutils.WriteConfig(t, `
 provider:
   base_url: https://proxy.example.com/v1
   api_key: $PROXY_KEY

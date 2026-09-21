@@ -26,7 +26,8 @@ worked around.
   worse than none. Tests live in the external `x_test` package and reach only
   what `x` exports. Export what a test needs instead of bridging it with an
   `export_test.go` or an alias. Only `cmd/agent` is tested in `package main`, since
-  a `main` package cannot be imported.
+  a `main` package cannot be imported. Helpers more than one package needs live
+  in `internal/testutils`, not copied into each test package.
 - **It vets clean, in modern Go.** `task vet` runs `go vet` and fails on anything
   `go fix` would rewrite (the modernizers: `any`, `range n`, `min`/`max`, `slices`,
   `maps`, `cmp.Or`, ...). Write the current idiom rather than the old one; the

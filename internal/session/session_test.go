@@ -15,37 +15,8 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/session"
+	"github.com/openzot/openzot/internal/testutils"
 )
-
-// readLog reads a log the way anyone does. One JSON value per line. A line that
-// is not JSON fails the test, which is the point - the format is the contract.
-func readLog(t *testing.T, path string) []session.Record {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	if len(data) > 0 {
-		require.Equal(t, byte('\n'), data[len(data)-1], "log does not end on a line")
-	}
-
-	var records []session.Record
-
-	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-		if line == "" {
-			continue
-		}
-
-		var record session.Record
-
-		err := json.Unmarshal([]byte(line), &record)
-		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
-
-		records = append(records, record)
-	}
-
-	return records
-}
 
 func kinds(records []session.Record) []session.Kind {
 	out := make([]session.Kind, 0, len(records))
@@ -67,7 +38,7 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 
 	assert.Equal(t, path, writer.Path())
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	require.Len(t, records, 1, "a new log should open with exactly its meta record")
 	require.Equal(t, session.KindMeta, records[0].Kind, "a new log should open with exactly its meta record")
@@ -116,7 +87,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 		require.NoError(t, step(), "step %d", i+1)
 	}
 
-	got := kinds(readLog(t, path))
+	got := kinds(testutils.ReadLog(t, path))
 
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindMessage, session.KindMessage, session.KindEvent, session.KindResult}
 
@@ -173,7 +144,7 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 	require.NoError(t, writer.Message(conversation.Message{Type: litReasoning, Text: "the model's own words"}))
 
 	// read while the writer is still open, as a tail or a crash would
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	last := records[len(records)-1]
 
@@ -206,7 +177,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 
 	require.True(t, bytes.HasPrefix(after, before), "the second run changed what the first run wrote")
 
-	got := kinds(readLog(t, path))
+	got := kinds(testutils.ReadLog(t, path))
 	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindResult, session.KindMeta, session.KindMessage, session.KindResult}
 
 	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "records = %v, want two runs one after the other", got)
@@ -299,7 +270,7 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 
 	_ = writer.Close()
 
-	got := len(readLog(t, path))
+	got := len(testutils.ReadLog(t, path))
 	assert.Equal(t, 1+writers*each, got, "the log has %d records, want the meta plus %d messages", got, writers*each)
 }
 
@@ -312,7 +283,7 @@ func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
 
 	require.Error(t, writer.Message(conversation.Message{Type: litUser, Text: "too late"}), "writing after the result must be an error, not a silent drop")
 
-	assert.Len(t, readLog(t, path), 2, "want just the meta and the result")
+	assert.Len(t, testutils.ReadLog(t, path), 2, "want just the meta and the result")
 
 	require.NoError(t, writer.Close(), "Close after Result")
 }
@@ -343,7 +314,7 @@ func TestAToolCallIsRecordedInFull(t *testing.T) {
 
 	_ = writer.Close()
 
-	records := readLog(t, path)
+	records := testutils.ReadLog(t, path)
 
 	activity := records[1].Message.Activity
 

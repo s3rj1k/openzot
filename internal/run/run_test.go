@@ -27,6 +27,7 @@ import (
 	"github.com/openzot/openzot/internal/run"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/skills"
+	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -36,21 +37,13 @@ func testOrder(objective string) order.Order {
 	return order.Order{Objective: objective}
 }
 
-func mustWrite(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-}
-
 func TestLoadProjectContext(t *testing.T) {
 	configDir := t.TempDir()
 	workDir := t.TempDir()
 
 	// A global AGENTS.md in the config dir and a project one in the work dir.
-	mustWrite(t, filepath.Join(configDir, "AGENTS.md"), "GLOBAL CONVENTIONS")
-	mustWrite(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
+	testutils.Write(t, filepath.Join(configDir, "AGENTS.md"), "GLOBAL CONVENTIONS")
+	testutils.Write(t, filepath.Join(workDir, "AGENTS.md"), "PROJECT CONVENTIONS")
 
 	project := run.LoadProjectContext(configDir, workDir, workDir)
 
@@ -77,7 +70,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 
 	t.Run("a relative folder is taken against the working directory", func(t *testing.T) {
 		project := t.TempDir()
-		mustWrite(t, filepath.Join(project, "my-skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: say hello\n---\nbody")
+		testutils.Write(t, filepath.Join(project, "my-skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: say hello\n---\nbody")
 		t.Chdir(project)
 
 		loaded, err := run.LoadSkills("my-skills")
@@ -90,7 +83,7 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 
 	t.Run("~ is the home directory", func(t *testing.T) {
 		home := t.TempDir()
-		mustWrite(t, filepath.Join(home, "skills", "deploy", "SKILL.md"), "---\nname: deploy\n---\nbody")
+		testutils.Write(t, filepath.Join(home, "skills", "deploy", "SKILL.md"), "---\nname: deploy\n---\nbody")
 		t.Setenv("HOME", home)
 
 		loaded, err := run.LoadSkills("~/skills")
@@ -149,45 +142,6 @@ func stubProvider(t *testing.T) *config.Config {
 	return cfg
 }
 
-// runs a function with stdout discarded, returning what it printed.
-func quietly(t *testing.T, fn func() error) (string, error) {
-	t.Helper()
-
-	original := os.Stdout
-
-	read, write, _ := os.Pipe()
-
-	os.Stdout = write
-
-	done := make(chan string)
-
-	go func() {
-		var builder strings.Builder
-
-		buffer := make([]byte, 4096)
-
-		for {
-			n, err := read.Read(buffer)
-
-			builder.Write(buffer[:n])
-
-			if err != nil {
-				break
-			}
-		}
-
-		done <- builder.String()
-	}()
-
-	err := fn()
-
-	write.Close()
-
-	os.Stdout = original
-
-	return <-done, err
-}
-
 // headlessViewer is tui.Run without the screen. It reports endings the way the
 // viewer does. An error behind the run as itself, otherwise an agent-declared
 // failure as an AgentExitError.
@@ -230,7 +184,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	project := t.TempDir()
 	skillsDir := filepath.Join(project, "skills")
 
-	mustWrite(t, filepath.Join(skillsDir, "deploy", "SKILL.md"),
+	testutils.Write(t, filepath.Join(skillsDir, "deploy", "SKILL.md"),
 		"---\nname: deploy\ndescription: LISTING-MARKER\n---\n# Deploy\n\nINSTRUCTIONS-MARKER\n")
 
 	var (
@@ -272,7 +226,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	// loaded at startup. The folder is not read again during the run
 	require.NoError(t, os.RemoveAll(skillsDir))
 
-	_, err = quietly(t, func() error {
+	_, err = testutils.CaptureStdout(t, func() error {
 		options := logged(t)
 		options.Skills = offered
 
@@ -296,16 +250,6 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	assert.NotContains(t, all[1], "INSTRUCTIONS-MARKER", "the listing must carry the description and not the instructions")
 
 	assert.Contains(t, all[2], "INSTRUCTIONS-MARKER", "reading a skill by name must return its full instructions")
-}
-
-// writeCfg writes a config file and returns its path.
-func writeCfg(t *testing.T, body string) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
-
-	return path
 }
 
 // Credential resolution is the part of the configuration that fails silently, since a key that never arrives looks like a
@@ -357,7 +301,7 @@ func TestCredentialResolution(t *testing.T) {
 
 			defer server.Close()
 
-			path := writeCfg(t, fmt.Sprintf(`
+			path := testutils.WriteConfig(t, fmt.Sprintf(`
 agent:
   model: %q
 provider:
@@ -372,7 +316,7 @@ provider:
 
 			assert.Equal(t, litGpt4, client.Config().Model)
 
-			_, err = quietly(t, func() error {
+			_, err = testutils.CaptureStdout(t, func() error {
 				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
@@ -434,7 +378,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 
 			defer server.Close()
 
-			path := writeCfg(t, fmt.Sprintf(`
+			path := testutils.WriteConfig(t, fmt.Sprintf(`
 prompt: '{{ .Objective }}'
 agent:
   model: default
@@ -450,7 +394,7 @@ provider:
 			cfg, err := config.Load(path)
 			require.NoError(t, err)
 
-			_, err = quietly(t, func() error {
+			_, err = testutils.CaptureStdout(t, func() error {
 				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
@@ -529,7 +473,7 @@ func TestResolveSelectsTheModelFromTheOneProvider(t *testing.T) {
 	t.Setenv("AGENT_CONFIG", "")
 	t.Setenv("ALPHA_KEY", "sk-alpha")
 
-	cfg, err := config.Load(writeCfg(t, `
+	cfg, err := config.Load(testutils.WriteConfig(t, `
 agent:
   model: fast
 provider:
@@ -596,7 +540,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 func TestResolveCustomModelAlias(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("AGENT_CONFIG", "")
-	path := writeCfg(t, `
+	path := testutils.WriteConfig(t, `
 agent:
   model: fast
 provider:
@@ -746,29 +690,6 @@ func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
 	assert.Contains(t, err.Error(), "provider:", "the error should say to declare the provider")
 }
 
-// readSession decodes every line of a session log, failing on any line that is
-// not a JSON record.
-func readSession(t *testing.T, path string) []session.Record {
-	t.Helper()
-
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-	records := make([]session.Record, 0, len(lines))
-
-	for i, line := range lines {
-		var record session.Record
-
-		err := json.Unmarshal([]byte(line), &record)
-		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
-
-		records = append(records, record)
-	}
-
-	return records
-}
-
 // A run leaves a record of itself. What it was asked, which model answered, and
 // how it ended.
 func TestRunWithRecordsASession(t *testing.T) {
@@ -776,12 +697,12 @@ func TestRunWithRecordsASession(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), ".agent", "orders", "task.jsonl")
 
-	_, err := quietly(t, func() error {
+	_, err := testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
 
-	records := readSession(t, path)
+	records := testutils.ReadLog(t, path)
 
 	first, last := records[0], records[len(records)-1]
 
@@ -820,7 +741,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	for i := range 2 {
-		_, err := quietly(t, func() error {
+		_, err := testutils.CaptureStdout(t, func() error {
 			return run.Run(t.Context(), cfg, testOrder("the same brief"), run.Options{Viewer: headlessViewer, SessionPath: path})
 		})
 		require.NoError(t, err, "run %d", i+1)
@@ -828,7 +749,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	var runs [][]session.Record
 
-	for _, record := range readSession(t, path) {
+	for _, record := range testutils.ReadLog(t, path) {
 		if record.Kind == session.KindMeta {
 			runs = append(runs, nil)
 		}
@@ -883,14 +804,14 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 
-	_, err = quietly(t, func() error {
+	_, err = testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err, "RunWith")
 
 	var reasoning, request bool
 
-	for _, record := range readSession(t, snapshot) {
+	for _, record := range testutils.ReadLog(t, snapshot) {
 		if record.Kind != session.KindMessage {
 			continue
 		}
@@ -910,7 +831,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	// and the finished log keeps it too
 	var final bool
 
-	for _, record := range readSession(t, path) {
+	for _, record := range testutils.ReadLog(t, path) {
 		if record.Kind == session.KindMessage && record.Message.Type == "reasoning" {
 			final = true
 		}
@@ -950,7 +871,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o600))
 
-	output, err := quietly(t, func() error {
+	output, err := testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{
 			Viewer:      headlessViewer,
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
@@ -968,7 +889,7 @@ func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 
 	t.Chdir(dir)
 
-	_, err := quietly(t, func() error {
+	_, err := testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), stubProvider(t), testOrder("do the thing"), run.Options{Viewer: headlessViewer})
 	})
 	require.Error(t, err, "want a run with no log refused")
@@ -1238,7 +1159,7 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
 	cfg.Prompt = "You are a haiku bot. Write only haiku about {{ .Objective }}."
 
-	_, err := quietly(t, func() error {
+	_, err := testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), cfg, testOrder("the sea"), logged(t))
 	})
 	require.NoError(t, err)
@@ -1358,7 +1279,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 
-	_, err := quietly(t, func() error {
+	_, err := testutils.CaptureStdout(t, func() error {
 		return run.Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
