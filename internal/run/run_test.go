@@ -1,7 +1,6 @@
 package run_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
@@ -24,13 +22,7 @@ import (
 	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tools"
-	"github.com/openzot/openzot/internal/tui"
 )
-
-// testOrder is an order for a run that never was a file.
-func testOrder(objective string) order.Order {
-	return order.Order{Objective: objective}
-}
 
 func TestLoadProjectContext(t *testing.T) {
 	configDir := t.TempDir()
@@ -95,73 +87,22 @@ func TestLoadSkillsFromTheConfiguredFolder(t *testing.T) {
 	})
 }
 
-// declared is the model list a provider needs to run the named models. Each
-// with a context window, since a model without one cannot run.
-func declared(names ...string) map[string]config.ModelConfig {
-	models := make(map[string]config.ModelConfig, len(names))
-
-	for _, name := range names {
-		models[name] = config.ModelConfig{Context: 100_000}
-	}
-
-	return models
-}
-
-// testDefaults is the built-in configuration plus what it lacks by design, a model
-// to run and a prompt, which here is just the goal.
-func testDefaults() *config.Config {
-	cfg := config.Defaults()
-	cfg.Agent.Model = litGlm52
-	cfg.Prompt = "{{ .Objective }}"
-
-	return &cfg
-}
-
 func stubProvider(t *testing.T) *config.Config {
 	t.Helper()
 
 	server := testutils.Script(t, testutils.Frames(testutils.Settle("all done")))
 
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
 
 	return cfg
-}
-
-// headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does. An error behind the run as itself, otherwise an agent-declared
-// failure as an AgentExitError.
-func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
-	engine, err := loop.New(opts)
-	if err != nil {
-		return loop.Result{}, err
-	}
-
-	fmt.Println(meta.Task)
-
-	result := engine.Run(ctx, func(event loop.Event) {
-		if event.Kind == loop.EventToken {
-			fmt.Print(event.Text)
-		}
-	})
-
-	fmt.Println(result.Message)
-
-	switch {
-	case result.Err != nil:
-		return result, result.Err
-	case result.ExitCode() != 0:
-		return result, &tui.AgentExitError{Code: result.ExitCode(), Message: result.Message}
-	}
-
-	return result, nil
 }
 
 // logged is the options of a run that is recorded, as every run must be.
 func logged(t *testing.T) run.Options {
 	t.Helper()
 
-	return run.Options{Viewer: headlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
+	return run.Options{Viewer: testutils.HeadlessViewer, SessionPath: filepath.Join(t.TempDir(), "task.jsonl")}
 }
 
 // The whole path a skill takes. The model lists the skills, reads one by name,
@@ -180,7 +121,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	)
 
 	cfg := stubProvider(t)
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
 
 	offered, err := run.LoadSkills(skillsDir)
 	require.NoError(t, err)
@@ -192,7 +133,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 		options := logged(t)
 		options.Skills = offered
 
-		return run.Run(t.Context(), cfg, testOrder("do the thing"), options)
+		return run.Run(t.Context(), cfg, testutils.TestOrder("do the thing"), options)
 	})
 	require.NoError(t, err)
 
@@ -258,7 +199,7 @@ provider:
 			assert.Equal(t, litGpt4, client.Config().Model)
 
 			_, err = testutils.CaptureStdout(t, func() error {
-				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
+				return run.Run(t.Context(), &cfg, testutils.TestOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
 
@@ -304,7 +245,7 @@ provider:
 			require.NoError(t, err)
 
 			_, err = testutils.CaptureStdout(t, func() error {
-				return run.Run(t.Context(), &cfg, testOrder("do the thing"), logged(t))
+				return run.Run(t.Context(), &cfg, testutils.TestOrder("do the thing"), logged(t))
 			})
 			require.NoError(t, err)
 
@@ -330,8 +271,8 @@ provider:
 // A provider that names no endpoint cannot resolve, and says so rather than
 // sending a request to nowhere.
 func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{APIKey: litSkTest, Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{APIKey: litSkTest, Models: testutils.Declared(litGlm52)}
 
 	_, _, err := run.Resolve(t.Context(), cfg, nil)
 	require.Error(t, err, "a provider naming no endpoint must be rejected")
@@ -343,8 +284,8 @@ func TestAProviderWithoutAnEndpointIsRejected(t *testing.T) {
 // shell acts on the machine, so a call the model did not finish writing is
 // rejected, never mended into one that runs.
 func TestResolveNeverRepairsAShellCall(t *testing.T) {
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: testutils.Declared(litGlm52)}
 
 	_, opts, err := run.Resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
@@ -358,7 +299,7 @@ func TestResolveNeverRepairsAShellCall(t *testing.T) {
 // Resolve holds the same rule for a config that skipped it.
 func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 	cases := map[string]map[string]config.ModelConfig{
-		"the model is not declared":     declared("some-other-model"),
+		"the model is not declared":     testutils.Declared("some-other-model"),
 		"no models are declared at all": nil,
 		"the window is zero":            {litGlm52: {Model: litGlm52}},
 		"the window is negative":        {litGlm52: {Context: -1}},
@@ -366,7 +307,7 @@ func TestResolveRefusesAModelWithoutAContextWindow(t *testing.T) {
 
 	for name, models := range cases {
 		t.Run(name, func(t *testing.T) {
-			cfg := testDefaults()
+			cfg := testutils.Defaults(litGlm52)
 			cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, Models: models}
 
 			_, _, err := run.Resolve(t.Context(), cfg, nil)
@@ -445,7 +386,7 @@ func TestNoProviderIsBuiltIn(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ZAI_API_KEY", "sk-zai")
 
-	_, _, err := run.Resolve(t.Context(), testDefaults(), nil)
+	_, _, err := run.Resolve(t.Context(), testutils.Defaults(litGlm52), nil)
 	require.Error(t, err, "a run resolved with no provider declared")
 }
 
@@ -484,7 +425,7 @@ provider:
 // The iteration denominator in the meta bar must be the limit the run will stop at. A per-model max_iterations lowers it,
 // and a bar counting to a number the run never reaches ("iter 12/100" when it ends at 40) misreports the run.
 func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
-	cfg := testDefaults()
+	cfg := testutils.Defaults(litGlm52)
 	cfg.Agent.Model = "capped"
 	cfg.Agent.MaxIterations = 100
 	cfg.Provider = config.ProviderConfig{
@@ -524,8 +465,8 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		testutils.Frames(testutils.Settle("all done")),
 	)
 
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
 
 	original := os.Stdout
 
@@ -553,7 +494,7 @@ func TestRunTaskEndToEnd(t *testing.T) {
 		done <- builder.String()
 	}()
 
-	err := run.Run(t.Context(), cfg, testOrder("do the thing"), logged(t))
+	err := run.Run(t.Context(), cfg, testutils.TestOrder("do the thing"), logged(t))
 
 	write.Close()
 
@@ -571,10 +512,10 @@ func TestRunTaskEndToEnd(t *testing.T) {
 // A misconfigured provider fails before any request is made, with a message that
 // says what to fix.
 func TestRunRejectsAnUnconfiguredProvider(t *testing.T) {
-	cfg := testDefaults()
+	cfg := testutils.Defaults(litGlm52)
 	cfg.Provider = config.ProviderConfig{}
 
-	err := run.Run(t.Context(), cfg, testOrder("task"), logged(t))
+	err := run.Run(t.Context(), cfg, testutils.TestOrder("task"), logged(t))
 	require.Error(t, err, "an unconfigured provider must fail")
 
 	assert.Contains(t, err.Error(), "provider:", "the error should say to declare the provider")
@@ -588,7 +529,7 @@ func TestRunWithRecordsASession(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".agent", "orders", "task.jsonl")
 
 	_, err := testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, testutils.TestOrder("do the thing"), run.Options{Viewer: testutils.HeadlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
 
@@ -632,7 +573,7 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 
 	for i := range 2 {
 		_, err := testutils.CaptureStdout(t, func() error {
-			return run.Run(t.Context(), cfg, testOrder("the same brief"), run.Options{Viewer: headlessViewer, SessionPath: path})
+			return run.Run(t.Context(), cfg, testutils.TestOrder("the same brief"), run.Options{Viewer: testutils.HeadlessViewer, SessionPath: path})
 		})
 		require.NoError(t, err, "run %d", i+1)
 	}
@@ -678,10 +619,10 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	)
 
 	cfg := stubProvider(t)
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
 
 	_, err = testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, testutils.TestOrder("do the thing"), run.Options{Viewer: testutils.HeadlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err, "RunWith")
 
@@ -745,8 +686,8 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o600))
 
 	output, err := testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), cfg, testOrder("do the thing"), run.Options{
-			Viewer:      headlessViewer,
+		return run.Run(t.Context(), cfg, testutils.TestOrder("do the thing"), run.Options{
+			Viewer:      testutils.HeadlessViewer,
 			SessionPath: filepath.Join(blocked, "task.jsonl"),
 		})
 	})
@@ -763,7 +704,7 @@ func TestARunWithNoSessionLogIsRefused(t *testing.T) {
 	t.Chdir(dir)
 
 	_, err := testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), stubProvider(t), testOrder("do the thing"), run.Options{Viewer: headlessViewer})
+		return run.Run(t.Context(), stubProvider(t), testutils.TestOrder("do the thing"), run.Options{Viewer: testutils.HeadlessViewer})
 	})
 	require.Error(t, err, "want a run with no log refused")
 	require.Contains(t, err.Error(), "session log", "want a run with no log refused")
@@ -794,7 +735,7 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "provider", "want it to say to declare a provider")
 
 	// and the library entry point, which does not validate, says the same
-	err = run.Run(t.Context(), &cfg, testOrder("task"), logged(t))
+	err = run.Run(t.Context(), &cfg, testutils.TestOrder("task"), logged(t))
 	require.Error(t, err, "want it to say to declare a provider")
 	assert.Contains(t, err.Error(), "provider", "want it to say to declare a provider")
 }
@@ -803,23 +744,10 @@ func TestARunWithNothingConfiguredSaysWhatIsMissing(t *testing.T) {
 func stubProviderConfig(t *testing.T) *config.Config {
 	t.Helper()
 
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, APIKey: "k", Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTP12700, APIKey: "k", Models: testutils.Declared(litGlm52)}
 
 	return cfg
-}
-
-// starterPrompt is the prompt of the starter config `agent config` seeds, which is the one agent ships.
-func starterPrompt(t *testing.T) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(path, configs.ExampleConfigYAML, 0o600))
-
-	cfg, err := config.Load(path)
-	require.NoError(t, err)
-
-	return cfg.Prompt
 }
 
 // promptOf renders a prompt for an order the way a run does, with the tools a run really has.
@@ -849,7 +777,7 @@ func newOrderNamed(t *testing.T, objective string) order.Order {
 func defaultPrompt(t *testing.T) string {
 	t.Helper()
 
-	return promptOf(t, starterPrompt(t), newOrderNamed(t, "build a parser"))
+	return promptOf(t, testutils.StarterPrompt(t), newOrderNamed(t, "build a parser"))
 }
 
 // The task is the durable goal, so it must land in the system prompt, which trimming never drops and always orders first,
@@ -858,7 +786,7 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
 	require.NoError(t, err)
 
-	got := promptOf(t, starterPrompt(t), o)
+	got := promptOf(t, testutils.StarterPrompt(t), o)
 
 	assert.Contains(t, got, "You are agent", "the starter config's prompt must be what is sent")
 
@@ -914,7 +842,7 @@ func TestThePromptListsTheToolsTheRunHas(t *testing.T) {
 	client, opts, err := run.Resolve(t.Context(), cfg, offered)
 	require.NoError(t, err)
 
-	with, err := newOrderNamed(t, "x").Render(starterPrompt(t), run.OrderEnv(cfg, client, &opts, "/work", "", ""))
+	with, err := newOrderNamed(t, "x").Render(testutils.StarterPrompt(t), run.OrderEnv(cfg, client, &opts, "/work", "", ""))
 	require.NoError(t, err)
 
 	assert.Contains(t, with, `- "skills":`, "the prompt must list the skills tool when the run has one")
@@ -1011,11 +939,11 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 	server := testutils.Script(t, testutils.Frames(testutils.Settle("all done")))
 
 	cfg := stubProvider(t)
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
 	cfg.Prompt = "You are a haiku bot. Write only haiku about {{ .Objective }}."
 
 	_, err := testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), cfg, testOrder("the sea"), logged(t))
+		return run.Run(t.Context(), cfg, testutils.TestOrder("the sea"), logged(t))
 	})
 	require.NoError(t, err)
 
@@ -1030,8 +958,8 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 // The settle and call budgets are configurable, and the config values must actually reach the run, or the knob in the
 // example config is a lie. The max_settles key matters most, since it sets how hard agent pushes the model to record an outcome.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest, Models: declared(litGlm52)}
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest, Models: testutils.Declared(litGlm52)}
 	cfg.Agent.MaxSettles = 5
 	cfg.Agent.MaxCalls = 33
 
@@ -1064,7 +992,7 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 // model with a small window is held tighter without being told to be.
 func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 	shellOutput := func(window, percent int) int {
-		cfg := testDefaults()
+		cfg := testutils.Defaults(litGlm52)
 		cfg.Agent.MaxToolOutputPercent = percent
 		cfg.Provider = config.ProviderConfig{
 			BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest,
@@ -1110,14 +1038,14 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	server := testutils.Script(t, testutils.Frames(testutils.Settle("done")))
 
-	cfg := testDefaults()
-	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
-	cfg.Prompt = starterPrompt(t)
+	cfg := testutils.Defaults(litGlm52)
+	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: testutils.Declared(litGlm52)}
+	cfg.Prompt = testutils.StarterPrompt(t)
 
 	path := filepath.Join(t.TempDir(), "orders", "task.jsonl")
 
 	_, err := testutils.CaptureStdout(t, func() error {
-		return run.Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), run.Options{Viewer: headlessViewer, SessionPath: path})
+		return run.Run(t.Context(), cfg, newOrderNamed(t, "do the thing"), run.Options{Viewer: testutils.HeadlessViewer, SessionPath: path})
 	})
 	require.NoError(t, err)
 

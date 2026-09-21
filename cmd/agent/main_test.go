@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,48 +16,17 @@ import (
 
 	"github.com/openzot/openzot/configs"
 	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/testutils"
-	"github.com/openzot/openzot/internal/tui"
 )
-
-// headlessViewer is tui.Run without the screen. It reports endings the way the
-// viewer does. An error behind the run as itself, otherwise an agent-declared
-// failure as an AgentExitError.
-func headlessViewer(ctx context.Context, meta tui.Meta, opts *loop.Options) (loop.Result, error) {
-	engine, err := loop.New(opts)
-	if err != nil {
-		return loop.Result{}, err
-	}
-
-	fmt.Println(meta.Task)
-
-	result := engine.Run(ctx, func(event loop.Event) {
-		if event.Kind == loop.EventToken {
-			fmt.Print(event.Text)
-		}
-	})
-
-	fmt.Println(result.Message)
-
-	switch {
-	case result.Err != nil:
-		return result, result.Err
-	case result.ExitCode() != 0:
-		return result, &tui.AgentExitError{Code: result.ExitCode(), Message: result.Message}
-	}
-
-	return result, nil
-}
 
 // TestMain gives every test a stand-in for the terminal and the full-screen
 // viewer, which need a real TTY. The stand-in runs the agent to its ending and
 // prints what it said, so a test can assert on the run without a screen.
 func TestMain(m *testing.M) {
 	isTerminal = func() bool { return true }
-	runViewer = headlessViewer
+	runViewer = testutils.HeadlessViewer
 
 	os.Exit(m.Run())
 }
