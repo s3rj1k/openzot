@@ -146,12 +146,6 @@ order: |
   #   - do not change public API signatures
   ---
 
-# Presentation.
-ui:
-  # How many log lines the viewer keeps on screen. Default 5000. The session log
-  # always holds the whole run.
-  # scrollback: 5000
-
 # A folder of skills, each a subdirectory with a SKILL.md (a name, a short
 # description, then the instructions). They are loaded at startup and offered
 # through a skills tool. "~/" is home, and a relative path is taken against --dir.

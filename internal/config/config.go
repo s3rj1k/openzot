@@ -17,7 +17,6 @@ import (
 // Config is the fully-resolved agent configuration.
 type Config struct {
 	Agent Agent `yaml:"agent"`
-	UI    UI    `yaml:"ui"`
 	// The system prompt every run starts from, a Go text/template that reads the order and the run. Required,
 	// since agent carries no prompt of its own. The starter config holds the default.
 	Prompt string `yaml:"prompt"`
@@ -30,13 +29,6 @@ type Config struct {
 	// The one model-provider connection every run uses. None is built in. It holds a base_url, an
 	// api_key and the models it serves, and agent.model picks which of them runs.
 	Provider ProviderConfig `yaml:"provider"`
-}
-
-// UI holds presentation options for the read-only viewer.
-type UI struct {
-	// How many log lines the viewer keeps on screen. Zero uses the built-in default. Raising it keeps
-	// more of a long run visible at more memory. The session log always has the full run.
-	Scrollback int `yaml:"scrollback"`
 }
 
 // Defaults returns the built-in configuration used when nothing else is set. There is no default provider or
@@ -113,10 +105,6 @@ func (c *Config) Validate() error {
 
 	if c.Agent.PlanMinTurns < 0 {
 		return errors.New("agent.plan_min_turns must not be negative")
-	}
-
-	if c.UI.Scrollback < 0 {
-		return errors.New("ui.scrollback must not be negative")
 	}
 
 	p := c.Provider

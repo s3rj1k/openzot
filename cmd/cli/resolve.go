@@ -55,7 +55,6 @@ func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tu
 		Model:         cfg.Agent.Model,
 		Provider:      cfg.Provider.Label(),
 		Workdir:       workdir,
-		MaxScrollback: cfg.UI.Scrollback,
 		MaxIterations: iterLimit,
 		MaxDuration:   opts.MaxDuration,
 	}

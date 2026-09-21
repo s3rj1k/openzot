@@ -28,12 +28,9 @@ type Meta struct {
 	// Workdir is the directory the agent's tools operate in.
 	Workdir string
 
-	// How many log lines the viewer keeps on screen. Zero uses DefaultMaxScrollback. A larger value keeps more
-	// history at more memory. The full run is always in the session log.
-	MaxScrollback int
-
 	// The configured run limits, shown as "5/1000" progress in the meta bar. Zero means unbounded or not worth
-	// showing (such as the default iteration fallback), so no denominator appears.
+	// showing (such as the default iteration fallback), so no denominator appears. The iteration limit also sizes
+	// the scrollback.
 	MaxIterations int
 	MaxDuration   time.Duration
 }
@@ -107,10 +104,7 @@ func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error
 	m := NewModel(meta.Task, meta.Model, meta.Provider, meta.Workdir)
 
 	m.Title = meta.Title
-	if meta.MaxScrollback > 0 {
-		m.MaxEntries = meta.MaxScrollback
-	}
-
+	m.MaxEntries = Scrollback(meta.MaxIterations)
 	m.MaxIterations = meta.MaxIterations
 	m.MaxDuration = meta.MaxDuration
 

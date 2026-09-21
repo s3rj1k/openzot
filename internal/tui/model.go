@@ -49,7 +49,7 @@ type Model struct {
 	pending          string
 	Follow           bool // auto-scroll to the newest activity
 	Truncated        bool // oldest lines have been dropped to bound memory
-	MaxEntries       int  // scrollback cap (DefaultMaxScrollback unless overridden)
+	MaxEntries       int  // scrollback cap, see Scrollback
 
 	Status     Status
 	Iteration  int
@@ -73,10 +73,23 @@ type Model struct {
 
 // --- viewport content management --------------------------------------------.
 
-// DefaultMaxScrollback is the on-screen log cap used when a caller sets none (Meta.MaxScrollback). An unbounded run
-// would otherwise grow the viewer's memory without limit, so the oldest lines are dropped at the cap. The full run
-// is always in the session log.
-const DefaultMaxScrollback = 5000
+// A run appends at most a few entries per iteration: the divider, the narration, a tool call and its result. Every
+// entry is cut to a third of the terminal's height, so the iteration limit bounds what a run can put on screen.
+const entriesPerIteration = 4
+
+// MaxScrollback is the most entries the viewer keeps. It bounds a run with no iteration limit, or one so large that
+// keeping all of it would cost memory and a slow re-wrap on every resize. The full run is always in the session log.
+const MaxScrollback = 20000
+
+// Scrollback is how many entries the viewer keeps for a run of at most maxIterations iterations, room for every one of
+// them and the closing line, so a bounded run is never trimmed. Zero, meaning no limit, gets MaxScrollback.
+func Scrollback(maxIterations int) int {
+	if maxIterations <= 0 || maxIterations > (MaxScrollback-1)/entriesPerIteration {
+		return MaxScrollback
+	}
+
+	return maxIterations*entriesPerIteration + 1
+}
 
 func NewModel(task, modelName, provider, workdir string) *Model {
 	sp := spinner.New()
@@ -92,7 +105,7 @@ func NewModel(task, modelName, provider, workdir string) *Model {
 		Status:     StatusRunning,
 		Follow:     true,
 		startedAt:  time.Now(),
-		MaxEntries: DefaultMaxScrollback,
+		MaxEntries: MaxScrollback,
 	}
 }
 

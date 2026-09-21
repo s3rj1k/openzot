@@ -521,7 +521,7 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	// viewport cost (which a real, model-paced run pays anyway, now bounded by the cap).
 	m := tui.NewModel("do the thing", "m", "b", "d")
 
-	limit := m.MaxEntries // DefaultMaxScrollback
+	limit := m.MaxEntries // MaxScrollback
 
 	total := limit + limit/4 + 200 // enough to force a trim past the cap + slack
 	for i := range total {
@@ -553,19 +553,31 @@ func TestTrimmedLogShowsAMarker(t *testing.T) {
 	assert.Contains(t, m.Viewport.View(), "trimmed", "a trimmed log must show a marker, got")
 }
 
-// The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback). A
-// caller can keep fewer or more lines than the default.
-func TestScrollbackCapIsConfigurable(t *testing.T) {
-	m := tui.NewModel("t", "m", "b", "d")
-	m.MaxEntries = 50 // what Run sets from Meta.MaxScrollback
+// The scrollback is sized from the iteration limit: a bounded run keeps every entry it can make, and one with no limit,
+// or too many iterations to keep, gets the ceiling.
+func TestScrollbackIsSizedFromTheIterationLimit(t *testing.T) {
+	assert.Equal(t, tui.MaxScrollback, tui.Scrollback(0), "no limit gets the ceiling")
+	assert.Equal(t, tui.MaxScrollback, tui.Scrollback(-1))
+	assert.Equal(t, tui.MaxScrollback, tui.Scrollback(1_000_000), "a limit too large to keep gets the ceiling")
 
-	for i := range 300 {
-		m.AppendEntry(fmt.Sprintf("line %d", i))
+	assert.Less(t, tui.Scrollback(10), tui.Scrollback(11), "more iterations must keep more")
+
+	// a run of the limit's iterations, each with its divider, narration, call and result, and the closing line, is never trimmed
+	const iterations = 1000
+
+	m := tui.NewModel("t", "m", "b", "d")
+	m.MaxEntries = tui.Scrollback(iterations)
+
+	for range iterations {
+		for range 4 {
+			m.AppendEntry("entry")
+		}
 	}
 
-	assert.LessOrEqual(t, len(m.Entries), m.MaxEntries+m.MaxEntries/4, "a custom cap of %d must be honored, kept %d", m.MaxEntries, len(m.Entries))
+	m.AppendEntry("done")
 
-	assert.GreaterOrEqual(t, len(m.Entries), m.MaxEntries, "should keep about the cap %d, kept only %d", m.MaxEntries, len(m.Entries))
+	assert.False(t, m.Truncated, "a run within its iteration limit was trimmed")
+	assert.Len(t, m.Entries, iterations*4+1)
 }
 
 // headerSegments is how many segments the header has when everything fits.

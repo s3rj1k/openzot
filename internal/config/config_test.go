@@ -657,34 +657,17 @@ provider:
 	assert.Contains(t, err.Error(), "reasoning_effort", "want an unknown effort refused and named")
 }
 
-// The viewer scrollback is a scalar UI field read from the file, and an
-// out-of-range value is rejected at load.
-func TestUIScrollbackIsReadAndValidated(t *testing.T) {
+// The viewer sizes its scrollback from the iteration limit, so ui: is gone rather than ignored. A config that still
+// has it must fail at load and name the key, not carry a setting nothing reads.
+func TestUIIsNoLongerAKey(t *testing.T) {
 	path := testutils.WriteConfig(t, `
 ui:
   scrollback: 20000
 `)
 
-	cfg, err := config.Load(path)
-	require.NoError(t, err)
-
-	assert.Equal(t, 20000, cfg.UI.Scrollback)
-
-	require.Error(t, validConfig(func(c *config.Config) { c.UI.Scrollback = -1 }).Validate(), "a negative ui.scrollback must fail validation")
-}
-
-// The header is fixed, so ui.stats is gone rather than ignored. A config that
-// still sets it must fail at load and name the key, not show a header
-// the operator did not ask for.
-func TestUIStatsIsNoLongerAKey(t *testing.T) {
-	path := testutils.WriteConfig(t, `
-ui:
-  stats: [model, iter]
-`)
-
 	_, err := config.Load(path)
-	require.Error(t, err, "want the removed ui.stats key refused and named")
-	assert.Contains(t, err.Error(), "stats", "want the removed ui.stats key refused and named")
+	require.Error(t, err, "want the removed ui key refused and named")
+	assert.Contains(t, err.Error(), "ui", "want the removed ui key refused and named")
 }
 
 // A key written for the endpoint is exactly what it uses, and an ambient
