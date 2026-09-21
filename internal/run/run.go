@@ -1,7 +1,6 @@
-// Package run is one run of an order, from a configuration to a finished log. It
-// resolves the provider and the engine's options, renders the order into a system
-// prompt, opens the session log, shows the run in the viewer and prints its
-// digest. The command line is only how it is asked for.
+// Package run is one run of an order, from a configuration to a finished log. It resolves the provider and the engine's
+// options, renders the prompt, opens the session log, shows the run in the viewer and prints its digest. The command
+// line is only how it is asked for.
 package run
 
 import (
@@ -34,14 +33,9 @@ const agentFile = "AGENTS.md"
 // instructions. This only has to get the agent moving.
 const taskKickoff = "Begin working on your task. Start by calling the tasks tool to list the work, then carry it through to completion."
 
-// LoadProjectContext reads the instructions found on disk under the given
-// directories, searched in order (typically the config directory first, then the
-// working directory).
-//
-//   - <dir>/AGENTS.md
-//
-// Missing files are ignored, and duplicate directories are searched once. An
-// order's prompt decides whether and where to use them, as .Project.
+// LoadProjectContext reads the AGENTS.md found under the given directories, searched in order (typically the config directory
+// then the working directory). Missing files are ignored and duplicate directories are searched once. An order's prompt
+// decides whether and where to use them, as .Project.
 func LoadProjectContext(dirs ...string) string {
 	seen := map[string]bool{}
 
@@ -150,12 +144,8 @@ func printDigest(w io.Writer, sessionPath string, result *loop.Result) {
 	fmt.Fprintf(w, "\n%s", tui.RenderDigest(digest))
 }
 
-// viewerMeta describes the run to the viewer.
-//
-// The budgets it carries are the ones the run was resolved with, not the raw
-// configuration. A per-model max_iterations lowers the limit the engine
-// enforces, and a meta bar counting up to a number the run will never reach is
-// worse than no number at all.
+// viewerMeta describes the run to the viewer. Its budgets are the ones the run was resolved with, not the raw config, since
+// a per-model max_iterations lowers the engine's limit and a bar counting to a number the run never reaches misreports it.
 func viewerMeta(cfg *config.Config, task, workdir string, opts *loop.Options) tui.Meta {
 	// Show the iteration progress denominator only for a real user-set limit -
 	// the default is a 1,000,000 fallback, which is not a budget worth displaying.
@@ -265,10 +255,9 @@ func Resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 	return client, opts, nil
 }
 
-// Run executes one autonomous coding task, rendering the agent's activity in
-// the read-only TUI. The agent's file and shell tools operate on the current
-// working directory, so the caller chdirs into the target project first. It
-// blocks until the user quits the viewer or the run errors.
+// Run executes one autonomous coding task, rendering the agent's activity in the read-only TUI. The tools operate on the
+// current working directory, so the caller chdirs into the project first. It blocks until the user quits the viewer or the
+// run errors.
 func Run(ctx context.Context, cfg *config.Config, o order.Order, options Options) error {
 	config.ScrubProviderSecrets(cfg)
 

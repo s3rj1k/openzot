@@ -330,13 +330,8 @@ func writeCfg(t *testing.T, body string) string {
 	return path
 }
 
-// Credential resolution, which is the part of the configuration that fails
-// silently. A key that does not arrive presents as a 401 from the provider,
-// which reads like a bad key rather than a config that never picked it up.
-//
-// These assert on the Authorization header the provider actually receives,
-// because that is the only thing that proves a credential was resolved rather
-// than only accepted by the parser.
+// Credential resolution is the part of the configuration that fails silently, since a key that never arrives looks like a
+// bad key. These assert on the Authorization header the provider receives, the only proof a credential was resolved.
 func TestCredentialResolution(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -691,10 +686,8 @@ provider:
 	}
 }
 
-// The iteration denominator in the meta bar has to be the limit the run will
-// actually stop at. A per-model max_iterations lowers that limit, and a bar
-// counting towards a number the run never reaches - "iter 12/100" on a run the
-// engine ends at 40 - misreports the run to the only person watching it.
+// The iteration denominator in the meta bar must be the limit the run will stop at. A per-model max_iterations lowers it,
+// and a bar counting to a number the run never reaches ("iter 12/100" when it ends at 40) misreports the run.
 func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Agent.Model = "capped"
@@ -954,10 +947,8 @@ func TestRunningTheSameTaskAgainAppendsAFreshRun(t *testing.T) {
 	}
 }
 
-// The log holds what the model thought, and holds it while a tool is still
-// running. A snapshot of the log taken by the command itself already carries the
-// turn's reasoning and the request being run, so a run killed inside a long
-// command loses nothing of the turn that started it.
+// The log holds what the model thought, and holds it while a tool is still running. A snapshot taken by the command itself
+// already carries the turn's reasoning and the request, so a run killed inside a long command loses nothing of that turn.
 func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	dir := t.TempDir()
 
@@ -1176,10 +1167,8 @@ func defaultPrompt(t *testing.T) string {
 	return promptOf(t, newOrderNamed(t, "build a parser"))
 }
 
-// The task is the durable goal, so it must land in the system prompt, which
-// trimming never drops and always orders first - not as a user message, which a
-// long run can trim away. An agent that forgets its own goal is the worst
-// way for a run to fail.
+// The task is the durable goal, so it must land in the system prompt, which trimming never drops and always orders first,
+// not in a user message that a long run can trim away.
 func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
 	if err != nil {
@@ -1197,10 +1186,8 @@ func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
 	}
 }
 
-// The tools the prompt names come from the tool set the run really has, so it
-// cannot describe tools that are not offered. The prompt drifted once already -
-// it told the agent to call "edit", "exec", "exit" and "progress" when those
-// tools did not exist - which is what generating the list prevents. This pins it.
+// The tools the prompt names come from the tool set the run really has, so it cannot describe tools that are not offered.
+// It once told the agent to call "edit", "exec", "exit" and "progress" when none existed, which generating the list prevents.
 func TestTheDefaultPromptNamesOnlyRealTools(t *testing.T) {
 	prompt := defaultPrompt(t)
 
@@ -1324,14 +1311,9 @@ func TestThePromptCarriesTheProjectAndTheRun(t *testing.T) {
 	}
 }
 
-// zot has no input channel. No stdin, no chat turn, no approval prompt - a run
-// is a work order, a provider and a read-only viewer. An agent that does not
-// know that asks a question and waits, and waiting is fatal in a way no other
-// prompt mistake is. Nothing answers, the run burns its budget until a guard
-// kills it, and the work it never wrote is lost. These pin the directives that
-// prevent it. A prompt cannot be tested against a model here, so the patterns
-// are by design loose - they assert the directive survives a rewrite of the
-// wording, not the wording itself.
+// Zot has no input channel, so an agent that asks a question and waits is fatal in a way no other prompt mistake is. These
+// pin the directives that prevent it. They are loose by design, asserting the directive survives a rewrite of the wording,
+// since a prompt cannot be tested against a model here.
 var nonInteractiveDirectives = []struct {
 	need    string
 	pattern *regexp.Regexp
@@ -1372,11 +1354,8 @@ func TestTheDefaultPromptForbidsWaitingForTheUser(t *testing.T) {
 	}
 }
 
-// The order's prompt is the operator's to rewrite - that is what having it in the
-// file is for - but it cannot hand the agent an interactivity the run does not
-// have. A prompt that forgot to say "never wait" would otherwise produce runs
-// that hang on a question nobody can answer, and the operator would have no way
-// to tell that from a slow model.
+// The order's prompt is the operator's to rewrite, but it cannot hand the agent an interactivity the run does not have. A prompt
+// that forgot to say "never wait" would produce runs that hang on a question nobody can answer, which looks like a slow model.
 func TestACustomPromptKeepsTheNonInteractiveContract(t *testing.T) {
 	o, err := order.Parse([]byte("---\nobjective: write a haiku\n---\nYou are a haiku bot. Write only haiku about {{ .Objective }}.\n"))
 	if err != nil {
@@ -1430,10 +1409,8 @@ func TestThePromptCarriesTheContractExactlyOnce(t *testing.T) {
 	}
 }
 
-// The settle and call budgets are configurable, and the config values have to
-// actually reach the run - otherwise the knob in the example config is a lie.
-// The max_settles key is the one the operator most wants. How hard zot pushes the model
-// to record an outcome before giving up.
+// The settle and call budgets are configurable, and the config values must actually reach the run, or the knob in the
+// example config is a lie. The max_settles key matters most, since it sets how hard zot pushes the model to record an outcome.
 func TestRunBudgetsComeFromConfig(t *testing.T) {
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest, Models: declared(litGlm52)}
@@ -1580,10 +1557,9 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	}
 }
 
-// The config states the defaults of the context thresholds because the rule
-// between them is its own. The engine has fallbacks for a caller building its
-// options by hand. They are the same numbers, or a config that says nothing would
-// behave differently from an engine that was told nothing.
+// The config states the context threshold defaults because the rule between them is its own, and the engine has fallbacks
+// for a caller building options by hand. They are the same numbers, or a config that says nothing would behave differently
+// from an engine that was told nothing.
 func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 	defaults := config.Defaults()
 
