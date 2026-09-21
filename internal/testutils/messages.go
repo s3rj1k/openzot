@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/fantasy"
@@ -105,4 +106,45 @@ func TasksArgs(tasks ...[3]string) map[string]any {
 	}
 
 	return map[string]any{"tasks": list}
+}
+
+// PlanArgs is a tasks call as the model sends one, two tasks with one done.
+const PlanArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"fix it","status":"in_progress"}]}`
+
+// PlanCall is the model calling its plan tool and being answered.
+func PlanCall(id, args, answer string) []conversation.Message {
+	return []conversation.Message{
+		Activity(conversation.ActivityRequest, id, "tasks", args, nil),
+		Activity(conversation.ActivityResponse, id, "tasks", args, answer),
+	}
+}
+
+// History is a kickoff and a plan, then n turns of tool work each carrying the filler as the result.
+func History(n int, filler string) []conversation.Message {
+	messages := make([]conversation.Message, 0, 3+2*n)
+	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: "kickoff"})
+	messages = append(messages, PlanCall("plan", PlanArgs, "the plan")...)
+
+	for i := range n {
+		id := fmt.Sprintf("c%d", i)
+
+		messages = append(messages,
+			Activity(conversation.ActivityRequest, id, "read", `{"path":"x"}`, nil),
+			Activity(conversation.ActivityResponse, id, "read", `{"path":"x"}`, filler),
+		)
+	}
+
+	return messages
+}
+
+// Starts is where each turn of a History begins, the plan being turn one and every pair after it another, with the turn
+// about to be asked for last.
+func Starts(messages []conversation.Message) []int {
+	out := []int{0, 1}
+
+	for i := 3; i < len(messages); i += 2 {
+		out = append(out, i)
+	}
+
+	return append(out, len(messages))
 }

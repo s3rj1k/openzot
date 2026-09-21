@@ -1,4 +1,4 @@
-package conversation
+package window
 
 // Token costs are estimates, not counts, since provider tokenizers are private and differ. Text is priced by
 // its UTF-8 bytes, conservatively, so a long run is trimmed a little early rather than rejected. Once a request

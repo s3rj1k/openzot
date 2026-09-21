@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
@@ -35,7 +34,9 @@ func contextLimitOnce(t *testing.T) (fantasy.LanguageModel, func() int) {
 }
 
 // longConversation builds enough history to be worth trimming.
-func longConversation(turns int) []conversation.Message {
+func longConversation() []conversation.Message {
+	const turns = 40
+
 	messages := make([]conversation.Message, 0, turns)
 
 	for index := range turns {
@@ -60,12 +61,12 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
 		Model:         client,
-		Messages:      longConversation(40),
+		Messages:      longConversation(),
 	})
 	require.NoError(t, err)
 
 	// the configured window, far above the 8192 the provider states
-	engine.Window = 40_000
+	engine.Fit.Size = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
@@ -76,7 +77,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 	assert.Equal(t, 1, result.Budget.Recoveries, "want the rejection to count as one")
 
 	// 85% of the stated 8192
-	assert.Equal(t, 6963, engine.Window)
+	assert.Equal(t, 6963, engine.Fit.Size)
 }
 
 // Trimming happens on the wire, not in the history. Every message the run
@@ -85,12 +86,12 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	client, _ := contextLimitOnce(t)
 
-	original := longConversation(40)
+	original := longConversation()
 
 	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: client, Messages: original})
 	require.NoError(t, err)
 
-	engine.Window = 40_000
+	engine.Fit.Size = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
@@ -104,37 +105,6 @@ func TestContextLimitNeverRewritesTheConversation(t *testing.T) {
 	}
 }
 
-// A provider that keeps saying "too long" is wrong about its own ceiling only so
-// far. Once the window is down to a fraction of the configured one there is
-// nothing left to try, and retrying would send the same request again.
-func TestNarrowingStopsAtTheFloor(t *testing.T) {
-	client, _ := contextLimitOnce(t)
-
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: client, Messages: longConversation(4)})
-	require.NoError(t, err)
-
-	floor := testWindow / loop.NarrowFloor
-
-	engine.Window = floor
-
-	// no stated window, so the only move is stepping the window down
-	assert.False(t, engine.NarrowWindow(failure.ContextLimit{}, func(loop.Event) {}), "the window narrowed to %d, below the %d floor", engine.Window, floor)
-
-	assert.Equal(t, floor, engine.Window)
-}
-
-// A rejection without a stated window steps the budget down by a quarter.
-func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
-	client, _ := contextLimitOnce(t)
-
-	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client})
-	require.NoError(t, err)
-
-	require.True(t, engine.NarrowWindow(failure.ContextLimit{}, func(loop.Event) {}))
-
-	assert.Equal(t, 30_000, engine.Window)
-}
-
 // A context limit that persists is eventually a real failure rather than an
 // infinite retry loop.
 func TestPersistentContextLimitGivesUp(t *testing.T) {
@@ -143,12 +113,12 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow:    testWindow,
 		Model:            client,
-		Messages:         longConversation(40),
+		Messages:         longConversation(),
 		MaxContinuations: 3,
 	})
 	require.NoError(t, err)
 
-	engine.Window = 40_000
+	engine.Fit.Size = 40_000
 
 	result := engine.Run(t.Context(), nil)
 
@@ -216,7 +186,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
 		Model:         client,
-		Messages:      longConversation(40),
+		Messages:      longConversation(),
 	})
 	require.NoError(t, err)
 
@@ -225,7 +195,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	// 85% of the stated 8192
-	assert.Equal(t, 6963, engine.Window, "window")
+	assert.Equal(t, 6963, engine.Fit.Size, "window")
 }
 
 // A rejection with no number still recovers, using the engine's own estimate.
@@ -235,7 +205,7 @@ func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 		testutils.Frames(testutils.Tool("d", outcome.SuccessTool, `{"summary":"ok"}`)),
 	).Model(t)
 
-	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client, Messages: longConversation(40)})
+	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client, Messages: longConversation()})
 	require.NoError(t, err)
 
 	assert.Equal(t, outcome.StopSettled, engine.Run(t.Context(), nil).Reason)

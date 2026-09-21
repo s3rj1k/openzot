@@ -18,6 +18,7 @@ import (
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
+	"github.com/openzot/openzot/internal/window"
 )
 
 // testWindow is the context window every test engine is given. A window is
@@ -88,9 +89,9 @@ func TestNewAppliesDefaults(t *testing.T) {
 	// ending, so an unset budget is the default budget, never "no settling".
 	assert.Equal(t, outcome.DefaultMaxSettles, engine.MaxSettles, "maxSettles = %d, want the default %d - there is no way to opt out", engine.MaxSettles, outcome.DefaultMaxSettles)
 
-	assert.Equal(t, testWindow, engine.Window, "want the configured window and the default thresholds")
-	assert.Equal(t, loop.DefaultContextSoft, engine.SoftPercent, "want the configured window and the default thresholds")
-	assert.Equal(t, loop.DefaultContextHard, engine.HardPercent, "want the configured window and the default thresholds")
+	assert.Equal(t, testWindow, engine.Fit.Size, "want the configured window and the default thresholds")
+	assert.Equal(t, window.DefaultSoft, engine.Fit.Soft, "want the configured window and the default thresholds")
+	assert.Equal(t, window.DefaultHard, engine.Fit.Hard, "want the configured window and the default thresholds")
 }
 
 func TestNewRequiresAClient(t *testing.T) {
@@ -474,7 +475,7 @@ func TestTheWindowIsTheConfiguredOne(t *testing.T) {
 	engine, err := loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: 32_000})
 	require.NoError(t, err)
 
-	assert.Equal(t, 32_000, engine.Window)
+	assert.Equal(t, 32_000, engine.Fit.Size)
 }
 
 // The thresholds are the operator's, and zero means the default. Whether they
@@ -483,14 +484,14 @@ func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 	engine, err := loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: 1000})
 	require.NoError(t, err)
 
-	assert.Equal(t, loop.DefaultContextSoft, engine.SoftPercent)
-	assert.Equal(t, loop.DefaultContextHard, engine.HardPercent)
+	assert.Equal(t, window.DefaultSoft, engine.Fit.Soft)
+	assert.Equal(t, window.DefaultHard, engine.Fit.Hard)
 
 	engine, err = loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: 1000, ContextSoft: 30, ContextHard: 60})
 	require.NoError(t, err)
 
-	assert.Equal(t, 30, engine.SoftPercent)
-	assert.Equal(t, 60, engine.HardPercent)
+	assert.Equal(t, 30, engine.Fit.Soft)
+	assert.Equal(t, 60, engine.Fit.Hard)
 }
 
 // A run with no window has nothing to decide how much of a conversation to keep,
@@ -498,9 +499,9 @@ func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 	client := testutils.ScriptedModel(t, []string{testutils.Stop()})
 
-	for _, window := range []int{0, -1} {
-		if _, err := loop.New(&loop.Options{Model: client, ContextWindow: window}); err == nil {
-			assert.Failf(t, "unexpected", "a context window of %d was accepted", window)
+	for _, size := range []int{0, -1} {
+		if _, err := loop.New(&loop.Options{Model: client, ContextWindow: size}); err == nil {
+			assert.Failf(t, "unexpected", "a context window of %d was accepted", size)
 		} else if !strings.Contains(err.Error(), "context") {
 			assert.Failf(t, "unexpected", "the error should say a context window is missing: %v", err)
 		}

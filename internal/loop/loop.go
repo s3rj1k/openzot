@@ -7,7 +7,6 @@ package loop
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -21,6 +20,7 @@ import (
 	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/outcome"
+	"github.com/openzot/openzot/internal/window"
 )
 
 // Options configures a run.
@@ -94,11 +94,11 @@ type Options struct {
 	PlanTool string
 
 	// PlanNudgeEvery is how many iterations pass between reminders of the plan
-	// tool. Zero uses DefaultPlanNudgeEvery. Negative turns the reminders off.
+	// tool. Zero uses window.DefaultPlanNudgeEvery. Negative turns the reminders off.
 	PlanNudgeEvery int
 
 	// Turns the window must still hold after forgetting for the plan to stay where it is. Fewer and it
-	// is posted again. Zero uses DefaultPlanMinTurns.
+	// is posted again. Zero uses window.DefaultPlanMinTurns.
 	PlanMinTurns int
 
 	// Percent of the window where the oldest messages start to be forgotten (one per request) and
@@ -158,34 +158,9 @@ type Engine struct {
 	MaxSettles    int
 	RetryBackoff  time.Duration
 
-	// Window is the context window requests are held under. The configured one,
-	// lowered when a provider rejects a request and states its own ceiling.
-	Window      int
-	planEvery   int
-	planTurns   int
-	SoftPercent int
-	HardPercent int
-
-	// toolTokens caches the cost of the tool schemas, which are the same on
-	// every request of a run and would otherwise be re-counted each round.
-	toolTokens int
-}
-
-// toolSchemaTokens is what the tool definitions cost on the wire. They go with every request and can run to thousands of
-// tokens, so leaving them out of the budget is how a request that seems to fit gets rejected.
-func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
-	if e.toolTokens > 0 || len(tools) == 0 {
-		return e.toolTokens
-	}
-
-	encoded, err := json.Marshal(tools)
-	if err != nil {
-		return 0
-	}
-
-	e.toolTokens = conversation.EstimateTokens(string(encoded))
-
-	return e.toolTokens
+	// Fit holds the conversation under the context window, and keeps the window in force.
+	Fit       *window.Fitter
+	planEvery int
 }
 
 // New creates an engine, applying defaults.
@@ -209,7 +184,7 @@ func New(options *Options) (*Engine, error) {
 	planEvery := options.PlanNudgeEvery
 
 	if planEvery == 0 {
-		planEvery = DefaultPlanNudgeEvery
+		planEvery = window.DefaultPlanNudgeEvery
 	}
 
 	return &Engine{
@@ -227,11 +202,15 @@ func New(options *Options) (*Engine, error) {
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
 		RetryBackoff: cmp.Or(options.RetryBackoff, failure.DefaultRetryBackoff),
-		Window:       options.ContextWindow,
-		SoftPercent:  pick(options.ContextSoft, DefaultContextSoft),
-		planEvery:    planEvery,
-		planTurns:    pick(options.PlanMinTurns, DefaultPlanMinTurns),
-		HardPercent:  pick(options.ContextHard, DefaultContextHard),
+		Fit: window.NewFitter(window.Options{
+			Window:       options.ContextWindow,
+			Soft:         options.ContextSoft,
+			Hard:         options.ContextHard,
+			PlanMinTurns: options.PlanMinTurns,
+			PlanTool:     options.PlanTool,
+			Instructions: options.Instructions,
+		}),
+		planEvery: planEvery,
 	}, nil
 }
 
@@ -348,133 +327,6 @@ func (e *Engine) CheckCycle(messages []conversation.Message, budget *outcome.Bud
 	budget.Cycles++
 
 	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.CycleNotice(CycleDetail(detected))}), nil
-}
-
-// NarrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
-// it went down. The provider's stated window beats the configured one, since a rejection means the configured one was wrong.
-// Without a usable number the window steps down a quarter, to a floor. Only the window changes, not the conversation.
-func (e *Engine) NarrowWindow(limit failure.ContextLimit, emit func(Event)) bool {
-	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.Window {
-		e.Window = limit.SuggestedLimit
-
-		emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
-			"provider reported a %d token window; retrying under %d",
-			limit.MaxTokens, limit.SuggestedLimit)})
-
-		return true
-	}
-
-	narrowed := e.Window * 3 / 4
-
-	if narrowed < e.Options.ContextWindow/NarrowFloor {
-		return false
-	}
-
-	e.Window = narrowed
-
-	emit(Event{Kind: EventRetry, Text: fmt.Sprintf(
-		"provider rejected the request as too long; retrying under %d tokens", narrowed)})
-
-	return true
-}
-
-// TurnsHeld is how many whole turns the window still holds. The turn about to be
-// asked for is the last of turnStarts and has not happened yet, so it is not one.
-func TurnsHeld(turnStarts []int, forgotten int) int {
-	turns := 0
-
-	for _, start := range turnStarts[:len(turnStarts)-1] {
-		if start >= forgotten {
-			turns++
-		}
-	}
-
-	return turns
-}
-
-// ForgetOldest moves the offset forward as far as the window calls for, and
-// reports whether it moved.
-func (e *Engine) ForgetOldest(messages []conversation.Message, forgotten *int, tools []fantasy.Tool, emit func(Event)) bool {
-	// the system prompt and the tool schemas are sent on every request and are
-	// part of what fills the window
-	used := conversation.EstimateTokens(e.Options.Instructions) + e.toolSchemaTokens(tools)
-
-	for _, message := range messages[*forgotten:] {
-		used += conversation.Cost(message)
-	}
-
-	next := conversation.Forget(messages, *forgotten, used, e.Window, e.SoftPercent, e.HardPercent, conversation.Cost)
-	if next == *forgotten {
-		return false
-	}
-
-	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-		"forgot %d older messages to stay within the context window", next-*forgotten)})
-
-	*forgotten = next
-
-	return true
-}
-
-// RepostedPlan is the model's latest plan, its last successful plan-tool call, as a fresh call and result to append. It reports
-// false when there is no plan or the plan is still in the window and needs no help.
-func (e *Engine) RepostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
-	if e.Options.PlanTool == "" {
-		return nil, false
-	}
-
-	for index, message := range slices.Backward(messages) {
-		activity := message.Activity
-
-		if activity == nil || activity.Kind != conversation.ActivityResponse || activity.Name != e.Options.PlanTool || activity.Failure != "" {
-			continue
-		}
-
-		if index >= forgotten {
-			return nil, false
-		}
-
-		id := fmt.Sprintf("plan-%d", len(messages))
-
-		call := conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: activity.Name, Arguments: activity.Arguments}
-		answer := conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: activity.Name, Arguments: activity.Arguments, Result: activity.Result}
-
-		return []conversation.Message{
-			{Type: conversation.TypeActivity, Activity: &call},
-			{Type: conversation.TypeActivity, Text: answer.ResultText(), Activity: &answer},
-		}, true
-	}
-
-	return nil, false
-}
-
-// FitToWindow forgets the oldest messages as the window fills and puts the plan back in front of the model when forgetting left
-// it too little to go on. It returns the conversation, grown by the plan when posted. The forgotten offset only moves forward.
-func (e *Engine) FitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
-	if !e.ForgetOldest(messages, forgotten, tools, emit) {
-		return messages
-	}
-
-	turns := TurnsHeld(turnStarts, *forgotten)
-
-	if turns >= e.planTurns {
-		return messages
-	}
-
-	posted, ok := e.RepostedPlan(messages, *forgotten)
-	if !ok {
-		return messages
-	}
-
-	emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
-		"only %d turns are left in the context window; posting the plan again", turns)})
-
-	messages = append(messages, posted...)
-
-	// the plan costs something too
-	e.ForgetOldest(messages, forgotten, tools, emit)
-
-	return messages
 }
 
 // trimmedKickoff stands in for the opening user message once trimming has
@@ -629,7 +481,13 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			turnStarts = append(turnStarts, len(messages))
 		}
 
-		messages = e.FitToWindow(messages, &forgotten, turnStarts, tools, emit)
+		var notices []string
+
+		messages, notices = e.Fit.Fit(messages, &forgotten, turnStarts, tools)
+
+		for _, notice := range notices {
+			emit(Event{Kind: EventNotice, Text: notice})
+		}
 
 		request := e.BuildRequest(messages, forgotten)
 
@@ -670,7 +528,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			if limit, ok := failure.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.SpendContinuation()
 
-				if e.NarrowWindow(limit, emit) {
+				if notice, ok := e.Fit.Narrow(limit); ok {
+					emit(Event{Kind: EventRetry, Text: notice})
+
 					continue
 				}
 			}

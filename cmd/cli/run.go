@@ -23,6 +23,7 @@ import (
 	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/tools"
 	"github.com/openzot/openzot/internal/tui"
+	"github.com/openzot/openzot/internal/window"
 )
 
 // The file agent looks for under each context directory.
@@ -235,7 +236,7 @@ func resolve(ctx context.Context, cfg *config.Config, offered []skills.Skill) (*
 
 	// A single tool result may take a share of the context window, so a
 	// small-window model is bounded tighter without being told to be.
-	toolOutput := conversation.BytesForTokens(contextWindow * cmp.Or(cfg.Agent.MaxToolOutputPercent, tools.DefaultOutputPercent) / 100)
+	toolOutput := window.BytesForTokens(contextWindow * cmp.Or(cfg.Agent.MaxToolOutputPercent, tools.DefaultOutputPercent) / 100)
 
 	opts := loop.Options{
 		Model:           client.Model(),

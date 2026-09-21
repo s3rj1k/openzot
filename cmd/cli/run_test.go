@@ -22,6 +22,7 @@ import (
 	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tools"
+	"github.com/openzot/openzot/internal/window"
 )
 
 func TestLoadProjectContext(t *testing.T) {
@@ -991,12 +992,12 @@ func TestRunBudgetsComeFromConfig(t *testing.T) {
 // A tool result is bounded by a share of the model's own context window, so a
 // model with a small window is held tighter without being told to be.
 func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
-	shellOutput := func(window, percent int) int {
+	shellOutput := func(size, percent int) int {
 		cfg := testutils.Defaults(litGlm52)
 		cfg.Agent.MaxToolOutputPercent = percent
 		cfg.Provider = config.ProviderConfig{
 			BaseURL: litHTTPSGwExampleCom, APIKey: litSkTest,
-			Models: map[string]config.ModelConfig{litGlm52: {Context: window}},
+			Models: map[string]config.ModelConfig{litGlm52: {Context: size}},
 		}
 
 		_, opts, err := resolve(t.Context(), cfg, nil)
@@ -1063,16 +1064,16 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 	defaults := config.Defaults()
 
-	assert.Equal(t, loop.DefaultContextSoft, defaults.Agent.ContextSoft)
-	assert.Equal(t, loop.DefaultContextHard, defaults.Agent.ContextHard)
+	assert.Equal(t, window.DefaultSoft, defaults.Agent.ContextSoft)
+	assert.Equal(t, window.DefaultHard, defaults.Agent.ContextHard)
 
 	cfg := stubProviderConfig(t)
 
 	_, opts, err := resolve(t.Context(), cfg, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, loop.DefaultContextSoft, opts.ContextSoft, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
-	assert.Equal(t, loop.DefaultContextHard, opts.ContextHard, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
+	assert.Equal(t, window.DefaultSoft, opts.ContextSoft, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, window.DefaultSoft, window.DefaultHard)
+	assert.Equal(t, window.DefaultHard, opts.ContextHard, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, window.DefaultSoft, window.DefaultHard)
 }
 
 func TestDigestStatus(t *testing.T) {

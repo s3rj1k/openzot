@@ -1,4 +1,4 @@
-package conversation_test
+package window_test
 
 import (
 	"strings"
@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/window"
 )
 
 // costs prices a message by the length of its text, so a test states its window
@@ -49,7 +50,7 @@ func TestForget(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, conversation.Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs))
+			assert.Equal(t, test.want, window.Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs))
 		})
 	}
 }
@@ -59,7 +60,7 @@ func TestForget(t *testing.T) {
 func TestForgetSpendsTheOldestFirstAndKeepsAnOversizedNewest(t *testing.T) {
 	messages := append(ten(3), conversation.Message{Type: conversation.TypeUser, Text: strings.Repeat("y", 5000)})
 
-	assert.Equal(t, 2, conversation.Forget(messages, 0, 5030, 1000, 50, 90, costs), "want the two oldest gone and the newest two kept")
+	assert.Equal(t, 2, window.Forget(messages, 0, 5030, 1000, 50, 90, costs), "want the two oldest gone and the newest two kept")
 }
 
 // A tool call carries its cost outside the text. Priced by text alone, a request
@@ -71,5 +72,5 @@ func TestMessageCostCountsTheToolCall(t *testing.T) {
 		Kind: conversation.ActivityRequest, ID: "c1", Name: "write", Arguments: strings.Repeat("x", 900),
 	}}
 
-	assert.Greater(t, conversation.Cost(call), conversation.Cost(bare)+200, "a request's arguments must be priced: %d vs %d", conversation.Cost(call), conversation.Cost(bare))
+	assert.Greater(t, window.Cost(call), window.Cost(bare)+200, "a request's arguments must be priced: %d vs %d", window.Cost(call), window.Cost(bare))
 }

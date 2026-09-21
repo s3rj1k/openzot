@@ -1,7 +1,6 @@
 package loop_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -15,13 +14,20 @@ import (
 	"github.com/openzot/openzot/internal/testutils"
 )
 
+// fit runs the engine's fitter and returns the conversation it leaves, dropping the notices.
+func fit(engine *loop.Engine, messages []conversation.Message, forgotten *int, turnStarts []int) []conversation.Message {
+	grown, _ := engine.Fit.Fit(messages, forgotten, turnStarts, nil)
+
+	return grown
+}
+
 // requestFor is what the engine would send for a conversation it has not seen
 // before. Forgetting applied from scratch, then the request built. It also
 // returns how many messages were forgotten.
 func requestFor(engine *loop.Engine, messages []conversation.Message) (loop.TurnRequest, int) {
 	forgotten := 0
 
-	messages = engine.FitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(loop.Event) {})
+	messages = fit(engine, messages, &forgotten, []int{len(messages)})
 
 	return engine.BuildRequest(messages, forgotten), forgotten
 }
@@ -53,58 +59,6 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 	got := cycle.Describe(polling)
 	assert.NotEqual(t, "repeated_result_run", got, "polling an endpoint until it changes is not a loop, got %q", got)
 	assert.NotEqual(t, "repeated_activity_tail", got, "polling an endpoint until it changes is not a loop, got %q", got)
-}
-
-// A conversation growing round by round. Nothing is forgotten until the soft
-// mark, then the request loses one message per round, and it never reaches the
-// hard mark. The conversation handed in is never touched.
-func TestARequestNeverReachesTheHardMark(t *testing.T) {
-	const window = 20_000
-
-	engine, err := loop.New(&loop.Options{Model: testutils.ScriptedModel(t, []string{testutils.Stop()}), ContextWindow: window})
-	require.NoError(t, err)
-
-	var (
-		messages  = []conversation.Message{{Type: conversation.TypeUser, Text: "the kickoff"}}
-		forgotten int
-		firstLoss = -1
-		hard      = window * loop.DefaultContextHard / 100
-	)
-
-	for round := range 120 {
-		id := fmt.Sprintf("c%d", round)
-
-		messages = append(messages,
-			conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: conversation.ActivityRequest, ID: id, Name: litRead, Arguments: `{"path":"x"}`}},
-			conversation.Message{
-				Type: conversation.TypeActivity, Text: strings.Repeat("line of file content ", 60),
-				Activity: &conversation.Activity{Kind: conversation.ActivityResponse, ID: id, Name: litRead, Result: strings.Repeat("line of file content ", 60)},
-			},
-		)
-
-		before := forgotten
-
-		messages = engine.FitToWindow(messages, &forgotten, []int{len(messages)}, nil, func(loop.Event) {})
-
-		require.GreaterOrEqual(t, forgotten, before, "round %d: the offset moved back from %d to %d", round, before, forgotten)
-
-		if forgotten > before && firstLoss < 0 {
-			firstLoss = round
-		}
-
-		// what the request carries is what is left after the offset
-		used := conversation.EstimateTokens(engine.Options.Instructions)
-
-		for _, message := range messages[forgotten:] {
-			used += conversation.Cost(message)
-		}
-
-		require.Less(t, used, hard, "round %d: the request costs %d, at or past the hard mark %d", round, used, hard)
-	}
-
-	require.GreaterOrEqual(t, firstLoss, 0, "nothing was ever forgotten")
-
-	assert.Len(t, messages, 1+2*120)
 }
 
 // Forgetting is a matter of the wire. A run long enough to fill a small window
