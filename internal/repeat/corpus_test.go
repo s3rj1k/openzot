@@ -1,4 +1,4 @@
-package loop_test
+package repeat_test
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/repeat"
 )
 
 // The corpus pins the cycle heuristics and the runaway guards against the engine they were ported from, one call per record.
@@ -245,7 +245,7 @@ func closeEnough(got, want float64) bool {
 func runGuardRecord(t *testing.T, record corpusRecord) {
 	t.Helper()
 
-	options := loop.GuardOptions{}
+	options := repeat.GuardOptions{}
 
 	if len(record.Args) > 0 {
 		var raw struct {
@@ -265,7 +265,7 @@ func runGuardRecord(t *testing.T, record corpusRecord) {
 		}
 	}
 
-	guard := loop.NewRunawayGuard(options)
+	guard := repeat.NewRunawayGuard(options)
 
 	trippedAt := -1
 
@@ -283,10 +283,10 @@ func runGuardRecord(t *testing.T, record corpusRecord) {
 
 	require.Equal(t, want, trippedAt)
 
-	var expected *loop.GuardReason
+	var expected *repeat.GuardReason
 
 	if len(record.Expected) > 0 && string(record.Expected) != "null" {
-		expected = &loop.GuardReason{}
+		expected = &repeat.GuardReason{}
 
 		require.NoError(t, json.Unmarshal(record.Expected, expected))
 	}
@@ -329,23 +329,23 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 
 		switch record.Fn {
 		case litHasRepeatedSuffix:
-			expectEqual(t, record.Fn, loop.HasRepeatedSuffix(messages), expectBool(t, record))
+			expectEqual(t, record.Fn, repeat.HasRepeatedSuffix(messages), expectBool(t, record))
 
 		case litHasRepeatedActivityTail:
-			expectEqual(t, record.Fn, loop.HasRepeatedActivityTail(messages), expectBool(t, record))
+			expectEqual(t, record.Fn, repeat.HasRepeatedActivityTail(messages), expectBool(t, record))
 
 		case litHasRepeatedResultRun:
-			expectEqual(t, record.Fn, loop.HasRepeatedResultRun(messages), expectBool(t, record))
+			expectEqual(t, record.Fn, repeat.HasRepeatedResultRun(messages), expectBool(t, record))
 
 		case litIsThreadCyclic:
-			expectEqual(t, record.Fn, loop.DescribeCycle(messages) != "", expectBool(t, record))
+			expectEqual(t, record.Fn, repeat.DescribeCycle(messages) != "", expectBool(t, record))
 
 		case litDescribeThreadCycle:
 			var want *string
 
 			require.NoError(t, json.Unmarshal(record.Expected, &want))
 
-			got := loop.DescribeCycle(messages)
+			got := repeat.DescribeCycle(messages)
 
 			if want == nil {
 				want = new(string)
@@ -359,7 +359,7 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 
 		require.NoError(t, json.Unmarshal(record.Args[0], &text))
 
-		options := loop.TextRunOptions{}
+		options := repeat.TextRunOptions{}
 
 		if len(record.Args) > 1 {
 			var raw struct {
@@ -375,7 +375,7 @@ func runRecord(t *testing.T, record corpusRecord) bool {
 			}
 		}
 
-		expectEqual(t, record.Fn, loop.HasRepeatedTextRun(text, options), expectBool(t, record))
+		expectEqual(t, record.Fn, repeat.HasRepeatedTextRun(text, options), expectBool(t, record))
 
 	case "createRepetitionGuard":
 		runGuardRecord(t, record)

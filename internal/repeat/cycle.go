@@ -1,4 +1,6 @@
-package loop
+// Package repeat detects a model that has stopped making progress. The cycle heuristics judge a whole conversation, and
+// the runaway guard judges a single stream of text while it is still being generated.
+package repeat
 
 import (
 	"encoding/json"
