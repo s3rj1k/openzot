@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // activity builds one half of a tool-call pair.
@@ -56,35 +58,26 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 
 	prompt := ToPrompt(messages)
 
-	if len(prompt) != 4 {
-		t.Fatalf("got %d messages, want 4: %+v", len(prompt), prompt)
-	}
+	require.Len(t, prompt, 4)
 
-	if prompt[0].Role != fantasy.MessageRoleUser {
-		t.Errorf("prompt[0] role = %q, want user", prompt[0].Role)
-	}
+	assert.Equal(t, fantasy.MessageRoleUser, prompt[0].Role)
 
 	call, ok := toolCallOf(prompt[1])
-	if prompt[1].Role != fantasy.MessageRoleAssistant || !ok {
-		t.Fatalf("prompt[1] should be an assistant turn carrying one tool call: %+v", prompt[1])
-	}
+	require.Equal(t, fantasy.MessageRoleAssistant, prompt[1].Role, "prompt[1] should be an assistant turn carrying one tool call")
+	require.True(t, ok, "prompt[1] should be an assistant turn carrying one tool call")
 
-	if call.ToolCallID != "c1" || call.ToolName != "shell" || call.Input != `{"command":"ls"}` {
-		t.Errorf("tool call = %+v", call)
-	}
+	assert.Equal(t, "c1", call.ToolCallID)
+	assert.Equal(t, "shell", call.ToolName)
+	assert.JSONEq(t, `{"command":"ls"}`, call.Input)
 
-	if prompt[2].Role != fantasy.MessageRoleTool {
-		t.Fatalf("prompt[2] should be a tool result: %+v", prompt[2])
-	}
+	require.Equal(t, fantasy.MessageRoleTool, prompt[2].Role)
 
 	result, ok := prompt[2].Content[0].(fantasy.ToolResultPart)
-	if !ok || result.ToolCallID != "c1" {
-		t.Fatalf("prompt[2] should reference c1: %+v", prompt[2])
-	}
+	require.True(t, ok, "prompt[2] should reference c1: %+v", prompt[2])
+	require.Equal(t, "c1", result.ToolCallID, "prompt[2] should reference c1: %+v", prompt[2])
 
-	if output, _ := result.Output.(fantasy.ToolResultOutputContentText); output.Text != "README.md" {
-		t.Errorf("tool result = %+v, want the handler output", result.Output)
-	}
+	output, _ := result.Output.(fantasy.ToolResultOutputContentText)
+	assert.Equal(t, "README.md", output.Text, "want the handler output")
 }
 
 // A tool result whose request was trimmed away would be rejected by the
@@ -96,9 +89,7 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 	}
 
 	for _, message := range ToPrompt(messages) {
-		if message.Role == fantasy.MessageRoleTool {
-			t.Fatalf("an orphaned tool result must be dropped: %+v", message)
-		}
+		require.NotEqual(t, fantasy.MessageRoleTool, message.Role, "an orphaned tool result must be dropped")
 	}
 }
 
@@ -113,14 +104,11 @@ func TestToPromptDropsDanglingRequest(t *testing.T) {
 	prompt := ToPrompt(messages)
 
 	for _, message := range prompt {
-		if _, ok := toolCallOf(message); ok {
-			t.Fatalf("a request with no result must be dropped: %+v", message)
-		}
+		_, ok := toolCallOf(message)
+		require.False(t, ok, "a request with no result must be dropped: %+v", message)
 	}
 
-	if len(prompt) != 1 {
-		t.Errorf("got %d messages, want just the user turn", len(prompt))
-	}
+	assert.Len(t, prompt, 1, "want just the user turn")
 }
 
 func TestToPromptRoleMapping(t *testing.T) {
@@ -136,9 +124,7 @@ func TestToPromptRoleMapping(t *testing.T) {
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
 	for _, message := range prompt {
-		if textOf(message) == "thinking out loud" {
-			t.Fatal("reasoning must not be replayed to the provider")
-		}
+		require.NotEqual(t, "thinking out loud", textOf(message), "reasoning must not be replayed to the provider")
 	}
 
 	want := []fantasy.MessageRole{
@@ -147,14 +133,10 @@ func TestToPromptRoleMapping(t *testing.T) {
 		fantasy.MessageRoleUser,
 	}
 
-	if len(prompt) != len(want) {
-		t.Fatalf("got %d messages, want %d: %+v", len(prompt), len(want), prompt)
-	}
+	require.Len(t, prompt, len(want))
 
 	for index, role := range want {
-		if prompt[index].Role != role {
-			t.Errorf("prompt[%d] role = %q, want %q", index, prompt[index].Role, role)
-		}
+		assert.Equal(t, role, prompt[index].Role)
 	}
 }
 
@@ -166,15 +148,12 @@ func TestToPromptEncodesStructuredResults(t *testing.T) {
 
 	prompt := ToPrompt(messages)
 
-	if len(prompt) != 2 {
-		t.Fatalf("got %d messages, want 2", len(prompt))
-	}
+	require.Len(t, prompt, 2)
 
 	result, _ := prompt[1].Content[0].(fantasy.ToolResultPart)
 
-	if output, _ := result.Output.(fantasy.ToolResultOutputContentText); output.Text != `{"records":[]}` {
-		t.Errorf("structured result = %+v, want it JSON-encoded", result.Output)
-	}
+	output, _ := result.Output.(fantasy.ToolResultOutputContentText)
+	assert.JSONEq(t, `{"records":[]}`, output.Text, "want it JSON-encoded")
 }
 
 func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
@@ -185,8 +164,7 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	}
 
 	for index, message := range cases {
-		if prompt := ToPrompt([]Message{message}); len(prompt) != 0 {
-			t.Errorf("case %d: a malformed activity reached the wire as %+v", index, prompt)
-		}
+		prompt := ToPrompt([]Message{message})
+		assert.Empty(t, prompt, "case %d: a malformed activity reached the wire as %+v", index, prompt)
 	}
 }

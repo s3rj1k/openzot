@@ -3,6 +3,8 @@ package conversation
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // costs prices a message by the length of its text, so a test states its window
@@ -45,9 +47,7 @@ func TestForget(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs); got != test.want {
-				t.Errorf("forget = %d, want %d", got, test.want)
-			}
+			assert.Equal(t, test.want, Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs))
 		})
 	}
 }
@@ -57,9 +57,7 @@ func TestForget(t *testing.T) {
 func TestForgetSpendsTheOldestFirstAndKeepsAnOversizedNewest(t *testing.T) {
 	messages := append(ten(3), Message{Type: TypeUser, Text: strings.Repeat("y", 5000)})
 
-	if got := Forget(messages, 0, 5030, 1000, 50, 90, costs); got != 2 {
-		t.Errorf("forget = %d, want the two oldest gone and the newest two kept", got)
-	}
+	assert.Equal(t, 2, Forget(messages, 0, 5030, 1000, 50, 90, costs), "want the two oldest gone and the newest two kept")
 }
 
 // A tool call carries its cost outside the text. Priced by text alone, a request
@@ -71,7 +69,5 @@ func TestMessageCostCountsTheToolCall(t *testing.T) {
 		Kind: ActivityRequest, ID: "c1", Name: "write", Arguments: strings.Repeat("x", 900),
 	}}
 
-	if Cost(call) <= Cost(bare)+200 {
-		t.Errorf("a request's arguments must be priced: %d vs %d", Cost(call), Cost(bare))
-	}
+	assert.Greater(t, Cost(call), Cost(bare)+200, "a request's arguments must be priced: %d vs %d", Cost(call), Cost(bare))
 }

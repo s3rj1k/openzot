@@ -1,8 +1,10 @@
 package plan
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model
@@ -28,9 +30,7 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 		task("add a test", "pending"),
 		map[string]any{litTitle: "deploy", litStatus: "blocked", "note": litNeedsCredentials},
 	))
-	if err != nil {
-		t.Fatalf("ParseTasks: %v", err)
-	}
+	require.NoError(t, err)
 
 	want := []Task{
 		{Title: "read the parser", Status: TaskDone},
@@ -39,14 +39,10 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 		{Title: "deploy", Status: TaskBlocked, Note: litNeedsCredentials},
 	}
 
-	if len(tasks) != len(want) {
-		t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(want), tasks)
-	}
+	require.Len(t, tasks, len(want))
 
 	for i := range want {
-		if tasks[i] != want[i] {
-			t.Errorf("task %d = %+v, want %+v", i+1, tasks[i], want[i])
-		}
+		assert.Equal(t, want[i], tasks[i], "task %d", i+1)
 	}
 }
 
@@ -54,13 +50,9 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 // is a pending task, not a reason to reject the list.
 func TestATaskWithNoStatusIsPending(t *testing.T) {
 	tasks, err := ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
-	if err != nil {
-		t.Fatalf("ParseTasks: %v", err)
-	}
+	require.NoError(t, err)
 
-	if tasks[0].Status != TaskPending {
-		t.Errorf("status = %q, want pending", tasks[0].Status)
-	}
+	assert.Equal(t, TaskPending, tasks[0].Status)
 }
 
 // Each of these is a mistake the model can correct once it is told what it was,
@@ -83,13 +75,9 @@ func TestParseTasksRefusesAMalformedList(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := ParseTasks(test.args)
-			if err == nil {
-				t.Fatal("expected an error")
-			}
+			require.Error(t, err)
 
-			if !strings.Contains(err.Error(), test.want) {
-				t.Errorf("error = %q, want it to say %q", err, test.want)
-			}
+			assert.Contains(t, err.Error(), test.want)
 		})
 	}
 }
@@ -99,13 +87,10 @@ func TestCountDoneCountsOnlyFinishedTasks(t *testing.T) {
 		{Status: TaskDone}, {Status: TaskInProgress}, {Status: TaskDone}, {Status: TaskBlocked}, {Status: TaskPending},
 	}
 
-	if got := CountDone(tasks); got != 2 {
-		t.Errorf("CountDone = %d, want 2: only done counts, not in_progress or blocked", got)
-	}
+	got := CountDone(tasks)
+	assert.Equal(t, 2, got, "only done counts, not in_progress or blocked")
 
-	if CountDone(nil) != 0 {
-		t.Error("no tasks is nothing done")
-	}
+	assert.Equal(t, 0, CountDone(nil), "no tasks is nothing done")
 }
 
 func TestTheChecklistMarkersAreDistinct(t *testing.T) {
@@ -114,9 +99,8 @@ func TestTheChecklistMarkersAreDistinct(t *testing.T) {
 	for _, status := range []TaskStatus{TaskPending, TaskInProgress, TaskDone, TaskBlocked} {
 		marker := TaskMarker(status)
 
-		if other, dup := seen[marker]; dup {
-			t.Errorf("%q and %q share the marker %q", status, other, marker)
-		}
+		other, dup := seen[marker]
+		assert.False(t, dup, "%q and %q share the marker %q", status, other, marker)
 
 		seen[marker] = status
 	}
@@ -135,7 +119,5 @@ func TestFormatTasksReadsTheListBack(t *testing.T) {
 
 	want := "tasks: 1/4 done\n[x] read the code\n[>] fix it - the handler\n[!] ship - needs credentials\n[ ] celebrate"
 
-	if got != want {
-		t.Errorf("FormatTasks =\n%s\nwant\n%s", got, want)
-	}
+	assert.Equal(t, want, got)
 }

@@ -1,10 +1,11 @@
 package conversation
 
 import (
-	"reflect"
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // These cases are the shapes that reached production - a result whose call was trimmed away, two matching
@@ -69,9 +70,7 @@ func TestOrganizeKeepsAWellFormedConversation(t *testing.T) {
 
 	got := Organize(messages)
 
-	if !reflect.DeepEqual(kinds(got), kinds(messages)) {
-		t.Errorf("a valid conversation must survive untouched:\n got %v\nwant %v", kinds(got), kinds(messages))
-	}
+	assert.Equal(t, kinds(messages), kinds(got), "a valid conversation must survive untouched")
 }
 
 // The rule providers enforce. A result immediately follows the call it answers.
@@ -84,9 +83,7 @@ func TestOrganizeClustersASeparatedPair(t *testing.T) {
 
 	want := []string{litActivityRequestCall1, litActivityResponseCall1, "bot/thinking about it"}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("got %v, want %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got))
 }
 
 func TestOrganizeClustersInterleavedPairs(t *testing.T) {
@@ -104,9 +101,7 @@ func TestOrganizeClustersInterleavedPairs(t *testing.T) {
 		"activity/response/call_2",
 	}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("interleaved pairs were not reunited:\n got %v\nwant %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got), "interleaved pairs were not reunited")
 }
 
 // Trimming can take either end of a pair, and both leave a request a provider
@@ -146,9 +141,7 @@ func TestOrganizeDropsOrphans(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := kinds(Organize(test.messages)); !reflect.DeepEqual(got, test.want) {
-				t.Errorf("got %v, want %v", got, test.want)
-			}
+			assert.Equal(t, test.want, kinds(Organize(test.messages)))
 		})
 	}
 }
@@ -163,13 +156,10 @@ func TestOrganizePairsIdenticalCallsByID(t *testing.T) {
 		response("call_1", "read", `{"path":"a"}`, "first"),
 	})
 
-	if len(got) != 4 {
-		t.Fatalf("both calls must keep their own result: %v", kinds(got))
-	}
+	require.Len(t, got, 4, "both calls must keep their own result")
 
-	if got[1].Text != "first" || got[3].Text != "second" {
-		t.Errorf("results were paired with the wrong calls: %q then %q", got[1].Text, got[3].Text)
-	}
+	assert.Equal(t, "first", got[1].Text, "results were paired with the wrong calls: %q then %q", got[1].Text, got[3].Text)
+	assert.Equal(t, "second", got[3].Text, "results were paired with the wrong calls: %q then %q", got[1].Text, got[3].Text)
 }
 
 // A history rebuilt from somewhere that did not keep call ids still has to
@@ -183,9 +173,7 @@ func TestOrganizePairsWithoutIDs(t *testing.T) {
 
 	want := []string{"activity/request/", "activity/response/", "reasoning/let me look"}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("got %v, want %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got))
 }
 
 func TestOrganizeDoesNotPairDifferentCalls(t *testing.T) {
@@ -194,9 +182,7 @@ func TestOrganizeDoesNotPairDifferentCalls(t *testing.T) {
 		response("", "read", `{"path":"b"}`, "b contents"),
 	})
 
-	if len(got) != 0 {
-		t.Errorf("a result for a different call is not a partner: %v", kinds(got))
-	}
+	assert.Empty(t, got, "a result for a different call is not a partner")
 }
 
 // Two calls cannot pair with each other, nor two results.
@@ -206,18 +192,14 @@ func TestOrganizeRequiresOneOfEach(t *testing.T) {
 		request("call_1", "shell", "{}"),
 	})
 
-	if len(got) != 0 {
-		t.Errorf("two calls do not make a pair: %v", kinds(got))
-	}
+	assert.Empty(t, got, "two calls do not make a pair")
 
 	got = Organize([]Message{
 		response("call_1", "shell", "{}", "ok"),
 		response("call_1", "shell", "{}", "ok"),
 	})
 
-	if len(got) != 0 {
-		t.Errorf("two results do not make a pair: %v", kinds(got))
-	}
+	assert.Empty(t, got, "two results do not make a pair")
 }
 
 // A trigger says "act now". Anywhere but last it describes a moment that has
@@ -228,18 +210,14 @@ func TestOrganizeKeepsATriggerOnlyWhenItIsLast(t *testing.T) {
 		trigger("wake"),
 	})
 
-	if want := []string{litUserGo, "activity/trigger/"}; !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("got %v, want %v", kinds(got), want)
-	}
+	assert.Equal(t, []string{litUserGo, "activity/trigger/"}, kinds(got))
 
 	got = Organize([]Message{
 		trigger("wake"),
 		{Type: TypeUser, Text: "go"},
 	})
 
-	if want := []string{litUserGo}; !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("a stranded trigger must be dropped: %v", kinds(got))
-	}
+	assert.Equal(t, []string{litUserGo}, kinds(got), "a stranded trigger must be dropped")
 }
 
 // The system prompt is bookkeeping rather than conversation, so a trigger
@@ -253,9 +231,7 @@ func TestOrganizeTriggerIgnoresTrailingInstructions(t *testing.T) {
 
 	want := []string{litUserGo, "activity/trigger/", "instructions/you are a coding agent"}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("got %v, want %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got))
 }
 
 // An activity message with nothing in its meta describes no call at all - it
@@ -281,9 +257,7 @@ func TestOrganizeDropsMalformedActivities(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := Organize([]Message{{Type: TypeUser, Text: "go"}, test.message})
 
-			if want := []string{litUserGo}; !reflect.DeepEqual(kinds(got), want) {
-				t.Errorf("got %v, want %v", kinds(got), want)
-			}
+			assert.Equal(t, []string{litUserGo}, kinds(got))
 		})
 	}
 }
@@ -298,9 +272,7 @@ func TestOrganizeDropsEmptyMessages(t *testing.T) {
 
 	want := []string{litUserGo, "bot/done"}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("got %v, want %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got))
 }
 
 // An empty system prompt is a configuration choice rather than an accident, and
@@ -308,9 +280,8 @@ func TestOrganizeDropsEmptyMessages(t *testing.T) {
 func TestOrganizeKeepsAnEmptyInstructions(t *testing.T) {
 	got := Organize([]Message{{Type: TypeInstructions, Text: ""}, {Type: TypeUser, Text: "go"}})
 
-	if len(got) != 2 || got[0].Type != TypeInstructions {
-		t.Errorf("the instructions must survive: %v", kinds(got))
-	}
+	assert.Len(t, got, 2)
+	assert.Equal(t, TypeInstructions, got[0].Type)
 }
 
 // A retried turn or a re-injected notice can land twice. Repetition is also
@@ -325,9 +296,7 @@ func TestOrganizeCollapsesConsecutiveDuplicates(t *testing.T) {
 
 	want := []string{litUserGo, "bot/ok", litUserGo}
 
-	if !reflect.DeepEqual(kinds(got), want) {
-		t.Errorf("only consecutive repeats collapse:\n got %v\nwant %v", kinds(got), want)
-	}
+	assert.Equal(t, want, kinds(got), "only consecutive repeats collapse")
 }
 
 // Two calls with the same arguments are two real calls the model made.
@@ -340,19 +309,13 @@ func TestOrganizeDoesNotCollapseRepeatedToolCalls(t *testing.T) {
 		response("call_2", "read", `{"path":"a"}`, "contents"),
 	})
 
-	if len(got) != 4 {
-		t.Errorf("repeated calls must stay visible: %v", kinds(got))
-	}
+	assert.Len(t, got, 4, "repeated calls must stay visible")
 }
 
 func TestOrganizeHandlesAnEmptyConversation(t *testing.T) {
-	if got := Organize(nil); len(got) != 0 {
-		t.Errorf("got %v, want nothing", got)
-	}
+	assert.Empty(t, Organize(nil))
 
-	if got := Organize([]Message{}); len(got) != 0 {
-		t.Errorf("got %v, want nothing", got)
-	}
+	assert.Empty(t, Organize([]Message{}))
 }
 
 // Organize is used on the way to the provider. The engine's own history is the
@@ -368,9 +331,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 
 	Organize(messages)
 
-	if after := kinds(messages); !reflect.DeepEqual(before, after) {
-		t.Errorf("the input was rewritten:\n before %v\n after  %v", before, after)
-	}
+	assert.Equal(t, kinds(messages), before)
 }
 
 // The whole point, end to end. A history that trimming and interleaving have
@@ -396,14 +357,12 @@ func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
 
 	want := []string{"system", "user", "assistant", "tool"}
 
-	if !reflect.DeepEqual(roles, want) {
-		t.Errorf("wire roles = %v, want %v", roles, want)
-	}
+	assert.Equal(t, want, roles)
 
 	call, isCall := toolCallOf(chat[2])
 	result, isResult := chat[3].Content[0].(fantasy.ToolResultPart)
 
-	if !isCall || !isResult || result.ToolCallID != call.ToolCallID {
-		t.Errorf("the surviving pair must reference the same call id: %+v", chat[2:])
-	}
+	assert.True(t, isCall, "the surviving pair must reference the same call id: %+v", chat[2:])
+	assert.True(t, isResult, "the surviving pair must reference the same call id: %+v", chat[2:])
+	assert.Equal(t, call.ToolCallID, result.ToolCallID, "the surviving pair must reference the same call id: %+v", chat[2:])
 }

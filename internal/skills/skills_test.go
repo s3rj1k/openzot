@@ -3,8 +3,10 @@ package skills
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeSkill(t *testing.T, root, name, content string) {
@@ -12,13 +14,9 @@ func writeSkill(t *testing.T, root, name, content string) {
 
 	dir := filepath.Join(root, name)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644))
 }
 
 func TestLoadSkillsReadsFrontMatterAndKeepsTheContent(t *testing.T) {
@@ -36,31 +34,19 @@ Long instructions the model reads only when it decides the skill is relevant.
 	writeSkill(t, root, "deploy", body)
 
 	skills, err := Load(root)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(skills) != 1 {
-		t.Fatalf("got %d skills, want 1", len(skills))
-	}
+	require.Len(t, skills, 1)
 
 	skill := skills[0]
 
-	if skill.Name != "deploy-service" {
-		t.Errorf("name = %q, want the front-matter name to win over the directory", skill.Name)
-	}
+	assert.Equal(t, "deploy-service", skill.Name, "want the front-matter name to win over the directory")
 
-	if skill.Description != "Ship a service to production" {
-		t.Errorf("description = %q", skill.Description)
-	}
+	assert.Equal(t, "Ship a service to production", skill.Description)
 
-	if skill.Content != body {
-		t.Errorf("content = %q, want the whole SKILL.md held in memory", skill.Content)
-	}
+	assert.Equal(t, body, skill.Content, "want the whole SKILL.md held in memory")
 
-	if skill.Dir != filepath.Join(root, "deploy") {
-		t.Errorf("dir = %q, want the skill's own directory", skill.Dir)
-	}
+	assert.Equal(t, filepath.Join(root, "deploy"), skill.Dir, "want the skill's own directory")
 }
 
 func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
@@ -69,17 +55,12 @@ func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
 	writeSkill(t, root, "review", "# Review\n\nLook over a pull request carefully.\n")
 
 	skills, err := Load(root)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(skills) != 1 || skills[0].Name != "review" {
-		t.Fatalf("got %+v, want the directory name as the skill's name", skills)
-	}
+	require.Len(t, skills, 1)
+	require.Equal(t, "review", skills[0].Name)
 
-	if skills[0].Description != "Look over a pull request carefully." {
-		t.Errorf("description = %q, want the first prose line", skills[0].Description)
-	}
+	assert.Equal(t, "Look over a pull request carefully.", skills[0].Description, "want the first prose line")
 }
 
 func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
@@ -90,30 +71,23 @@ func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
 
 	// a skills folder routinely holds other things. They are skipped rather
 	// than failing the load
-	if err := os.MkdirAll(filepath.Join(root, "notaskill"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notaskill"), 0o755))
 
-	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hi"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("hi"), 0o644))
 
 	skills, err := Load(root)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(skills) != 2 || skills[0].Name != "apple" || skills[1].Name != "zebra" {
-		t.Fatalf("got %+v, want just the two real skills, sorted by name", skills)
-	}
+	require.Len(t, skills, 2, "want just the two real skills, sorted by name")
+	require.Equal(t, "apple", skills[0].Name, "want just the two real skills, sorted by name")
+	require.Equal(t, "zebra", skills[1].Name, "want just the two real skills, sorted by name")
 }
 
 // The folder was named in the config, so one that cannot be read is an error
 // rather than an empty set.
 func TestLoadSkillsFailsOnAMissingDirectory(t *testing.T) {
-	if _, err := Load(filepath.Join(t.TempDir(), "nope")); err == nil {
-		t.Fatal("a missing skills directory must be an error")
-	}
+	_, err := Load(filepath.Join(t.TempDir(), "nope"))
+	require.Error(t, err, "a missing skills directory must be an error")
 }
 
 func TestLoadSkillsRefusesTwoSkillsWithOneName(t *testing.T) {
@@ -123,19 +97,14 @@ func TestLoadSkillsRefusesTwoSkillsWithOneName(t *testing.T) {
 	writeSkill(t, root, "b", "---\nname: same\n---\n")
 
 	_, err := Load(root)
-	if err == nil || !strings.Contains(err.Error(), `"same"`) {
-		t.Fatalf("err = %v, want it to name the clashing skill", err)
-	}
+	require.Error(t, err, "want it to name the clashing skill")
+	require.Contains(t, err.Error(), `"same"`, "want it to name the clashing skill")
 }
 
 func TestParseSkillStripsQuotes(t *testing.T) {
 	skill := parseSkill("dir", "/d", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
 
-	if skill.Name != "quoted name" {
-		t.Errorf("name = %q, want the quotes stripped", skill.Name)
-	}
+	assert.Equal(t, "quoted name", skill.Name)
 
-	if skill.Description != "quoted desc" {
-		t.Errorf("description = %q, want the quotes stripped", skill.Description)
-	}
+	assert.Equal(t, "quoted desc", skill.Description)
 }

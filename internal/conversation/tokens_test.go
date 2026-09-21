@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEstimateTokensPricesRepresentativeInput(t *testing.T) {
@@ -14,14 +17,10 @@ func TestEstimateTokensPricesRepresentativeInput(t *testing.T) {
 		"４日 동안 비가 내렸다. 안녕하세요 여러분",
 		strings.Repeat("identifier", 100),
 	} {
-		if got := EstimateTokens(text); got <= 0 {
-			t.Errorf("estimateTokens(%.30q) = %d, want a positive estimate", text, got)
-		}
+		assert.Positive(t, EstimateTokens(text), "want a positive estimate")
 	}
 
-	if got := EstimateTokens(""); got != 0 {
-		t.Errorf("estimateTokens(empty) = %d, want 0", got)
-	}
+	assert.Equal(t, 0, EstimateTokens(""))
 }
 
 // Non-ASCII scripts take several bytes per rune, and a tokenizer that sees a
@@ -30,9 +29,8 @@ func TestEstimateTokensPricesRepresentativeInput(t *testing.T) {
 func TestNonASCIIInputIsPricedByUTF8Bytes(t *testing.T) {
 	text := "你好世界 안녕하세요"
 
-	if got, runes := EstimateTokens(text), utf8.RuneCountInString(text); got < runes {
-		t.Errorf("estimate = %d, want at least %d for non-ASCII input", got, runes)
-	}
+	got, runes := EstimateTokens(text), utf8.RuneCountInString(text)
+	assert.GreaterOrEqual(t, got, runes, "estimate = %d, want at least %d for non-ASCII input", got, runes)
 }
 
 // An under-count makes a provider reject a request, and an over-count only
@@ -41,9 +39,8 @@ func TestNonASCIIInputIsPricedByUTF8Bytes(t *testing.T) {
 func TestEstimateIsConservativeForDenseASCII(t *testing.T) {
 	text := strings.Repeat("a", 120)
 
-	if got, englishCost := EstimateTokens(text), len(text)/4; got <= englishCost {
-		t.Errorf("estimate = %d, want a safety margin above the %d ordinary English would cost", got, englishCost)
-	}
+	got, englishCost := EstimateTokens(text), len(text)/4
+	assert.Greater(t, got, englishCost, "estimate = %d, want a safety margin above the %d ordinary English would cost", got, englishCost)
 }
 
 func TestEstimateGrowsWithTheText(t *testing.T) {
@@ -52,9 +49,7 @@ func TestEstimateGrowsWithTheText(t *testing.T) {
 
 	for repeat := 1; repeat <= 20; repeat++ {
 		got := EstimateTokens(strings.Repeat(base, repeat))
-		if got <= previous {
-			t.Fatalf("%d repeats estimated %d, not more than %d", repeat, got, previous)
-		}
+		require.Greater(t, got, previous, "%d repeats estimated %d, not more than %d", repeat, got, previous)
 
 		previous = got
 	}
@@ -65,21 +60,16 @@ func TestEstimateGrowsWithTheText(t *testing.T) {
 func TestAMessageCostsMoreThanItsText(t *testing.T) {
 	const text = "a short message"
 
-	if got, bare := Cost(Message{Text: text}), EstimateTokens(text); got <= bare {
-		t.Errorf("message estimate = %d, want more than the bare text's %d", got, bare)
-	}
+	got, bare := Cost(Message{Text: text}), EstimateTokens(text)
+	assert.Greater(t, got, bare, "message estimate = %d, want more than the bare text's %d", got, bare)
 
-	if got := Cost(Message{}); got <= 0 {
-		t.Errorf("an empty message estimated %d, want its envelope priced", got)
-	}
+	assert.Positive(t, Cost(Message{}), "want its envelope priced")
 }
 
 // A provider's control sequences are ordinary text in a conversation, and one in
 // a tool result must be priced like any other bytes rather than treated as free.
 func TestLiteralControlSequencesRemainPriced(t *testing.T) {
 	for _, text := range []string{"<|im_end|>", "<|endoftext|>", "<|endofprompt|>"} {
-		if got := EstimateTokens(text); got < 2 {
-			t.Errorf("estimateTokens(%q) = %d, want literal text priced", text, got)
-		}
+		assert.GreaterOrEqual(t, EstimateTokens(text), 2, "want literal text priced")
 	}
 }
