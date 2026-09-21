@@ -1,4 +1,4 @@
-package config
+package config_test
 
 // The strings the tests of this package repeat.
 const (

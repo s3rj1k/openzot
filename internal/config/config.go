@@ -223,10 +223,10 @@ func resolveSecret(v string) string {
 	return v
 }
 
-// resolveProvider resolves the credential from its "$ENV" reference, when it is one. The credential is only what the
+// ResolveProvider resolves the credential from its "$ENV" reference, when it is one. The credential is only what the
 // config says, with no conventional-variable fallback, since a key is scoped to its host. An unexpanded reference
 // would send the literal "$MY_KEY" and come back as a 401 that reads like a bad key.
-func resolveProvider(cfg *Config) {
+func ResolveProvider(cfg *Config) {
 	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
 }
 
@@ -256,7 +256,7 @@ func Load(path string) (Config, error) {
 		return cfg, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	resolveProvider(&cfg)
+	ResolveProvider(&cfg)
 
 	return cfg, nil
 }

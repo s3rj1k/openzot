@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func homeDir() string {
+func HomeDir() string {
 	if home := os.Getenv("HOME"); home != "" {
 		return home
 	}
@@ -21,7 +21,7 @@ func xdgConfigHome() string {
 		return dir
 	}
 
-	return filepath.Join(homeDir(), ".config")
+	return filepath.Join(HomeDir(), ".config")
 }
 
 // DefaultConfigPath returns the config file path. That is $ZOT_CONFIG when set and non-empty, else
