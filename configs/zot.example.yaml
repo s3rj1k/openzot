@@ -1,105 +1,81 @@
 # zot configuration.
 #
-# zot has no built-in provider and no default model: before a run can start,
-# declare the provider under `provider:` (at the bottom), list the models it
-# serves with their context windows, and set agent.model to the one to run. The
-# system prompt (`prompt:`, further down) is required too. Every other field is
-# optional. Copy this file to ~/.config/zot/config.yaml (or pass it with
-# --config) and adjust as needed.
+# zot has no built-in provider, model or prompt. Declare the provider and its
+# models, set agent.model to the one to run, and keep the prompt. Everything
+# else is optional. Copy this file to ~/.config/zot/config.yaml, or pass it
+# with --config.
 #
-# Credentials: put the key DIRECTLY in the provider's api_key, or reference an
-# environment variable with $VAR - either works. Nothing is read from a
-# conventional variable on your behalf: a key is scoped to the host it was issued
-# for, so the provider says which one it uses.
+# An api_key can be written directly or as an $ENV_VAR reference. No
+# conventional variable is read for you, because a key belongs to the host it
+# was issued for.
 
 agent:
-  # Model that drives the agent: a key under the provider's `models:`. This is
-  # how you switch between the models the provider serves. There is no default.
+  # The model to run, a key under provider.models. Change it to switch models.
   model: "my-model"
 
-  # The one finite backstop on run length: the maximum number of plan/act/observe
-  # cycles before the agent is forced to stop. Tool calls and time are unbounded
-  # by default (see below); this is not.
+  # The cap on plan/act/observe cycles before the agent is stopped. Calls and
+  # time are unbounded by default, so this is the only finite limit.
   max_iterations: 1000000
 
-  # A run ends only when the agent records an outcome, by calling the success or
-  # failure tool - never because its prose sounds finished. max_settles is how
-  # many times the agent is nudged to do so before the run is surfaced as
-  # unsettled: how hard zot pushes the model to finish properly. Default 20.
+  # A run ends only when the agent calls the success or failure tool. This is
+  # how many times it is nudged to do so before the run is reported unsettled.
+  # Default 20.
   # max_settles: 20
 
-  # Cap on the total number of tool calls across a run, independent of
-  # iterations (one iteration can request several). Unbounded unless you set it -
-  # max_iterations is the only finite default backstop.
+  # Cap on the tool calls in a whole run. Unbounded unless set.
   # max_calls: 5000
 
-  # Cap on the wall-clock time of a run, as a duration ("30m", "2h", "90s").
-  # Checked at each step, so a run stops soon after the deadline. Unbounded
-  # unless you set it.
+  # Cap on the wall-clock time of a run, such as "30m", "2h" or "90s". The run
+  # stops soon after the deadline. Unbounded unless set.
   # max_time: '30m'
 
-  # Cap on the output tokens of a single model response. Unbounded unless you set
-  # it - zot sends no limit, so the model produces its full output. Set it to
-  # bound response length or per-turn cost.
+  # Cap on the output tokens of one model response. Unbounded unless set.
   # max_tokens: 8192
 
-  # Cap on a single tool result (a file read, a command's output), as a share of
-  # the model's context window in percent, before it is truncated. Default 25.
-  # One large result can overflow the whole request and be rejected outright, so
-  # a model with a small window is bounded tighter on its own.
+  # Cap on one tool result, as a percent of the model's context window, before
+  # it is truncated. Default 25. A small window is bounded tighter on its own.
   # max_tool_output_percent: 25
 
-  # The safety guards below rarely need touching - each default encodes a real
-  # failure mode, so raise or lower them with care. Unlike calls and time, these
-  # cannot be turned off; zero just means "use the default".
+  # The guards below encode real failure modes, so change them with care. They
+  # cannot be turned off, and zero means the default.
   #
-  # Recovery attempts in a row - a truncated response, or a retriable provider
-  # error - with no good turn between them. A turn that comes back whole resets
-  # the count. Default 20.
+  # Recovery attempts in a row with no whole turn between them. Default 20.
   # max_continuations: 20
   #
-  # Recovery attempts across the whole run, however they are spaced. Where
-  # max_continuations catches a provider refusing right now, this catches one
-  # that answers just often enough to keep resetting it while the run spends its
-  # life retrying rather than working. Default 200.
+  # Recovery attempts across the whole run, however spaced. Default 200.
   # max_recoveries: 200
   #
-  # How many times the loop nudges the model out of a detected repetition before
-  # giving up on it. Default 2.
+  # Nudges out of a detected repetition before giving up. Default 2.
   # max_cycles: 2
   #
-  # Consecutive turns producing neither text nor a tool call before the run
-  # bails. Default 3.
+  # Consecutive turns with no text and no tool call before the run stops.
+  # Default 3.
   # max_empties: 3
 
-  # Short-term memory is the model's context window - the `context` every model
-  # states under provider.models. Nothing is summarised: once a request reaches
-  # context_soft percent of the window, the oldest message is forgotten on each
-  # request; at context_hard percent as many are forgotten as it takes to stay
-  # under it. Forgotten messages stay in the session log. Defaults 50 and 90.
+  # The context window is short-term memory. From context_soft percent of it the
+  # oldest message is forgotten on each request, and at context_hard percent as
+  # many as it takes to fit. The session log keeps them. Defaults 50 and 90.
   # context_soft: 50
   # context_hard: 90
   #
-  # The plan is what the model keeps with its tasks tool. Every plan_nudge_every
-  # iterations the model is reminded that the tool exists (default 5, negative
-  # turns the reminders off). When forgetting leaves fewer than plan_min_turns
-  # turns in the window and the model's last plan call is no longer among them,
-  # the plan is posted to it again (default 5).
+  # The model is reminded of its tasks tool every plan_nudge_every iterations
+  # (default 5, negative for never). When forgetting leaves fewer than
+  # plan_min_turns turns and its last plan is gone, the plan is posted again
+  # (default 5).
   # plan_nudge_every: 5
   # plan_min_turns: 5
 
-# The system prompt every run starts from, a Go text/template. It can read, as
-# {{ .Name }}:
-#   Title Objective Acceptance Constraints      from the order's front matter
+# The system prompt every run starts from, a Go text/template. It can read
+# these as {{ .Name }}
+#   Title Objective Acceptance Constraints      from the order
 #   Tools                                       each tool's Name and Description
 #   Workdir Date Model Provider                 facts about the run
-#   Project                                     the AGENTS.md of the config and the project
-#   Session                                     the log of this run, its long-term memory
-# and the functions: file "path", env "NAME", inc N.
+#   Project                                     the AGENTS.md of the config and project
+#   Session                                     the log of this run, the long-term memory
+# and the functions file "path", env "NAME" and inc N.
 #
-# Zot has no input channel, so the non-interactive contract below matters: an
-# agent that asks a question is not answered but waits until a guard kills the
-# run. Zot adds nothing to this text, so what it says is what the agent is told.
+# Zot adds nothing to it, so keep the non-interactive contract. A run has no
+# one to answer a question, and an agent that asks waits until a guard kills it.
 prompt: |
   You are zot, a fully autonomous software engineering agent operating inside a real working directory on the user's machine.
 
@@ -161,57 +137,47 @@ prompt: |
 
 # Presentation.
 ui:
-  # How many log lines the full-screen viewer keeps on screen. Default 5000;
-  # raise it to keep more of a long run in the scrollback (at more memory). The
-  # full, untrimmed run is always in the session log regardless.
+  # How many log lines the viewer keeps on screen. Default 5000. The session log
+  # always holds the whole run.
   # scrollback: 5000
 
-# Skills: a folder of subdirectories, each holding a SKILL.md - front matter with
-# a name and a short description, then the instructions. They are read into
-# memory at startup and offered to the model through a "skills" tool: it lists
-# them with their descriptions, and reads one in full when it decides it applies.
-# "~/" is your home directory; a relative path is taken against --dir.
+# A folder of skills, each a subdirectory with a SKILL.md (a name, a short
+# description, then the instructions). They are loaded at startup and offered
+# through a skills tool. "~/" is home, and a relative path is taken against --dir.
 # skills_dir: ~/.config/zot/skills
 
-# The provider: the one inference connection every run uses - a direct model
-# service, a local server, or a gateway. None is built in. The viewer and the
-# session log call it by the host of its base_url.
+# The one provider every run uses, a model service, a local server or a gateway.
+# The viewer and the session log call it by the host of its base_url.
 provider:
-  # Any endpoint that speaks the OpenAI chat-completions API. base_url is
-  # required and must be https (unless loopback); the key is required too, since
-  # zot will not forward a credential issued for one host to another.
+  # Any OpenAI chat-completions endpoint. It must be https unless loopback, and
+  # the key is required, since a key is never sent to another host.
   base_url: 'https://gateway.internal.example.com/v1'
   api_key: '$GATEWAY_KEY'
 
-  # The models this provider serves. Required: agent.model must name one of
-  # these keys, and every entry must state its context window. Each entry can
-  # alias the provider's real model ID and override its run settings.
+  # The models it serves. agent.model must name one, and each states its
+  # context window.
   models:
     my-model:
-      # The model's total context window, in tokens. Required. zot keeps no
-      # table of what models can take, so state the real ceiling of the
-      # endpoint being served, which can be smaller than the model's card.
-      # Older messages are forgotten to keep the conversation within it.
+      # The context window in tokens. Required. Zot keeps no table of models, so
+      # give the endpoint's real limit, which can be below the model's card.
       context: 128000
-      # the real model ID, when this key is only an alias for it
+      # the real model ID, when this key is only an alias
       # model: 'gpt-5.4-mini'
       # max_iterations: 50
-      # send every message's content as an array of parts, for llama.cpp
-      # templates that reject a bare string
+      # send message content as an array of parts, for llama.cpp templates that
+      # reject a bare string
       # content_array: true
-      # reasoning_effort sent with every request: none, minimal, low, medium,
-      # high, xhigh or max. Left out, the model's own default applies.
+      # none, minimal, low, medium, high, xhigh or max. Unset uses the model's own.
       # reasoning_effort: low
-      # extra_body is merged into the request body as written - for whatever
-      # the server takes that has no key here, such as a chat-template switch
-      # that turns thinking off on a local server.
+      # merged into the request body as written, for what the server takes and
+      # this file has no key for, such as turning thinking off on a local server
       # extra_body:
       #   chat_template_kwargs:
       #     enable_thinking: false
 
-    # a second model on the same provider: set agent.model to switch to it
+    # a second model, selected by agent.model
     # my-other-model:
     #   context: 32000
 
-  # A local server needs no key:
+  # A local server needs no key.
   # base_url: 'http://localhost:11434/v1'
