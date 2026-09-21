@@ -23,7 +23,10 @@ worked around.
 - **Test everything you change.** `make test` must pass, and total coverage should
   not fall below 90% (`make cover` reports it per package). Write tests that
   assert _behaviour_, not constants; a test that restates a value it reads is
-  worse than none.
+  worse than none. Tests live in the external `x_test` package and reach only
+  what `x` exports. Export what a test needs instead of bridging it with an
+  `export_test.go` or an alias. Only `cmd/zot` is tested in `package main`, since
+  a `main` package cannot be imported.
 - **It vets clean, in modern Go.** `make vet` runs `go vet` and fails on anything
   `go fix` would rewrite (the modernizers: `any`, `range n`, `min`/`max`, `slices`,
   `maps`, `cmp.Or`, ...). Write the current idiom rather than the old one; the
