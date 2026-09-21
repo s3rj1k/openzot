@@ -20,6 +20,7 @@ import (
 	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/outcome"
+	"github.com/openzot/openzot/internal/request"
 	"github.com/openzot/openzot/internal/window"
 )
 
@@ -329,39 +330,10 @@ func (e *Engine) CheckCycle(messages []conversation.Message, budget *outcome.Bud
 	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.CycleNotice(CycleDetail(detected))}), nil
 }
 
-// trimmedKickoff stands in for the opening user message once trimming has
-// dropped it. The goal lives in the instructions, so this only has to
-// exist and point there.
-const trimmedKickoff = "Continue working on your task as stated in the instructions."
-
 // BuildRequest assembles the provider request from what the window still holds.
 // The conversation from the forgotten offset on.
 func (e *Engine) BuildRequest(messages []conversation.Message, forgotten int) TurnRequest {
-	chat := conversation.ToPrompt(messages[forgotten:])
-
-	// Forgetting takes the oldest first, which is the opening user message. A conversation with no user
-	// turn is rejected by strict providers, so one is restored. The goal itself is safe in the instructions.
-	hasUser := false
-
-	for _, message := range chat {
-		if message.Role == fantasy.MessageRoleUser {
-			hasUser = true
-
-			break
-		}
-	}
-
-	if !hasUser {
-		chat = append(fantasy.Prompt{fantasy.NewUserMessage(trimmedKickoff)}, chat...)
-	}
-
-	// fantasy will not start a step from a conversation ending on the model's own words. The engine never
-	// leaves one, but a handed-in conversation might, and one more line costs less than a run that cannot start.
-	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
-		chat = append(chat, fantasy.NewUserMessage(trimmedKickoff))
-	}
-
-	call := TurnRequest{Messages: chat}
+	call := TurnRequest{Messages: request.Build(messages[forgotten:])}
 
 	if e.Options.MaxTokens != nil {
 		call.maxOutput = new(int64(*e.Options.MaxTokens))
@@ -489,9 +461,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			emit(Event{Kind: EventNotice, Text: notice})
 		}
 
-		request := e.BuildRequest(messages, forgotten)
+		turnRequest := e.BuildRequest(messages, forgotten)
 
-		turn, err := e.runStep(ctx, agent, state, request, &messages, &budget, emit)
+		turn, err := e.runStep(ctx, agent, state, turnRequest, &messages, &budget, emit)
 
 		// Accumulate the provider's reported usage, the actual billed tokens, and surface the running total so
 		// a viewer shows real cost. Each call bills its whole prompt, so per-turn counts sum.

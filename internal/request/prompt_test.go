@@ -1,4 +1,4 @@
-package conversation_test
+package request_test
 
 import (
 	"testing"
@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/request"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -19,7 +20,7 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 		{Type: conversation.TypeBot, Text: "there is a README"},
 	}
 
-	prompt := conversation.ToPrompt(messages)
+	prompt := request.ToPrompt(messages)
 
 	require.Len(t, prompt, 4)
 
@@ -51,7 +52,7 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 		testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{}`, "output"),
 	}
 
-	for _, message := range conversation.ToPrompt(messages) {
+	for _, message := range request.ToPrompt(messages) {
 		require.NotEqual(t, fantasy.MessageRoleTool, message.Role, "an orphaned tool result must be dropped")
 	}
 }
@@ -64,7 +65,7 @@ func TestToPromptDropsDanglingRequest(t *testing.T) {
 		testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{}`, nil),
 	}
 
-	prompt := conversation.ToPrompt(messages)
+	prompt := request.ToPrompt(messages)
 
 	for _, message := range prompt {
 		_, ok := testutils.ToolCallOf(message)
@@ -82,7 +83,7 @@ func TestToPromptRoleMapping(t *testing.T) {
 		{Type: conversation.TypeUser, Text: "a question"},
 	}
 
-	prompt := conversation.ToPrompt(messages)
+	prompt := request.ToPrompt(messages)
 
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
@@ -109,7 +110,7 @@ func TestToPromptEncodesStructuredResults(t *testing.T) {
 		testutils.Activity(conversation.ActivityResponse, "c1", "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
-	prompt := conversation.ToPrompt(messages)
+	prompt := request.ToPrompt(messages)
 
 	require.Len(t, prompt, 2)
 
@@ -127,7 +128,48 @@ func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
 	}
 
 	for index, message := range cases {
-		prompt := conversation.ToPrompt([]conversation.Message{message})
+		prompt := request.ToPrompt([]conversation.Message{message})
 		assert.Empty(t, prompt, "case %d: a malformed activity reached the wire as %+v", index, prompt)
 	}
+}
+
+// Forgetting takes the oldest message first, which is the opening user turn. A strict provider rejects a conversation with
+// no user turn, so one is restored, and the model is pointed back at its instructions.
+func TestBuildRestoresAUserTurnWhenForgettingTookIt(t *testing.T) {
+	messages := []conversation.Message{
+		testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{"command":"ls"}`, nil),
+		testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{"command":"ls"}`, "README.md"),
+	}
+
+	prompt := request.Build(messages)
+
+	require.Len(t, prompt, 3)
+
+	assert.Equal(t, fantasy.MessageRoleUser, prompt[0].Role)
+	assert.Equal(t, request.Kickoff, testutils.TextOf(prompt[0]))
+}
+
+// fantasy will not start a step from a conversation ending on the model's own words, so a handed-in one gets a line to
+// continue from.
+func TestBuildEndsOnAUserOrToolTurn(t *testing.T) {
+	prompt := request.Build([]conversation.Message{
+		{Type: conversation.TypeUser, Text: "go"},
+		{Type: conversation.TypeBot, Text: "I began"},
+	})
+
+	require.Len(t, prompt, 3)
+
+	assert.Equal(t, fantasy.MessageRoleUser, prompt[2].Role)
+	assert.Equal(t, request.Kickoff, testutils.TextOf(prompt[2]))
+}
+
+// A conversation that already starts and ends the way a provider wants is sent as ToPrompt renders it.
+func TestBuildLeavesAProperConversationAlone(t *testing.T) {
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "go"},
+		testutils.Activity(conversation.ActivityRequest, "c1", "shell", `{}`, nil),
+		testutils.Activity(conversation.ActivityResponse, "c1", "shell", `{}`, "ok"),
+	}
+
+	assert.Equal(t, request.ToPrompt(messages), request.Build(messages))
 }

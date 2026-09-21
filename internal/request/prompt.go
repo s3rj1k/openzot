@@ -1,6 +1,12 @@
-package conversation
+// Package request turns a conversation into what a model call carries. It pairs each tool call with its result, drops
+// what a provider would reject, and makes sure the request starts and ends on a user turn.
+package request
 
-import "charm.land/fantasy"
+import (
+	"charm.land/fantasy"
+
+	"github.com/openzot/openzot/internal/conversation"
+)
 
 // singleToolCall returns the call an assistant message consists of, if it is one.
 func singleToolCall(message fantasy.Message) (fantasy.ToolCallPart, bool) {
@@ -31,7 +37,7 @@ func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt
 // ToPrompt renders the conversation into the prompt a model call carries. A request half becomes an assistant
 // turn with a tool call and a response half a tool message with the same id, and a result whose call was
 // trimmed away is dropped, since providers validate the pairing.
-func ToPrompt(messages []Message) fantasy.Prompt {
+func ToPrompt(messages []conversation.Message) fantasy.Prompt {
 	var (
 		prompt  fantasy.Prompt
 		pending = map[string]bool{}
@@ -39,9 +45,9 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 
 	// Repair the history before rendering it. A provider rejects the whole request rather than the
 	// invalid part, so anything left unpaired here ends a healthy run with an opaque 400.
-	for _, message := range Organize(messages) {
+	for _, message := range conversation.Organize(messages) {
 		switch message.Type {
-		case TypeActivity:
+		case conversation.TypeActivity:
 			activity := message.Activity
 
 			if activity == nil {
@@ -49,7 +55,7 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 			}
 
 			switch activity.Kind {
-			case ActivityRequest:
+			case conversation.ActivityRequest:
 				pending[activity.ID] = true
 
 				prompt = append(prompt, fantasy.Message{
@@ -61,7 +67,7 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 					}},
 				})
 
-			case ActivityResponse:
+			case conversation.ActivityResponse:
 				// a result whose call was trimmed away would be rejected
 				if !pending[activity.ID] {
 					continue
@@ -81,17 +87,17 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 				// a trigger carries no call, so there is nothing to send
 			}
 
-		case TypeBot:
+		case conversation.TypeBot:
 			prompt = append(prompt, fantasy.Message{
 				Role:    fantasy.MessageRoleAssistant,
 				Content: []fantasy.MessagePart{fantasy.TextPart{Text: message.Text}},
 			})
 
-		case TypeReasoning:
+		case conversation.TypeReasoning:
 			// The reasoning channel is not replayed. Providers reject their own reasoning on the way back in,
 			// and it is the model's scratchpad rather than conversation.
 
-		case TypeInstructions:
+		case conversation.TypeInstructions:
 			prompt = append(prompt, fantasy.NewSystemMessage(message.Text))
 
 		default:
@@ -106,4 +112,37 @@ func ToPrompt(messages []Message) fantasy.Prompt {
 	}
 
 	return prompt
+}
+
+// Kickoff stands in for the opening user message once forgetting has dropped it. The goal lives in the instructions, so
+// this only has to exist and point there.
+const Kickoff = "Continue working on your task as stated in the instructions."
+
+// Build is the prompt a model call is sent for the messages the window still holds. It is ToPrompt, made acceptable to a
+// strict provider. Forgetting takes the oldest first, which is the opening user message, and a conversation with no user
+// turn is rejected, so one is restored. The goal itself is safe in the instructions. The prompt also has to end on a user
+// or tool turn, since fantasy will not start a step from a conversation ending on the model's own words. The engine never
+// leaves one, but a handed-in conversation might, and one more line costs less than a run that cannot start.
+func Build(messages []conversation.Message) fantasy.Prompt {
+	chat := ToPrompt(messages)
+
+	hasUser := false
+
+	for _, message := range chat {
+		if message.Role == fantasy.MessageRoleUser {
+			hasUser = true
+
+			break
+		}
+	}
+
+	if !hasUser {
+		chat = append(fantasy.Prompt{fantasy.NewUserMessage(Kickoff)}, chat...)
+	}
+
+	if last := chat[len(chat)-1]; last.Role != fantasy.MessageRoleUser && last.Role != fantasy.MessageRoleTool {
+		chat = append(chat, fantasy.NewUserMessage(Kickoff))
+	}
+
+	return chat
 }

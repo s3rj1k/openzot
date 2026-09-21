@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/request"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -309,7 +310,7 @@ func TestOrganizeDoesNotMutateItsInput(t *testing.T) {
 // The whole point, end to end. A history that trimming and interleaving have
 // mangled still renders into something a provider accepts.
 func TestOrganizeRepairsAHistoryOnTheWire(t *testing.T) {
-	chat := conversation.ToPrompt([]conversation.Message{
+	chat := request.ToPrompt([]conversation.Message{
 		{Type: conversation.TypeInstructions, Text: litYouAreACoding},
 		// this result's call fell outside the trimmed window
 		testutils.Response("gone", "read", "{}", "old contents"),
