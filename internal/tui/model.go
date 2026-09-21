@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/render"
 )
 
@@ -306,7 +307,7 @@ func (m *Model) Finish(result *loop.Result) {
 		m.Status = StatusDone
 		m.AppendEntry("\n" + render.OkStyle.Render("✓ done") + "  " + render.TaskStyle.Render(result.Message))
 
-	case result.Reason == loop.StopFailed:
+	case result.Reason == outcome.StopFailed:
 		// the model reached a conclusion and the conclusion is "no" - an
 		// outcome, not a malfunction, so it does not get a process exit code
 		m.Status = StatusFailed

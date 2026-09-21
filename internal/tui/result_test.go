@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/tui"
 )
 
 func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	m := tui.NewModel("task", "model", "openai", "/tmp")
-	m.Finish(&loop.Result{Reason: loop.StopFailed, Message: "verification failed"})
+	m.Finish(&loop.Result{Reason: outcome.StopFailed, Message: "verification failed"})
 
 	err := m.RunError()
 	require.Error(t, err, "want a failed agent exit")

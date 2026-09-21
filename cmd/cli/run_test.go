@@ -17,6 +17,7 @@ import (
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/skills"
 	"github.com/openzot/openzot/internal/testutils"
@@ -659,7 +660,7 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 // The digest names the log the run was appended to, and says nothing of one
 // when the run was not recorded.
 func TestPrintDigestNamesTheSessionLog(t *testing.T) {
-	result := loop.Result{Reason: loop.StopSettled, Budget: loop.Budget{Iterations: 1}}
+	result := loop.Result{Reason: outcome.StopSettled, Budget: outcome.Budget{Iterations: 1}}
 
 	var recorded, unrecorded strings.Builder
 
@@ -1080,10 +1081,10 @@ func TestDigestStatus(t *testing.T) {
 		code   int
 		want   string
 	}{
-		{string(loop.StopSettled), 0, litDone},
-		{string(loop.StopFailed), 1, litFailed},
-		{string(loop.StopAborted), 1, "canceled"},
-		{string(loop.StopIterations), 3, litFailed},
+		{string(outcome.StopSettled), 0, litDone},
+		{string(outcome.StopFailed), 1, litFailed},
+		{string(outcome.StopAborted), 1, "canceled"},
+		{string(outcome.StopIterations), 3, litFailed},
 	}
 
 	for _, c := range cases {

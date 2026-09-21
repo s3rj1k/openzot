@@ -11,6 +11,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -132,7 +133,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	require.Equal(t, loop.StopIterations, result.Reason, "want the run to reach its iteration cap")
+	require.Equal(t, outcome.StopIterations, result.Reason, "want the run to reach its iteration cap")
 
 	assert.NotEqual(t, 0, notices, "the viewer was never told messages were forgotten")
 

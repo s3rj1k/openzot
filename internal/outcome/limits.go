@@ -1,7 +1,6 @@
-// Package loop runs the agentic conversation. It calls the model, executes the tools it asks for, feeds the results back and
-// repeats until the task settles. Most of this file is bounds, each for a specific expensive failure of an unbounded agent, such
-// as a token budget lost to a loop it cannot see, an error retried forever, or victory declared on the word "completed".
-package loop
+// Package outcome is how a run is bounded, nudged and ended. The limits on what it may spend, the reasons it stops, the
+// success and failure tools the model ends it with, and the notices that push it toward one of them.
+package outcome
 
 // Bounds on a single run. Every default here encodes a failure that happened.
 const (
@@ -64,32 +63,6 @@ const (
 	// DefaultMaxSettles caps settle nudges. A run is finished only when the
 	// model calls a terminal tool - never because its prose sounded final.
 	DefaultMaxSettles = 20
-
-	// The share of the configured window a rejection can narrow
-	// the effective window down to, as a divisor. A provider that keeps saying
-	// "too long" is wrong about its own ceiling only so far.
-	NarrowFloor = 4
-
-	// DefaultContextSoft is the share of the context window, in percent, at which
-	// the oldest message starts being forgotten on every request.
-	DefaultContextSoft = 50
-
-	// DefaultPlanNudgeEvery is how many iterations pass between reminders that
-	// the plan tool exists and should be kept current.
-	DefaultPlanNudgeEvery = 5
-
-	// DefaultPlanMinTurns is how few turns may be left in the window, after
-	// forgetting, before the plan is posted again. A window that holds fewer than
-	// this has probably lost the model's last word on it.
-	DefaultPlanMinTurns = 5
-
-	// DefaultContextHard is the share of the window a request is never allowed to
-	// reach. Past it, as many of the oldest messages are forgotten as it takes.
-	DefaultContextHard = 90
-
-	// RunawayGuardMinChars is the output length below which the streaming
-	// repetition guard will not trip. Short repetitive output ends on its own.
-	RunawayGuardMinChars = 2_000
 )
 
 // Terminal tool names. The model ends a run by calling one of these, which is
@@ -162,7 +135,7 @@ type Budget struct {
 
 // spendContinuation records one recovery attempt against both counts. The
 // consecutive run of them, and the total across the run.
-func (b *Budget) spendContinuation() {
+func (b *Budget) SpendContinuation() {
 	b.Continuations++
 	b.Recoveries++
 }

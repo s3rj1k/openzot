@@ -13,6 +13,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -27,7 +28,7 @@ func contextLimitOnce(t *testing.T) (fantasy.LanguageModel, func() int) {
 
 	server := testutils.Script(t,
 		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"This model's maximum context length is 8192 tokens, however you requested 9000"}}`),
-		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"recovered"}`)),
+		testutils.Frames(testutils.Tool("d", outcome.SuccessTool, `{"summary":"recovered"}`)),
 	)
 
 	return server.Model(t), server.Requests
@@ -68,7 +69,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	require.Equal(t, loop.StopSettled, result.Reason, "want the run to recover and stop normally")
+	require.Equal(t, outcome.StopSettled, result.Reason, "want the run to recover and stop normally")
 
 	assert.GreaterOrEqual(t, requests(), 2, "the request was not retried after the rejection (%d requests)", requests())
 
@@ -151,7 +152,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	assert.Equal(t, loop.StopError, result.Reason, "want error once narrowing stops helping")
+	assert.Equal(t, outcome.StopError, result.Reason, "want error once narrowing stops helping")
 
 	require.Error(t, result.Err, "the underlying provider error must be reported")
 }
@@ -160,7 +161,7 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 func TestRetriableProviderErrorIsRetried(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusServiceUnavailable, `{"error":{"message":"Service temporarily unavailable"}}`),
-		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"second time lucky"}`)),
+		testutils.Frames(testutils.Tool("d", outcome.SuccessTool, `{"summary":"second time lucky"}`)),
 	).Model(t)
 
 	engine, err := loop.New(&loop.Options{
@@ -179,7 +180,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 		}
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason)
+	assert.Equal(t, outcome.StopSettled, result.Reason)
 
 	assert.True(t, retried, "a retry must be visible to the caller")
 }
@@ -198,7 +199,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	assert.Equal(t, loop.StopError, result.Reason)
+	assert.Equal(t, outcome.StopError, result.Reason)
 
 	assert.Equal(t, 0, result.Budget.Recoveries, "want no retries for a credential problem")
 }
@@ -209,7 +210,7 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens."}}`),
-		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"fits now"}`)),
+		testutils.Frames(testutils.Tool("d", outcome.SuccessTool, `{"summary":"fits now"}`)),
 	).Model(t)
 
 	engine, err := loop.New(&loop.Options{
@@ -221,7 +222,7 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 	result := engine.Run(t.Context(), nil)
 
-	require.Equal(t, loop.StopSettled, result.Reason)
+	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	// 85% of the stated 8192
 	assert.Equal(t, 6963, engine.Window, "window")
@@ -231,11 +232,11 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"prompt is too long"}}`),
-		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"ok"}`)),
+		testutils.Frames(testutils.Tool("d", outcome.SuccessTool, `{"summary":"ok"}`)),
 	).Model(t)
 
 	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Model: client, Messages: longConversation(40)})
 	require.NoError(t, err)
 
-	assert.Equal(t, loop.StopSettled, engine.Run(t.Context(), nil).Reason)
+	assert.Equal(t, outcome.StopSettled, engine.Run(t.Context(), nil).Reason)
 }

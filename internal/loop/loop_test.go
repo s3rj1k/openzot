@@ -16,6 +16,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -72,10 +73,10 @@ func TestNewAppliesDefaults(t *testing.T) {
 	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: testutils.ScriptedModel(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
-	assert.Equal(t, loop.DefaultMaxIterations, engine.MaxIterations)
-	assert.Equal(t, loop.DefaultMaxContinuations, engine.MaxContinuations)
-	assert.Equal(t, loop.DefaultMaxCycles, engine.MaxCycles)
-	assert.Equal(t, loop.DefaultMaxEmpties, engine.MaxEmpties)
+	assert.Equal(t, outcome.DefaultMaxIterations, engine.MaxIterations)
+	assert.Equal(t, outcome.DefaultMaxContinuations, engine.MaxContinuations)
+	assert.Equal(t, outcome.DefaultMaxCycles, engine.MaxCycles)
+	assert.Equal(t, outcome.DefaultMaxEmpties, engine.MaxEmpties)
 
 	// calls and time are unbounded unless set - only the iteration count is a
 	// hard default fallback
@@ -85,7 +86,7 @@ func TestNewAppliesDefaults(t *testing.T) {
 
 	// Settlement cannot be switched off. An unattended run needs an unambiguous
 	// ending, so an unset budget is the default budget, never "no settling".
-	assert.Equal(t, loop.DefaultMaxSettles, engine.MaxSettles, "maxSettles = %d, want the default %d - there is no way to opt out", engine.MaxSettles, loop.DefaultMaxSettles)
+	assert.Equal(t, outcome.DefaultMaxSettles, engine.MaxSettles, "maxSettles = %d, want the default %d - there is no way to opt out", engine.MaxSettles, outcome.DefaultMaxSettles)
 
 	assert.Equal(t, testWindow, engine.Window, "want the configured window and the default thresholds")
 	assert.Equal(t, loop.DefaultContextSoft, engine.SoftPercent, "want the configured window and the default thresholds")
@@ -111,7 +112,7 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 		MaxCycles: 1000,
 	})
 
-	assert.Equal(t, loop.StopIterations, result.Reason)
+	assert.Equal(t, outcome.StopIterations, result.Reason)
 
 	assert.Equal(t, 3, result.Budget.Iterations)
 }
@@ -129,7 +130,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 		MaxCycles:     1000,
 	})
 
-	assert.Equal(t, loop.StopCalls, result.Reason)
+	assert.Equal(t, outcome.StopCalls, result.Reason)
 
 	assert.LessOrEqual(t, calls, 2, "want at most the budget of 2")
 }
@@ -142,7 +143,7 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 		MaxEmpties:    2,
 	})
 
-	assert.Equal(t, loop.StopEmpty, result.Reason)
+	assert.Equal(t, outcome.StopEmpty, result.Reason)
 
 	assert.Equal(t, 2, result.Budget.Empties)
 }
@@ -157,7 +158,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason)
+	assert.Equal(t, outcome.StopSettled, result.Reason)
 
 	assert.Equal(t, 1, result.Budget.Recoveries)
 
@@ -182,7 +183,7 @@ func TestTruncationIsBounded(t *testing.T) {
 		MaxContinuations: 2,
 	})
 
-	assert.Equal(t, loop.StopContinuations, result.Reason)
+	assert.Equal(t, outcome.StopContinuations, result.Reason)
 }
 
 func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
@@ -197,7 +198,7 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 		MaxCycles:     1,
 	})
 
-	assert.Equal(t, loop.StopCycle, result.Reason)
+	assert.Equal(t, outcome.StopCycle, result.Reason)
 
 	// the run must have been nudged before being stopped
 	assert.Equal(t, 1, result.Budget.Cycles)
@@ -208,13 +209,13 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 		ContextWindow: testWindow,
 		Model: testutils.ScriptedModel(t,
 			[]string{testutils.Text("All done, the task is completed."), testutils.Stop()},
-			[]string{testutils.Tool("c9", loop.SuccessTool, `{"summary":"really done"}`)},
+			[]string{testutils.Tool("c9", outcome.SuccessTool, `{"summary":"really done"}`)},
 		),
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
-	require.Equal(t, loop.StopSettled, result.Reason)
+	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	assert.Equal(t, "really done", result.Message, "want the terminal call's summary")
 
@@ -224,12 +225,12 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c9", outcome.FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
 
-	assert.Equal(t, loop.StopFailed, result.Reason)
+	assert.Equal(t, outcome.StopFailed, result.Reason)
 
 	assert.Equal(t, "cannot reach the host", result.Message)
 }
@@ -239,23 +240,23 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 	settled := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c1", loop.SuccessTool, `{"summary":"shipped it"}`)}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c1", outcome.SuccessTool, `{"summary":"shipped it"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
 
 	failed := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Tool("c9", outcome.FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
 
 	require.NotEqual(t, failed.Reason, settled.Reason, "both terminal tools ended the run as %q - nothing downstream can tell a failed mission from a finished one", settled.Reason)
 
-	assert.Equal(t, loop.StopSettled, settled.Reason)
+	assert.Equal(t, outcome.StopSettled, settled.Reason)
 
-	assert.Equal(t, loop.StopFailed, failed.Reason)
+	assert.Equal(t, outcome.StopFailed, failed.Reason)
 }
 
 func TestSettleModeGivesUpEventually(t *testing.T) {
@@ -266,7 +267,7 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 		MaxSettles:    2,
 	})
 
-	assert.Equal(t, loop.StopUnsettled, result.Reason)
+	assert.Equal(t, outcome.StopUnsettled, result.Reason)
 }
 
 func TestCancellationStopsTheRun(t *testing.T) {
@@ -283,7 +284,7 @@ func TestCancellationStopsTheRun(t *testing.T) {
 
 	result := engine.Run(ctx, nil)
 
-	assert.Equal(t, loop.StopAborted, result.Reason)
+	assert.Equal(t, outcome.StopAborted, result.Reason)
 }
 
 func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
@@ -296,7 +297,7 @@ func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason, "want the run to recover and stop normally")
+	assert.Equal(t, outcome.StopSettled, result.Reason, "want the run to recover and stop normally")
 
 	var reported bool
 
@@ -338,7 +339,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 func TestEventsAreEmitted(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Model:         testutils.ScriptedModel(t, []string{testutils.Text("hello"), testutils.Tool("c1", loop.SuccessTool, `{"summary":"done"}`)}),
+		Model:         testutils.ScriptedModel(t, []string{testutils.Text("hello"), testutils.Tool("c1", outcome.SuccessTool, `{"summary":"done"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	require.NoError(t, err)
@@ -377,7 +378,7 @@ func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 		names[tool.GetName()] = true
 	}
 
-	for _, want := range []string{litEcho, loop.SuccessTool, loop.FailureTool} {
+	for _, want := range []string{litEcho, outcome.SuccessTool, outcome.FailureTool} {
 		assert.True(t, names[want], "tool %q missing from the definitions", want)
 	}
 }
@@ -418,7 +419,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 		flusher, _ := w.(http.Flusher)
 
-		// stream a repeating phrase forever. Past RunawayGuardMinChars the guard
+		// stream a repeating phrase forever. Past runaway.DefaultMinChars the guard
 		// recognizes the repetition and cuts the turn short mid-stream
 		for {
 			select {

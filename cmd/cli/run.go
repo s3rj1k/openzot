@@ -15,6 +15,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/plan"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/render"
@@ -130,9 +131,9 @@ func orderEnv(cfg *config.Config, client *provider.Client, opts *loop.Options, w
 // digest shows. "done", "failed", or "canceled".
 func digestStatus(reason string, code int) string {
 	switch reason {
-	case string(loop.StopAborted):
+	case string(outcome.StopAborted):
 		return "canceled"
-	case string(loop.StopFailed):
+	case string(outcome.StopFailed):
 		return "failed"
 	}
 

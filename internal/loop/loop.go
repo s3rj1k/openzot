@@ -1,3 +1,7 @@
+// Package loop runs the agentic conversation. It calls the model, executes the tools it asks for, feeds the results back and
+// repeats until the task settles. Around the model call it enforces the bounds, each for a specific expensive failure of an
+// unbounded agent, such as a token budget lost to a loop it cannot see, an error retried forever, or victory declared on
+// the word "completed".
 package loop
 
 import (
@@ -16,6 +20,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/failure"
+	"github.com/openzot/openzot/internal/outcome"
 )
 
 // Options configures a run.
@@ -109,7 +114,7 @@ type Options struct {
 // Result is the outcome of a run.
 type Result struct {
 	// Reason is why the run ended.
-	Reason StopReason
+	Reason outcome.StopReason
 
 	// Message is a human-readable explanation.
 	Message string
@@ -118,7 +123,7 @@ type Result struct {
 	Messages []conversation.Message
 
 	// Budget is what the run spent.
-	Budget Budget
+	Budget outcome.Budget
 
 	// Err is set when Reason is StopError.
 	Err error
@@ -129,7 +134,7 @@ type Result struct {
 // short. A caller scripting against agent can tell those apart from success without parsing prose.
 func (r *Result) ExitCode() int {
 	switch r.Reason {
-	case StopSettled:
+	case outcome.StopSettled:
 		return 0
 	default:
 		return 1
@@ -209,16 +214,16 @@ func New(options *Options) (*Engine, error) {
 
 	return &Engine{
 		Options:       *options,
-		MaxIterations: pick(options.MaxIterations, DefaultMaxIterations),
+		MaxIterations: pick(options.MaxIterations, outcome.DefaultMaxIterations),
 		// Calls and time are unbounded unless the caller sets them, and only the iteration count is a hard
 		// default. A non-positive value means no cap, so they are stored raw rather than picked.
 		MaxCalls:         max(options.MaxCalls, 0),
 		MaxDuration:      options.MaxDuration,
-		MaxContinuations: pick(options.MaxContinuations, DefaultMaxContinuations),
-		maxRecoveries:    pick(options.MaxRecoveries, DefaultMaxRecoveries),
-		MaxCycles:        pick(options.MaxCycles, DefaultMaxCycles),
-		MaxEmpties:       pick(options.MaxEmpties, DefaultMaxEmpties),
-		MaxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
+		MaxContinuations: pick(options.MaxContinuations, outcome.DefaultMaxContinuations),
+		maxRecoveries:    pick(options.MaxRecoveries, outcome.DefaultMaxRecoveries),
+		MaxCycles:        pick(options.MaxCycles, outcome.DefaultMaxCycles),
+		MaxEmpties:       pick(options.MaxEmpties, outcome.DefaultMaxEmpties),
+		MaxSettles:       pick(options.MaxSettles, outcome.DefaultMaxSettles),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
 		RetryBackoff: cmp.Or(options.RetryBackoff, failure.DefaultRetryBackoff),
@@ -232,7 +237,7 @@ func New(options *Options) (*Engine, error) {
 
 // canContinue reports whether another recovery attempt is within both bounds, the consecutive run and the total across the
 // run. Both are checked wherever one is spent, so neither can be dodged by a different route into recovery.
-func (e *Engine) canContinue(budget Budget) bool {
+func (e *Engine) canContinue(budget outcome.Budget) bool {
 	return budget.Continuations < e.MaxContinuations &&
 		budget.Recoveries < e.maxRecoveries
 }
@@ -274,13 +279,13 @@ func terminalDetail(call fantasy.ToolCallContent, key, fallback string) string {
 }
 
 // terminalCall reports whether the model ended the run with a terminal tool.
-func terminalCall(calls []fantasy.ToolCallContent) (StopReason, string, bool) {
+func terminalCall(calls []fantasy.ToolCallContent) (outcome.StopReason, string, bool) {
 	for _, call := range calls {
 		switch call.ToolName {
-		case SuccessTool:
-			return StopSettled, terminalDetail(call, "summary", "task complete"), true
-		case FailureTool:
-			return StopFailed, terminalDetail(call, "reason", "task failed"), true
+		case outcome.SuccessTool:
+			return outcome.StopSettled, terminalDetail(call, "summary", "task complete"), true
+		case outcome.FailureTool:
+			return outcome.StopFailed, terminalDetail(call, "reason", "task failed"), true
 		}
 	}
 
@@ -310,7 +315,7 @@ func CycleDetail(heuristic string) string {
 	}
 }
 
-func finish(messages []conversation.Message, budget Budget, reason StopReason, detail string, err error) Result {
+func finish(messages []conversation.Message, budget outcome.Budget, reason outcome.StopReason, detail string, err error) Result {
 	return Result{
 		Reason:   reason,
 		Message:  detail,
@@ -322,7 +327,7 @@ func finish(messages []conversation.Message, budget Budget, reason StopReason, d
 
 // CheckCycle looks for repetition and nudges the model, or stops the run once
 // nudging has failed enough times.
-func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
+func (e *Engine) CheckCycle(messages []conversation.Message, budget *outcome.Budget) ([]conversation.Message, *Result) {
 	detected := cycle.Describe(messages)
 
 	if detected == "" {
@@ -334,7 +339,7 @@ func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]
 	}
 
 	if budget.Cycles >= e.MaxCycles {
-		result := finish(messages, *budget, StopCycle,
+		result := finish(messages, *budget, outcome.StopCycle,
 			fmt.Sprintf("the model kept repeating itself (%s)", detected), nil)
 
 		return nil, &result
@@ -342,7 +347,7 @@ func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]
 
 	budget.Cycles++
 
-	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: CycleNotice(CycleDetail(detected))}), nil
+	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.CycleNotice(CycleDetail(detected))}), nil
 }
 
 // NarrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
@@ -515,7 +520,7 @@ func (e *Engine) BuildRequest(messages []conversation.Message, forgotten int) Tu
 
 // ToolDefinitions renders the tool schemas, with the terminal tools.
 func (e *Engine) ToolDefinitions() []fantasy.Tool {
-	offered := slices.Concat(e.Options.Tools, TerminalTools())
+	offered := slices.Concat(e.Options.Tools, outcome.TerminalTools())
 
 	// Map order was random once, and a tool list that reshuffles between requests defeats server-side
 	// prompt caches keyed on the prefix. So the order is fixed by name.
@@ -561,7 +566,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	messages := append([]conversation.Message(nil), e.Options.Messages...)
 
-	budget := Budget{}
+	budget := outcome.Budget{}
 
 	// forgotten is how many of the oldest messages requests no longer carry. The
 	// conversation itself keeps them all. Only the wire copy is short.
@@ -590,7 +595,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
+			return finish(messages, budget, outcome.StopAborted, "run canceled", firstNonNil(lastFailure, err))
 		}
 
 		// hand the conversation over before spending anything on the next turn,
@@ -600,12 +605,12 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// A time cap is checked at the iteration boundary like every budget. One long tool call can overrun by
 		// one operation (the shell timeout bounds it), but no new iteration starts past the deadline.
 		if e.MaxDuration > 0 && time.Since(started) >= e.MaxDuration {
-			return finish(messages, budget, StopTime,
+			return finish(messages, budget, outcome.StopTime,
 				fmt.Sprintf("stopped after %s", e.MaxDuration), nil)
 		}
 
 		if budget.Iterations >= e.MaxIterations {
-			return finish(messages, budget, StopIterations,
+			return finish(messages, budget, outcome.StopIterations,
 				fmt.Sprintf("stopped after %d iterations", budget.Iterations), nil)
 		}
 
@@ -616,7 +621,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		if e.Options.PlanTool != "" && e.planEvery > 0 && budget.Iterations%e.planEvery == 0 && nudged != budget.Iterations {
 			nudged = budget.Iterations
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: PlanNudge(e.Options.PlanTool)})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.PlanNudge(e.Options.PlanTool)})
 		}
 
 		// a failed call is retried from the same place. It is one turn, not two
@@ -657,13 +662,13 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			// A cancellation mid-call surfaces here as the provider error it caused. It is recorded as the abort it
 			// is, with the provider error carried along as evidence, so a quit during a failure keeps the dump.
 			if ctx.Err() != nil {
-				return finish(messages, budget, StopAborted, "run canceled", firstNonNil(lastFailure, err))
+				return finish(messages, budget, outcome.StopAborted, "run canceled", firstNonNil(lastFailure, err))
 			}
 
 			// a context-limit rejection is recoverable. Narrow the window the
 			// thread is trimmed to and retry
 			if limit, ok := failure.DetectContextLimit(err); ok && e.canContinue(budget) {
-				budget.spendContinuation()
+				budget.SpendContinuation()
 
 				if e.NarrowWindow(limit, emit) {
 					continue
@@ -675,7 +680,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			limited := failure.IsRateLimited(err)
 
 			if (limited || failure.IsRetriable(err)) && e.canContinue(budget) {
-				budget.spendContinuation()
+				budget.SpendContinuation()
 
 				retries++
 
@@ -697,7 +702,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				continue
 			}
 
-			return finish(messages, budget, StopError, "the provider failed", err)
+			return finish(messages, budget, outcome.StopError, "the provider failed", err)
 		}
 
 		// the provider answered. Whatever outage the backoff was pacing is over,
@@ -718,17 +723,17 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		if turn.FinishReason == fantasy.FinishReasonLength {
 			if !e.canContinue(budget) {
-				return finish(messages, budget, StopContinuations,
+				return finish(messages, budget, outcome.StopContinuations,
 					"the model kept running out of output space", nil)
 			}
 
-			budget.spendContinuation()
+			budget.SpendContinuation()
 
 			emit(Event{Kind: EventNotice, Text: fmt.Sprintf(
 				"answer cut off at the output limit; asking the model to continue (%d/%d)",
 				budget.Continuations, e.MaxContinuations)})
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: TruncationNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.TruncationNotice()})
 
 			continue
 		}
@@ -748,7 +753,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		if len(turn.ToolCalls) > 0 {
 			// the tools ran inside the step. What is left is the call budget
 			if state.callsExhausted {
-				return finish(messages, budget, StopCalls,
+				return finish(messages, budget, outcome.StopCalls,
 					fmt.Sprintf("stopped after %d tool calls", budget.Calls), nil)
 			}
 
@@ -768,7 +773,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 		if turn.Text == "" && turn.Reasoning == "" {
 			if budget.Empties >= e.MaxEmpties {
-				return finish(messages, budget, StopEmpty,
+				return finish(messages, budget, outcome.StopEmpty,
 					"the model repeatedly produced nothing", nil)
 			}
 
@@ -780,7 +785,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				"the model returned an empty turn; nudging it to continue (%d/%d)",
 				budget.Empties, e.MaxEmpties)})
 
-			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: SettleNotice()})
+			messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.SettleNotice()})
 
 			continue
 		}
@@ -789,7 +794,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 		// it toward success / failure, up to MaxSettles.
 
 		if budget.Settles >= e.MaxSettles {
-			return finish(messages, budget, StopUnsettled,
+			return finish(messages, budget, outcome.StopUnsettled,
 				"the model stopped without recording an outcome", nil)
 		}
 
@@ -799,7 +804,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 			"the model stopped without recording an outcome; nudging it to settle (%d/%d)",
 			budget.Settles, e.MaxSettles)})
 
-		messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: SettleNotice()})
+		messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: outcome.SettleNotice()})
 	}
 }
 

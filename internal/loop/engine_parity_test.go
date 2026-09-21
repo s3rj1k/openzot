@@ -10,6 +10,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -20,7 +21,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Model: testutils.ScriptedModel(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
-	budget := &loop.Budget{}
+	budget := &outcome.Budget{}
 
 	// [A B A B] - the last pair repeats the previous pair, which the repeated-suffix
 	// heuristic flags as a cycle
@@ -104,7 +105,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	})
 
 	// bounded by the empty budget, not the settle budget
-	assert.Equal(t, loop.StopEmpty, result.Reason, "repeated empty turns must stay bounded by the empty budget, got %q", result.Reason)
+	assert.Equal(t, outcome.StopEmpty, result.Reason, "repeated empty turns must stay bounded by the empty budget, got %q", result.Reason)
 
 	assert.Equal(t, 2, result.Budget.Empties)
 
@@ -113,7 +114,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	var sawTerminalGuidance bool
 
 	for _, message := range result.Messages {
-		if strings.Contains(message.Text, loop.SuccessTool) {
+		if strings.Contains(message.Text, outcome.SuccessTool) {
 			sawTerminalGuidance = true
 		}
 	}
@@ -150,7 +151,7 @@ func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 		MaxEmpties: 3,
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason, "reason = %q, want %q - scattered empties must not stop the run", result.Reason, loop.StopSettled)
+	assert.Equal(t, outcome.StopSettled, result.Reason, "reason = %q, want %q - scattered empties must not stop the run", result.Reason, outcome.StopSettled)
 
 	assert.Equal(t, 0, result.Budget.Empties, "want 0 - the last turns were productive")
 }

@@ -11,6 +11,10 @@ import (
 // single block of text. The streaming guard while a turn is still being
 // generated, and the fallback that scans a committed message.
 
+// DefaultMinChars is the output length below which the streaming repetition guard will not trip. Short repetitive output
+// ends on its own.
+const DefaultMinChars = 2_000
+
 // clamp resolves an optional setting. Unset yields fallback, set yields the
 // value floored at minimum.
 func clamp(value *int, minimum, fallback int) int {

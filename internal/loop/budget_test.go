@@ -16,6 +16,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -39,7 +40,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 		MaxCycles:     100000, // high, so cycle detection is not what stops it
 	})
 
-	assert.Equal(t, loop.StopTime, result.Reason)
+	assert.Equal(t, outcome.StopTime, result.Reason)
 
 	// it did some work before the deadline, and nowhere near the iteration cap
 	assert.Less(t, result.Budget.Iterations, 100000, "want the time cap to bite first")
@@ -53,7 +54,7 @@ func TestTimeIsUnboundedByDefault(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	assert.NotEqual(t, loop.StopTime, result.Reason, "a run with no time cap must never stop for time")
+	assert.NotEqual(t, outcome.StopTime, result.Reason, "a run with no time cap must never stop for time")
 }
 
 // A tool round is progress. It costs an iteration and a call, and nothing else.
@@ -76,7 +77,7 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 
 	assert.Equal(t, 2, result.Budget.Calls)
 
-	assert.Equal(t, loop.StopSettled, result.Reason, "want the run to finish normally")
+	assert.Equal(t, outcome.StopSettled, result.Reason, "want the run to finish normally")
 }
 
 // Being cut off mid-answer is not progress, and it is the only thing the
@@ -109,7 +110,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 		MaxCycles:        1000,
 	})
 
-	assert.Equal(t, loop.StopIterations, result.Reason, "want the iteration budget to be what stops it")
+	assert.Equal(t, outcome.StopIterations, result.Reason, "want the iteration budget to be what stops it")
 
 	assert.Equal(t, 0, result.Budget.Recoveries, "want the continuation budget untouched")
 
@@ -121,7 +122,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 		MaxContinuations: 3,
 	})
 
-	assert.Equal(t, loop.StopContinuations, result.Reason, "want the continuation budget to be what stops it")
+	assert.Equal(t, outcome.StopContinuations, result.Reason, "want the continuation budget to be what stops it")
 
 	assert.Less(t, result.Budget.Iterations, 50, "want the continuation budget to bite first")
 }
@@ -164,7 +165,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 
 			assert.Equal(t, 3, result.Budget.Iterations)
 
-			assert.Equal(t, loop.StopIterations, result.Reason)
+			assert.Equal(t, outcome.StopIterations, result.Reason)
 		})
 	}
 }
@@ -186,7 +187,7 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 
 	assert.Equal(t, 1, calls, "the tool ran %d times, want once", calls)
 
-	assert.Equal(t, loop.StopIterations, result.Reason)
+	assert.Equal(t, outcome.StopIterations, result.Reason)
 }
 
 // A non-positive budget means "unset", not "zero". The iteration count and the no-progress guards (cycles, empties) are hard
@@ -204,7 +205,7 @@ func TestBudgetDefaults(t *testing.T) {
 		require.NoError(t, err)
 
 		// fallbacks fall back to their finite defaults
-		assert.Equal(t, loop.DefaultMaxIterations, engine.MaxIterations, "want the default backstop")
+		assert.Equal(t, outcome.DefaultMaxIterations, engine.MaxIterations, "want the default backstop")
 
 		assert.Positive(t, engine.MaxCycles, "a budget of %d left a guard unbounded: cycles=%d empties=%d", value, engine.MaxCycles, engine.MaxEmpties)
 		assert.Positive(t, engine.MaxEmpties, "a budget of %d left a guard unbounded: cycles=%d empties=%d", value, engine.MaxCycles, engine.MaxEmpties)
@@ -271,7 +272,7 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 
 	assert.True(t, mentionsAFailure(result.Messages), "the decode failure must be fed back so the model can correct it")
 
-	assert.Equal(t, loop.StopSettled, result.Reason)
+	assert.Equal(t, outcome.StopSettled, result.Reason)
 }
 
 // fantasy repairs what it can before a call is run - a missing closing brace or
@@ -300,7 +301,7 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 
 	assert.False(t, mentionsAFailure(result.Messages), "a call that could be repaired must not be reported as a failure")
 
-	assert.Equal(t, loop.StopSettled, result.Reason)
+	assert.Equal(t, outcome.StopSettled, result.Reason)
 }
 
 // containsText reports whether any message holds the given text.
@@ -331,7 +332,7 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 		MaxIterations: 5,
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason, "want the run to survive a failing tool")
+	assert.Equal(t, outcome.StopSettled, result.Reason, "want the run to survive a failing tool")
 
 	assert.True(t, containsText(result.Messages, "permission denied"), "the failure must be visible to the model")
 }
@@ -398,7 +399,7 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 
 	// the filtered turn is answered like any turn that stops without acting. A
 	// nudge to settle, and the run carries on
-	assert.Equal(t, loop.StopSettled, result.Reason, "want the run to carry on and settle after one")
+	assert.Equal(t, outcome.StopSettled, result.Reason, "want the run to carry on and settle after one")
 	assert.Equal(t, 1, result.Budget.Settles, "want the run to carry on and settle after one")
 
 	require.NoError(t, result.Err)
@@ -418,7 +419,7 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 
 	require.NoError(t, result.Err)
 
-	assert.Contains(t, []loop.StopReason{loop.StopEmpty, loop.StopIterations}, result.Reason, "want the turn treated as empty")
+	assert.Contains(t, []outcome.StopReason{outcome.StopEmpty, outcome.StopIterations}, result.Reason, "want the turn treated as empty")
 }
 
 // A retriable provider failure has to be waited out, not hammered. Retrying instantly spends the whole continuation budget
@@ -439,7 +440,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	require.Equal(t, loop.StopError, result.Reason, "want the run to end on the provider failure")
+	require.Equal(t, outcome.StopError, result.Reason, "want the run to end on the provider failure")
 
 	require.Equal(t, 3, result.Budget.Recoveries)
 
@@ -480,7 +481,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	elapsed := time.Since(started)
 	require.LessOrEqual(t, elapsed, 30*time.Second, "cancellation took %s to end an hour-long backoff", elapsed)
 
-	assert.Equal(t, loop.StopAborted, result.Reason, "want the cancellation to end the run")
+	assert.Equal(t, outcome.StopAborted, result.Reason, "want the cancellation to end the run")
 
 	// The abort landed during a backoff wait, but the provider failure before it travels with it as
 	// evidence. A bare "context canceled" would discard the exchange the operator quit to read.
@@ -510,7 +511,7 @@ func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
 func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 	client := testutils.Script(t,
 		testutils.Reject(http.StatusTooManyRequests, `{"error":{"message":"slow down"}}`).WithHeader("Retry-After", "1"),
-		testutils.Frames(testutils.Tool("c1", loop.SuccessTool, `{"summary":"done anyway"}`)),
+		testutils.Frames(testutils.Tool("c1", outcome.SuccessTool, `{"summary":"done anyway"}`)),
 	).Model(t)
 
 	started := time.Now()
@@ -524,7 +525,7 @@ func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	require.Equal(t, loop.StopSettled, result.Reason, "want the run to survive the rate limit")
+	require.Equal(t, outcome.StopSettled, result.Reason, "want the run to survive the rate limit")
 
 	assert.Equal(t, 1, result.Budget.Recoveries, "want the rate limit to cost exactly one")
 
@@ -554,7 +555,7 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	require.Equal(t, loop.StopError, result.Reason, "want the run to end once the budget is spent")
+	require.Equal(t, outcome.StopError, result.Reason, "want the run to end once the budget is spent")
 
 	require.Equal(t, 3, result.Budget.Recoveries)
 
@@ -572,7 +573,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 		testutils.Reject(http.StatusInternalServerError, ""), testutils.Reject(http.StatusInternalServerError, ""),
 		testutils.Frames(testutils.Tool("c1", litEcho, `{}`)),
 		testutils.Reject(http.StatusInternalServerError, ""),
-		testutils.Frames(testutils.Tool("c2", loop.SuccessTool, `{"summary":"done"}`)),
+		testutils.Frames(testutils.Tool("c2", outcome.SuccessTool, `{"summary":"done"}`)),
 	).Model(t)
 
 	calls := 0
@@ -594,7 +595,7 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	require.Equal(t, loop.StopSettled, result.Reason)
+	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	require.Equal(t, 3, result.Budget.Recoveries)
 
@@ -635,7 +636,7 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 
 	elapsed := time.Since(started)
 
-	require.Equal(t, loop.StopSettled, result.Reason)
+	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	require.Equal(t, 4, result.Budget.Recoveries, "want 3 truncations plus 1 retry")
 
@@ -671,7 +672,7 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 		}
 	})
 
-	require.Equal(t, loop.StopSettled, result.Reason)
+	require.Equal(t, outcome.StopSettled, result.Reason)
 
 	var noticed bool
 
@@ -696,7 +697,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		case request <= 11:
 			return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
 		default:
-			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
+			return testutils.Frames(testutils.Tool("done", outcome.SuccessTool, `{"summary":"done"}`))
 		}
 	}).Model(t)
 
@@ -716,7 +717,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 		RetryBackoff: -1,
 	})
 
-	require.Equal(t, loop.StopSettled, result.Reason, "want the run to finish - no two failures were consecutive")
+	require.Equal(t, outcome.StopSettled, result.Reason, "want the run to finish - no two failures were consecutive")
 
 	require.Equal(t, 6, result.Budget.Recoveries, "want all 6 blips recorded")
 
@@ -737,7 +738,7 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 		RetryBackoff:     -1,
 	})
 
-	require.Equal(t, loop.StopError, result.Reason, "want the run to end once the consecutive budget is spent")
+	require.Equal(t, outcome.StopError, result.Reason, "want the run to end once the consecutive budget is spent")
 
 	require.Equal(t, 3, result.Budget.Recoveries, "want exactly the bound")
 }
@@ -775,7 +776,7 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 		RetryBackoff:  -1,
 	})
 
-	require.Equal(t, loop.StopError, result.Reason, "want the recovery bound to end it")
+	require.Equal(t, outcome.StopError, result.Reason, "want the recovery bound to end it")
 
 	// the run ends naming the provider failure it kept papering over, not a
 	// bare "budget spent" - the last error is what an operator needs
@@ -795,7 +796,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		case request <= 39:
 			return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
 		default:
-			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
+			return testutils.Frames(testutils.Tool("done", outcome.SuccessTool, `{"summary":"done"}`))
 		}
 	}).Model(t)
 
@@ -814,7 +815,7 @@ func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 		RetryBackoff:     -1,
 	})
 
-	require.Equal(t, loop.StopSettled, result.Reason, "want 20 recovered blips not to end a run that fails fast in a row")
+	require.Equal(t, outcome.StopSettled, result.Reason, "want 20 recovered blips not to end a run that fails fast in a row")
 
 	assert.Equal(t, 20, result.Budget.Recoveries)
 }

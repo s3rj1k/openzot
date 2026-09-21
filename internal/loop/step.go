@@ -13,6 +13,7 @@ import (
 	"charm.land/fantasy/providers/openaicompat"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/runaway"
 )
 
@@ -47,7 +48,7 @@ type TurnRequest struct {
 type step struct {
 	engine   *Engine
 	messages *[]conversation.Message
-	budget   *Budget
+	budget   *outcome.Budget
 	emit     func(Event)
 
 	turn      turnResult
@@ -73,8 +74,8 @@ type step struct {
 	started map[string]bool
 }
 
-func (s *step) reset(messages *[]conversation.Message, budget *Budget, emit func(Event)) {
-	minChars := RunawayGuardMinChars
+func (s *step) reset(messages *[]conversation.Message, budget *outcome.Budget, emit func(Event)) {
+	minChars := runaway.DefaultMinChars
 
 	*s = step{
 		engine:   s.engine,
@@ -115,7 +116,7 @@ type guardedTool struct {
 // terminal ones too - wrapped so the engine sees each call.
 func (e *Engine) newAgent(state *step) fantasy.Agent {
 	offered := append([]fantasy.AgentTool(nil), e.Options.Tools...)
-	offered = append(offered, TerminalTools()...)
+	offered = append(offered, outcome.TerminalTools()...)
 
 	wrapped := make([]fantasy.AgentTool, len(offered))
 
@@ -225,7 +226,7 @@ func (s *step) onToolCall(call fantasy.ToolCallContent) error {
 
 	s.turn.ToolCalls = append(s.turn.ToolCalls, call)
 
-	if call.ToolName == SuccessTool || call.ToolName == FailureTool {
+	if call.ToolName == outcome.SuccessTool || call.ToolName == outcome.FailureTool {
 		s.terminalSeen = true
 	}
 
@@ -336,7 +337,7 @@ func (e *Engine) runStep(
 	agent fantasy.Agent,
 	state *step,
 	call TurnRequest,
-	messages *[]conversation.Message, budget *Budget,
+	messages *[]conversation.Message, budget *outcome.Budget,
 	emit func(Event),
 ) (turnResult, error) {
 	// A turn can end while the provider is still streaming, such as a runaway cut, so every exit cancels the

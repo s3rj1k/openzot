@@ -11,6 +11,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -278,7 +279,7 @@ func countNudges(result *loop.Result) int {
 	nudges := 0
 
 	for _, message := range result.Messages {
-		if message.Type == conversation.TypeUser && strings.Contains(message.Text, loop.PlanNudge(litTasks)) {
+		if message.Type == conversation.TypeUser && strings.Contains(message.Text, outcome.PlanNudge(litTasks)) {
 			nudges++
 		}
 	}
@@ -304,8 +305,8 @@ func TestPlanRemindersCanBeSwitchedOffAndNeedAPlanTool(t *testing.T) {
 }
 
 func TestPlanNudgeIsANotice(t *testing.T) {
-	got := loop.PlanNudge(litTasks)
-	assert.True(t, strings.HasPrefix(got, loop.NoticePrefix), "the nudge must carry the notice prefix and name the tool")
+	got := outcome.PlanNudge(litTasks)
+	assert.True(t, strings.HasPrefix(got, outcome.NoticePrefix), "the nudge must carry the notice prefix and name the tool")
 	assert.Contains(t, got, litTasks, "the nudge must carry the notice prefix and name the tool")
 }
 

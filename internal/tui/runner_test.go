@@ -16,6 +16,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -159,7 +160,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	assert.Contains(t, tokens.String(), "working on it", "the streamed answer did not reach the screen")
 
-	assert.Equal(t, loop.StopSettled, seen.results[0].Reason, "want settled with the summary: it is what stops the spinner")
+	assert.Equal(t, outcome.StopSettled, seen.results[0].Reason, "want settled with the summary: it is what stops the spinner")
 	assert.Equal(t, "all done", seen.results[0].Message, "want settled with the summary: it is what stops the spinner")
 
 	assert.NotEqual(t, tui.StatusRunning, final.Status, "the viewer should not still be showing a running run")
@@ -297,5 +298,5 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	result, _ := tui.RunViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 
-	assert.Equal(t, loop.StopAborted, result.Reason, "want the abort handed back")
+	assert.Equal(t, outcome.StopAborted, result.Reason, "want the abort handed back")
 }

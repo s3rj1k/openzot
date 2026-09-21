@@ -14,6 +14,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
@@ -181,9 +182,9 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 		exit loop.Result
 		want tui.Status
 	}{
-		{"a settled run", loop.Result{Reason: loop.StopSettled, Message: litDone}, tui.StatusDone},
-		{"a budget-exhausted run", loop.Result{Reason: loop.StopIterations, Message: "gave up"}, tui.StatusFailed},
-		{"a run the model declared failed", loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"}, tui.StatusFailed},
+		{"a settled run", loop.Result{Reason: outcome.StopSettled, Message: litDone}, tui.StatusDone},
+		{"a budget-exhausted run", loop.Result{Reason: outcome.StopIterations, Message: "gave up"}, tui.StatusFailed},
+		{"a run the model declared failed", loop.Result{Reason: outcome.StopFailed, Message: "cannot reach the host"}, tui.StatusFailed},
 	}
 
 	for _, test := range tests {
@@ -205,7 +206,7 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.Finish(&loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
+	m.Finish(&loop.Result{Reason: outcome.StopFailed, Message: "cannot reach the host"})
 
 	log := testutils.StripANSI(strings.Join(m.Entries, "\n"))
 
@@ -352,7 +353,7 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 func TestExitBecomesAnError(t *testing.T) {
 	m := sized(t, 100, 30)
 
-	m.Finish(&loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
+	m.Finish(&loop.Result{Reason: outcome.StopCycle, Message: "kept repeating"})
 
 	err := m.RunError()
 	require.Error(t, err, "a failed run must surface as an error")
@@ -361,7 +362,7 @@ func TestExitBecomesAnError(t *testing.T) {
 
 	clean := sized(t, 100, 30)
 
-	clean.Finish(&loop.Result{Reason: loop.StopSettled, Message: litDone})
+	clean.Finish(&loop.Result{Reason: outcome.StopSettled, Message: litDone})
 
 	require.NoError(t, clean.RunError())
 }
@@ -700,7 +701,7 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	m := sized(t, 100, 30)
 
 	next, _ := m.Update(tui.DoneMsg{Result: loop.Result{
-		Reason:  loop.StopError,
+		Reason:  outcome.StopError,
 		Message: "the provider failed",
 		Err:     errors.New("provider: Model 'x' not found (404)"),
 	}})

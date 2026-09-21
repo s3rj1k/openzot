@@ -14,6 +14,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/session"
 	"github.com/openzot/openzot/internal/testutils"
 )
@@ -80,10 +81,10 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	})
 
 	recorder.Result(&loop.Result{
-		Reason:   loop.StopSettled,
+		Reason:   outcome.StopSettled,
 		Message:  "finished",
 		Messages: messages,
-		Budget:   loop.Budget{Iterations: 3, Calls: 2, Cycles: 1, Settles: 1, InputTokens: 1200, OutputTokens: 340},
+		Budget:   outcome.Budget{Iterations: 3, Calls: 2, Cycles: 1, Settles: 1, InputTokens: 1200, OutputTokens: 340},
 	})
 
 	records := testutils.ReadLog(t, path)
@@ -193,7 +194,7 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	recorder := newRecorder(writer, nil)
 
 	recorder.Result(&loop.Result{
-		Reason:  loop.StopError,
+		Reason:  outcome.StopError,
 		Message: "the provider failed",
 		Err: fmt.Errorf("provider: Model 'stealth/ox-alpha' not found (404): %w", &fantasy.ProviderError{
 			StatusCode:   404,
@@ -239,7 +240,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 
 	recorder.Conversation(messages)
 
-	recorder.Result(&loop.Result{Reason: loop.StopSettled, Messages: messages})
+	recorder.Result(&loop.Result{Reason: outcome.StopSettled, Messages: messages})
 
 	var got []string
 
@@ -277,7 +278,7 @@ func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 // The result carries the process exit code the ending maps onto, so a script
 // reading the log needs no table of reasons.
 func TestTheResultCarriesTheExitCode(t *testing.T) {
-	for reason, want := range map[loop.StopReason]int{loop.StopSettled: 0, loop.StopFailed: 1, loop.StopAborted: 1} {
+	for reason, want := range map[outcome.StopReason]int{outcome.StopSettled: 0, outcome.StopFailed: 1, outcome.StopAborted: 1} {
 		path := filepath.Join(t.TempDir(), "task.jsonl")
 
 		writer, _ := session.Open(path, session.Meta{Task: "t"})

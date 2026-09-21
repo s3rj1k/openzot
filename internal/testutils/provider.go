@@ -13,7 +13,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -245,7 +245,7 @@ func ToolCalls(finish string, calls ...[3]string) string {
 
 // Settle is a frame in which the model calls the success tool, which ends the run.
 func Settle(summary string) string {
-	return Tool("done", loop.SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
+	return Tool("done", outcome.SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
 }
 
 // ScriptedModel is a language model whose nth request is answered with the nth set of frames, and every later request

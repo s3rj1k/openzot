@@ -12,6 +12,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/outcome"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -33,14 +34,14 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 		ContextWindow: testWindow,
 		Model: testutils.ScriptedModel(t, []string{testutils.ToolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
-			[3]string{"c2", loop.SuccessTool, `{"summary":"all done"}`},
+			[3]string{"c2", outcome.SuccessTool, `{"summary":"all done"}`},
 		)}),
 		Tools:      []fantasy.AgentTool{countTool(&ran)},
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
 	})
 
-	assert.Equal(t, loop.StopSettled, result.Reason)
+	assert.Equal(t, outcome.StopSettled, result.Reason)
 	assert.Equal(t, "all done", result.Message)
 
 	assert.Equal(t, 0, ran, "want it not to run at all")
@@ -66,7 +67,7 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 		MaxCalls: 1,
 	})
 
-	require.Equal(t, loop.StopCalls, result.Reason, "want the call budget to stop the run")
+	require.Equal(t, outcome.StopCalls, result.Reason, "want the call budget to stop the run")
 
 	assert.Equal(t, 1, ran, "want just the one call within the budget")
 
@@ -94,7 +95,7 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 
 		assert.Equal(t, 1, ran, "finish %q: the tool ran %d times, want 1", finish, ran)
 
-		assert.Equal(t, loop.StopSettled, result.Reason, "want the run to carry on and stop normally")
+		assert.Equal(t, outcome.StopSettled, result.Reason, "want the run to carry on and stop normally")
 	}
 }
 
@@ -132,7 +133,7 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 		},
 	})
 
-	require.Equal(t, loop.StopSettled, result.Reason, "want the run to go ahead")
+	require.Equal(t, outcome.StopSettled, result.Reason, "want the run to go ahead")
 }
 
 // A call to a tool that does not exist, or with input that cannot be read, is
