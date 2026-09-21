@@ -1,5 +1,6 @@
 // Package failure classifies what went wrong talking to a model provider. It tells a transient failure from a fatal one,
-// finds a rate limit's wait and a context-length rejection in an error, and extracts the wire evidence for the log.
+// finds a rate limit's wait and a context-length rejection in an error, extracts the wire evidence for the log, and holds
+// the retry policy, how long a run waits before it tries again.
 package failure
 
 import (

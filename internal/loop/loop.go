@@ -74,7 +74,7 @@ type Options struct {
 	MaxDuration time.Duration
 
 	// Pause before the first retry of a retriable failure, doubling per consecutive retry up to
-	// MaxRetryBackoff. Zero uses DefaultRetryBackoff. Negative disables the wait, for tests driving an outage.
+	// MaxRetryBackoff. Zero uses failure.DefaultRetryBackoff. Negative disables the wait, for tests driving an outage.
 	RetryBackoff time.Duration
 
 	// How many times the model is nudged to record an outcome before the run is reported unsettled.
@@ -221,7 +221,7 @@ func New(options *Options) (*Engine, error) {
 		MaxSettles:       pick(options.MaxSettles, DefaultMaxSettles),
 		// @note negative means "no wait" and is stored raw, so a test driving an
 		// outage does not have to sleep through it. Zero takes the default.
-		RetryBackoff: cmp.Or(options.RetryBackoff, DefaultRetryBackoff),
+		RetryBackoff: cmp.Or(options.RetryBackoff, failure.DefaultRetryBackoff),
 		Window:       options.ContextWindow,
 		SoftPercent:  pick(options.ContextSoft, DefaultContextSoft),
 		planEvery:    planEvery,
@@ -235,50 +235,6 @@ func New(options *Options) (*Engine, error) {
 func (e *Engine) canContinue(budget Budget) bool {
 	return budget.Continuations < e.MaxContinuations &&
 		budget.Recoveries < e.maxRecoveries
-}
-
-// BackoffFor is the pause before the attempt'th consecutive retry. It is base, doubling per attempt, capped at
-// MaxRetryBackoff even when base alone exceeds the cap, so no generous RetryBackoff makes the first retry the longest wait.
-// A non-positive base means no wait at all.
-func BackoffFor(base time.Duration, attempt int) time.Duration {
-	if base <= 0 || attempt <= 0 {
-		return 0
-	}
-
-	delay := base
-
-	if delay >= MaxRetryBackoff {
-		return MaxRetryBackoff
-	}
-
-	for i := 1; i < attempt; i++ {
-		delay *= 2
-
-		if delay >= MaxRetryBackoff {
-			return MaxRetryBackoff
-		}
-	}
-
-	return delay
-}
-
-// RateLimitWait is how long to sit out a rate limit, the larger of the provider's advised delay and the ordinary backoff. The
-// backoff is a floor, so a "Retry-After: 0" cannot become a tight loop. The advice is capped, since an unattended run must not
-// be parked for hours by a mistaken or hostile header.
-func RateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.Duration {
-	if !ok {
-		return fallback
-	}
-
-	if advised > MaxRateLimitWait {
-		advised = MaxRateLimitWait
-	}
-
-	if advised < fallback {
-		return fallback
-	}
-
-	return advised
 }
 
 // wait pauses for d, or until the run is canceled - whichever comes first. It
@@ -727,13 +683,13 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 				// Space the retries out. Otherwise the continuation budget is spent in milliseconds and the run dies
 				// to an outage it would have outlived by waiting. Cancellation cuts the wait short.
-				delay := BackoffFor(e.RetryBackoff, retries)
+				delay := failure.BackoffFor(e.RetryBackoff, retries)
 
 				if limited {
 					// The advised delay is honored, but the backoff stays a floor under it, so "Retry-After: 0" cannot
 					// become the instant-retry loop the backoff exists to prevent.
 					advised, ok := failure.RetryAfter(err)
-					delay = RateLimitWait(advised, ok, delay)
+					delay = failure.RateLimitWait(advised, ok, delay)
 				}
 
 				wait(ctx, delay)
