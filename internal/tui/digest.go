@@ -25,12 +25,9 @@ func DigestStatus(reason string, code int) string {
 	return "done"
 }
 
-// Digest is the compact end-of-run report printed after a run concludes.
-//
-// It exists because the full-screen viewer runs in the alternate screen and
-// takes its stats with it when it restores the terminal, so nothing tells an
-// operator what the run spent or where its record is. The digest is a small,
-// fixed block that survives on the main screen and carries both.
+// Digest is the compact end-of-run report printed after a run concludes. The viewer takes its stats with it when it
+// leaves the alternate screen, so this small fixed block survives on the main screen with what the run spent and where
+// its record is.
 type Digest struct {
 	// Status is the human-readable ending. "done", "failed", "canceled".
 	Status string
@@ -51,17 +48,9 @@ type Digest struct {
 	Message string
 }
 
-// RenderDigest formats a Digest as an aligned two-column block.
-//
-// The shape is by design the simplest thing that is both readable and
-// trivial to parse. One row per line, a single-word key, then the value as the
-// rest of the line. A consumer splits each line on its first run of spaces -
-// key left, value right - with no quoting or escaping to handle, because every
-// key is one token and every value is free to contain spaces. No borders, no
-// ANSI. A block that survives being piped through `grep` or `awk` unharmed.
-//
-// Empty fields are omitted rather than shown blank, so a run with no session
-// simply has no session row.
+// RenderDigest formats a Digest as an aligned two-column block, one row per line with a single-word key and the value as
+// the rest of the line, so it survives grep and awk with no quoting. No borders, no ANSI. Empty fields are omitted,
+// so a run with no session has no session row.
 func RenderDigest(d Digest) string {
 	type row struct {
 		key   string

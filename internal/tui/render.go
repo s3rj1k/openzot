@@ -38,12 +38,8 @@ func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
 	}
 }
 
-// truncate flattens a string to one line and caps it at max characters.
-//
-// Characters, not bytes. Slicing bytes cuts a multi-byte rune in half, so a task
-// or tool argument in CJK or emoji rendered a replacement character - and the
-// cap bit far earlier than the width it was given, since one glyph can be four
-// bytes.
+// truncate flattens a string to one line and caps it at limit characters. Characters, not bytes, since slicing bytes
+// cuts a multi-byte rune in half, rendering a replacement character and cutting CJK or emoji far short of the width.
 func truncate(s string, limit int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 
@@ -56,10 +52,8 @@ func truncate(s string, limit int) string {
 
 // --- small helpers over the loosely-typed arg/result maps -------------------.
 
-// renderTasks lays the task list out as a checklist, one line per task, headed by
-// how much of it is done. The list is the one piece of the run worth reading in
-// full - it is the map the agent is following and how far along it is, and seeing
-// it is how the operator knows whether the approach is sound.
+// renderTasks lays the task list out as a checklist, one line per task, headed by how much is done. It is the one piece
+// of the run worth reading in full, since it is the map the agent follows and shows the operator whether the approach is sound.
 func renderTasks(args map[string]any) string {
 	head := toolOtherStyle.Render("  tasks  ")
 
@@ -111,12 +105,9 @@ func pad(s string, n int) string {
 	return s
 }
 
-// renderToolStart turns a tool invocation into one or more styled log lines.
-//
-// The built-in tools each get a tailored, scannable representation. Anything a
-// caller has added falls through to a generic one. The names here are the names
-// in the tools package - a mismatch is not a compile error, it just
-// renders the agent's most-used tool as an anonymous key/value dump.
+// renderToolStart turns a tool invocation into one or more styled log lines. Built-in tools get a tailored form and
+// anything else a generic one. The names match the tools package, and a mismatch is no compile error, it just renders
+// the most-used tool as an anonymous key/value dump.
 func renderToolStart(name string, args map[string]any) string {
 	switch name {
 	case "shell":
@@ -147,11 +138,8 @@ func renderOutputLines(text string) string {
 	return b.String()
 }
 
-// renderTextResult summarizes a string result.
-//
-// A shell command's output is the thing the operator most wants to see, so it is
-// echoed. How much of it stays on screen is the viewer's call (see
-// model.wrapRecord).
+// renderTextResult summarizes a string result. A shell command's output is what the operator most wants to see, so it
+// is echoed, and how much stays on screen is the viewer's call (see model.wrapRecord).
 func renderTextResult(name, text string) string {
 	trimmed := strings.TrimRight(text, "\n")
 
@@ -187,11 +175,8 @@ func commandOutput(m map[string]any) string {
 	return renderOutputLines(text)
 }
 
-// renderToolEnd produces an optional follow-up line summarizing a tool result.
-// It returns "" when there is nothing worth showing.
-//
-// Zot's tools return plain strings, so that is the case handled first. The map
-// form is kept for a caller whose own tool returns something structured.
+// renderToolEnd produces an optional follow-up line summarizing a tool result, or "" when there is nothing worth showing.
+// Zot's tools return plain strings, handled first. The map form is for a caller whose own tool returns something structured.
 func renderToolEnd(name string, result any) string {
 	if text, ok := result.(string); ok {
 		return renderTextResult(name, text)
@@ -220,18 +205,9 @@ func renderToolEnd(name string, result any) string {
 	return okStyle.Render("    ✓ done")
 }
 
-// shortPath fits a directory into max columns from the right, because the
-// informative end of a path is the last segment, not the first.
-//
-// Truncate keeps the head, which for /workspaces/monorepo-zot/repos/zot/tool
-// yields "/workspaces/monorepo-zot/repos/z…" - every character spent on the
-// part shared by every project on the machine, and the one word naming this one
-// cut off. This drops whole leading segments instead and marks the cut with a
-// leading "…/", so the same path reads "…/repos/zot/tool".
-//
-// Segments are kept whole. Half a directory name is not a directory name, and a
-// path is read by recognizing its parts. Only when the final segment alone will
-// not fit is it cut, and then from the left, so the end of the name survives.
+// shortPath fits a directory into limit columns from the right, since the informative end of a path is the last segment.
+// Whole leading segments are dropped and the cut marked with "…/", so a long path reads "…/repos/zot/tool". Only when the
+// final segment alone will not fit is it cut, from the left.
 func shortPath(path string, limit int) string {
 	if limit <= 0 {
 		return ""

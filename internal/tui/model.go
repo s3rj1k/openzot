@@ -75,12 +75,9 @@ type model struct {
 
 // --- viewport content management --------------------------------------------.
 
-// DefaultMaxScrollback is the on-screen log cap used when a caller does not set
-// its own (Meta.MaxScrollback). An autonomous run can emit an unbounded number of
-// events (millions of iterations, unbounded tool calls), so keeping every line
-// would grow the viewer's memory without limit. Once the cap is reached the
-// oldest lines are dropped, and the full untrimmed run is always in the session
-// log on disk. A caller that wants to keep more on screen raises the cap.
+// DefaultMaxScrollback is the on-screen log cap used when a caller sets none (Meta.MaxScrollback). An unbounded run
+// would otherwise grow the viewer's memory without limit, so the oldest lines are dropped at the cap. The full run
+// is always in the session log.
 const DefaultMaxScrollback = 5000
 
 func newModel(task, modelName, provider, workdir string) *model {
@@ -117,10 +114,8 @@ func (m *model) wrap(s string) string {
 	return lipgloss.NewStyle().Width(m.vp.Width).Render(s)
 }
 
-// recordHeight is the most rows one log record may take. A third of the
-// terminal's height, so no single record - a chatty command, a long task list, a
-// wall of narration - can push the rest of the run off the screen. Zero, meaning
-// no limit, until the terminal has reported a size.
+// recordHeight is the most rows one log record may take, a third of the terminal's height, so no single record can push
+// the rest of the run off the screen. Zero, meaning no limit, until the terminal has reported a size.
 func (m *model) recordHeight() int {
 	if m.height <= 0 {
 		return 0
@@ -295,10 +290,8 @@ func (m *model) handleEvent(ev *loop.Event) {
 	}
 }
 
-// finish folds the run's ending into the UI state. The conclusion, and the error
-// behind it when there is one. The error is usually the run's only diagnostic -
-// "the provider failed" on screen with the actual 404 dropped on the floor was
-// how that got lost - so it is kept and shown.
+// finish folds the run's ending into the UI state, the conclusion and the error behind it. The error is usually the
+// run's only diagnostic, so it is kept and shown.
 func (m *model) finish(result *loop.Result) {
 	code := result.ExitCode()
 
@@ -432,10 +425,8 @@ func (m *model) titleBar() string {
 	return left + " " + taskStyle.Render(truncate(label, room))
 }
 
-// cell pads v on the right to at least width columns, so a value that changes
-// length - a count gaining a digit, a rate dropping its decimal - keeps the
-// segments after it where they were. The value stays flush against its label.
-// The slack trails. A value wider than the cell is returned whole.
+// cell pads v on the right to at least width columns, so a value that changes length keeps the segments after it
+// where they were. The value stays flush against its label, and one wider than the cell is returned whole.
 func cell(v string, width int) string {
 	if pad := width - lipgloss.Width(v); pad > 0 {
 		return v + strings.Repeat(" ", pad)
@@ -461,13 +452,8 @@ func fmtDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// metaBar is the header. Provider, model, iteration, elapsed time, tokens and
-// directory, in that order.
-//
-// The order is essential. The bar is one line and drops what does not fit, so
-// what comes first is what survives a narrow terminal. "dir" is last despite
-// being useful because it never changes. A static path is not worth the live
-// numbers it would push off the end.
+// metaBar is the header, provider, model, iteration, elapsed time, tokens and directory, in that order. The bar drops
+// what does not fit, so what comes first survives a narrow terminal, and dir is last because it never changes.
 func (m *model) metaBar() string {
 	seg := func(k, v string, value lipgloss.Style) string {
 		return metaKey.Render(k+" ") + value.Render(v)

@@ -867,15 +867,8 @@ func metaSegments(bar string) []string {
 	return out
 }
 
-// A stat segment is shown whole or not at all. Clipping the bar to the terminal
-// width left whichever segment straddled the edge half-rendered - a truncated
-// count can be misread, which is worse than an absent one - so a segment that
-// does not fit is dropped entirely.
-//
-// The narrow renders are checked against a wide one rather than against
-// hardcoded text. What a segment says is the bar's business, and a test that
-// restated it would fail on every wording change while still not proving
-// anything about fitting.
+// A stat segment is shown whole or not at all, since a clipped count can be misread, which is worse than an absent one. The
+// narrow renders are checked against a wide one rather than hardcoded text, since what a segment says is the bar's business.
 func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
 	reference := metaSegments(sized(t, 400, 30).metaBar())
 
@@ -1037,10 +1030,8 @@ func TestRetryEventIsRendered(t *testing.T) {
 	}
 }
 
-// The header shows the order's title when it has one. The task is the whole
-// order rendered for the model - goal, criteria and constraints - so a
-// one-line header of it is a paragraph cut mid-word, which is exactly what
-// titles exist to replace.
+// The header shows the order's title when it has one. The task is the whole order rendered for the model, so a one-line
+// header of it is a paragraph cut mid-word, which is what titles exist to replace.
 func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	task := "add rate limiting to the api\n\nAcceptance criteria - the objective is not met until every one of these holds:\n1. the suite passes"
 
@@ -1067,11 +1058,9 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	}
 }
 
-// A live value growing a digit - nine iterations becoming ten, 999 tokens
-// becoming 1.0k - must not shove the segments after it sideways. A header that
-// jitters on every tick is unreadable at a glance, which is the only way a
-// header is read. Each volatile field is followed by a fixed one, and the test
-// asks whether that fixed one moved.
+// A live value growing a digit (nine iterations becoming ten, 999 tokens becoming 1.0k) must not shove later segments
+// sideways, since a jittering header is unreadable at a glance. Each volatile field is followed by a fixed one, and the test
+// asks whether that one moved.
 func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 	tests := []struct {
 		name   string

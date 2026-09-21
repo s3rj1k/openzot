@@ -22,11 +22,9 @@ import (
 // required, and this one is large enough that no test trims by accident.
 const testWindow = 1_000_000
 
-// RunAgent is the seam between the engine and the screen. It is a pure pump,
-// and the thing worth proving about a pump is that nothing goes missing. Every
-// event reaches the program, an error reaches it too, and the stream always
-// ends with a done message so the viewer knows the run is over rather than
-// hanging on a spinner nobody will ever stop.
+// The runAgent function is the seam between the engine and the screen, a pure pump, so what is worth proving is that nothing goes
+// missing. Every event and any error reaches the program, and the stream always ends with a done message so the viewer
+// never hangs on a spinner nobody will stop.
 
 // scriptedClient answers with the given SSE frame sets, one per turn.
 func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
@@ -279,11 +277,9 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 	}
 }
 
-// Quitting the viewer must stop the agent, not only stop watching it. The
-// agent holds shell and file-write access, so returning from the viewer with the
-// run still going leaves something editing the working tree with nothing on
-// screen reporting what it does. Process exit would hide this in
-// the CLI, but the guarantee belongs to the viewer, not to the exit.
+// Quitting the viewer must stop the agent, not only the watching. The agent holds shell and file-write access, so a run
+// left going with nothing on screen would keep editing the working tree unseen. Process exit would hide this in the CLI,
+// but the guarantee belongs to the viewer.
 func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	streaming := make(chan struct{})
 	canceled := make(chan struct{})
@@ -348,10 +344,8 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 	}
 }
 
-// Quitting the viewer must hand the caller the run's aborted outcome, for the
-// session. RunViewer used to return the moment the program did, racing the
-// engine's ending against the caller's deferred session close - a quit run was
-// logged as "running/interrupted" forever, with no outcome at all.
+// Quitting the viewer must hand the caller the run's aborted outcome, for the session. The viewer once returned as soon
+// as the program did, racing the engine's ending against the session close, so a quit run stayed "running/interrupted".
 func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	streaming := make(chan struct{})
 

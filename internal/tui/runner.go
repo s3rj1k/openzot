@@ -20,13 +20,9 @@ type (
 	doneMsg struct{ result loop.Result }
 )
 
-// runAgent runs the autonomous agent to completion, relaying every event into
-// the program and then its ending. It is meant to be launched in its own
-// goroutine. It blocks until the run is over. The ending is also handed to results,
-// which the caller reads once done is closed.
-//
-// All the autonomy lives in the engine - it loops the model through
-// plan/act/observe/exit on its own. RunAgent is a pure pump. Event in, tea.Msg out.
+// runAgent runs the autonomous agent to completion in its own goroutine, relaying every event into the program and then its
+// ending, which is also handed to results for the caller to read once done is closed. All the autonomy lives in the engine,
+// so this is a pure pump, event in and tea.Msg out.
 func runAgent(ctx context.Context, p *tea.Program, engine *loop.Engine, results chan<- loop.Result, done chan<- struct{}) {
 	defer close(done)
 

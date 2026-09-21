@@ -1,8 +1,5 @@
-// Package tui renders the read-only terminal view of an autonomous agent run.
-//
-// The UI by design has no text input. The user watches the agent work, they
-// do not drive it. Everything on screen is derived from the event stream the
-// engine emits - tool calls, iterations, token narration - and the run's ending.
+// Package tui renders the read-only terminal view of an autonomous agent run. It has no text input, since the user watches
+// the agent and does not drive it. Everything on screen derives from the engine's event stream and the run's ending.
 package tui
 
 import (
@@ -50,10 +47,8 @@ func IsInteractive() bool {
 	return isatty.IsTerminal(fd)
 }
 
-// runViewer owns the viewer's lifetime. It starts the run, hands the program to
-// start, and shuts the run down once start returns. Start is a seam for tests,
-// which cannot open a terminal - Run passes (*tea.Program).Run. ProgramOptions is
-// a seam for tests, which cannot open a terminal and need a headless program that
+// runViewer owns the viewer's lifetime. It starts the run, hands the program to start, and shuts the run down once start
+// returns. Start and programOptions are seams for tests, which cannot open a terminal and need a headless program that
 // still consumes messages.
 func runViewer(
 	ctx context.Context,
@@ -100,14 +95,9 @@ func runViewer(
 	}
 }
 
-// Run renders the read-only TUI while the autonomous agent executes. It owns the
-// Bubble Tea program lifecycle and blocks until the user quits or the program
-// errors. The agent runs in the background and communicates with the UI solely
-// through tea messages.
-//
-// Along with any error it returns the run's Result, so a caller can report how it
-// ended - and what it spent - without scraping the screen. The result is empty
-// when the run never began, or was still going when it was abandoned.
+// Run renders the read-only TUI while the agent executes. It owns the Bubble Tea program lifecycle and blocks until the user
+// quits or the program errors, with the agent talking to the UI through tea messages. It returns the run's Result along with
+// any error, empty when the run never began or was abandoned still going.
 func Run(ctx context.Context, meta Meta, opts *loop.Options) (loop.Result, error) {
 	engine, err := loop.New(opts)
 	if err != nil {
