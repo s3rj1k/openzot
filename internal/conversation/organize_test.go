@@ -7,10 +7,8 @@ import (
 	"charm.land/fantasy"
 )
 
-// These cases are ported from the TypeScript engine's organizeMessages suite.
-// They are the shapes that actually reached production - a result whose call
-// was trimmed away, two matching calls in one turn, a trigger stranded in the
-// middle of a history - and each one is a request a provider rejects.
+// These cases are the shapes that reached production - a result whose call was trimmed away, two matching
+// calls in one turn, a trigger stranded mid-history - each a request a provider rejects.
 
 // request builds a tool-call message.
 func request(id, name, arguments string) Message {

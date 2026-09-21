@@ -1,16 +1,10 @@
-// Package conversation is what a run says and does, as data. The messages, the
-// tool calls they carry, the repair that keeps a history valid to send, the
-// rendering of it into a model prompt, and the forgetting that keeps it inside a
-// context window. It knows nothing of the engine that drives a conversation or
-// the provider that answers it.
+// Package conversation is what a run says and does, as data. Messages and the tool calls they carry, the repair
+// that keeps a history valid to send, its rendering into a prompt, and the forgetting that keeps it in a window.
+// It knows nothing of the engine that drives a conversation or the provider that answers it.
 package conversation
 
-// MessageType identifies what a message is.
-//
-// A named type rather than a bare string. These values decide how a message is
-// rendered to the provider and whether the runaway fallback scans it. A typo in
-// a string literal would silently route a message down the wrong path - a system
-// prompt rendered as ordinary history, say - and nothing would report it.
+// MessageType identifies what a message is. A named type, not a bare string, since these values decide how
+// a message is rendered and scanned, and a typo in a literal would silently misroute it.
 type MessageType string
 
 // The message types the loop understands.

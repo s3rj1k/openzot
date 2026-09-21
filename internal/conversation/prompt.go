@@ -28,12 +28,9 @@ func dropDangling(prompt fantasy.Prompt, pending map[string]bool) fantasy.Prompt
 	return kept
 }
 
-// ToPrompt renders the conversation into the prompt a model call carries.
-//
-// Activity messages are the interesting case. A request half becomes an
-// assistant turn carrying a tool call, and a response half becomes a tool
-// message referencing the same id. Providers validate that pairing, so a
-// response whose request was trimmed away is dropped rather than sent.
+// ToPrompt renders the conversation into the prompt a model call carries. A request half becomes an assistant
+// turn with a tool call and a response half a tool message with the same id, and a result whose call was
+// trimmed away is dropped, since providers validate the pairing.
 func ToPrompt(messages []Message) fantasy.Prompt {
 	var (
 		prompt  fantasy.Prompt

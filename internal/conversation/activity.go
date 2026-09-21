@@ -2,18 +2,8 @@ package conversation
 
 import "encoding/json"
 
-// A tool call and its result, as first-class fields rather than a bag of keys.
-//
-// The engine used to carry these in a `map[string]any` under a `meta.activity`
-// key, inherited from a hosted API whose messages are a generic envelope. One
-// shape that has to carry attachments, ratings, triggers and a dozen other
-// things zot has no concept of. Zot has exactly one thing to put there - a tool
-// call - and a map buys nothing for it. Every read is a type assertion that can
-// fail silently, a misspelled key is a compile-time success and a runtime no-op,
-// and nothing tells you which keys are expected.
-//
-// So it is a struct. A missing field is a compile error, the shape is the
-// documentation, and the pairing and rendering code stops guessing.
+// A tool call and its result, as typed fields rather than a map of keys.
+// A missing field is a compile error, and the shape is its own documentation.
 
 // ActivityKind is which half of a tool call a message carries.
 type ActivityKind string
@@ -54,12 +44,8 @@ type Activity struct {
 	Failure string `json:"failure,omitempty"`
 }
 
-// IsPair reports whether two activities are the two halves of one call.
-//
-// Identity wins when both sides have one. Providers issue a call id precisely so
-// a result can name its call, and two matching calls in the same turn are only
-// distinguishable that way. Name and arguments are the fallback, for histories
-// reconstructed from somewhere that did not keep ids.
+// IsPair reports whether two activities are the two halves of one call. The call id decides when both
+// sides have one. Name and arguments are the fallback for histories that did not keep ids.
 func (a *Activity) IsPair(other *Activity) bool {
 	if a == nil || other == nil {
 		return false
@@ -93,10 +79,8 @@ func (a *Activity) Output() any {
 	return a.Result
 }
 
-// ResultText renders what the model is shown for a response.
-//
-// A failure is presented as a JSON object rather than bare prose so the model
-// sees a tool result of the shape it expects, with the error inside it.
+// ResultText renders what the model is shown for a response. A failure is a JSON object, not bare prose,
+// so the model sees a tool result of the shape it expects.
 func (a *Activity) ResultText() string {
 	if a == nil {
 		return ""

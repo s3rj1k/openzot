@@ -1,13 +1,8 @@
 package conversation
 
-// Token costs here are estimates, not counts. Zot talks to providers whose
-// tokenizers are private, change independently, or differ from OpenAI's
-// vocabulary, and a model-specific vocabulary would make one provider look
-// precise while adding several megabytes and staying an approximation
-// everywhere else. So text is priced by its UTF-8 bytes, conservatively, and the
-// estimate errs toward over-counting. A long run is trimmed a little early
-// rather than rejected. Once a request succeeds, the run is billed on the
-// provider's own reported usage.
+// Token costs are estimates, not counts, since provider tokenizers are private and differ. Text is priced by
+// its UTF-8 bytes, conservatively, so a long run is trimmed a little early rather than rejected. Once a request
+// succeeds, the run is billed on the provider's own reported usage.
 
 // bytesPerToken by design sits below the roughly four bytes per token of
 // ordinary English. Code, JSON and identifiers are denser, while UTF-8 makes
