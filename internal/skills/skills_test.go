@@ -1,4 +1,4 @@
-package skills
+package skills_test
 
 import (
 	"os"
@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/skills"
 )
 
 func writeSkill(t *testing.T, root, name, content string) {
@@ -33,12 +35,12 @@ Long instructions the model reads only when it decides the skill is relevant.
 
 	writeSkill(t, root, "deploy", body)
 
-	skills, err := Load(root)
+	loaded, err := skills.Load(root)
 	require.NoError(t, err)
 
-	require.Len(t, skills, 1)
+	require.Len(t, loaded, 1)
 
-	skill := skills[0]
+	skill := loaded[0]
 
 	assert.Equal(t, "deploy-service", skill.Name, "want the front-matter name to win over the directory")
 
@@ -54,13 +56,13 @@ func TestLoadSkillsFallsBackToTheBody(t *testing.T) {
 
 	writeSkill(t, root, "review", "# Review\n\nLook over a pull request carefully.\n")
 
-	skills, err := Load(root)
+	loaded, err := skills.Load(root)
 	require.NoError(t, err)
 
-	require.Len(t, skills, 1)
-	require.Equal(t, "review", skills[0].Name)
+	require.Len(t, loaded, 1)
+	require.Equal(t, "review", loaded[0].Name)
 
-	assert.Equal(t, "Look over a pull request carefully.", skills[0].Description, "want the first prose line")
+	assert.Equal(t, "Look over a pull request carefully.", loaded[0].Description, "want the first prose line")
 }
 
 func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
@@ -75,18 +77,18 @@ func TestLoadSkillsSkipsNonSkillsAndSortsTheRest(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("hi"), 0o644))
 
-	skills, err := Load(root)
+	loaded, err := skills.Load(root)
 	require.NoError(t, err)
 
-	require.Len(t, skills, 2, "want just the two real skills, sorted by name")
-	require.Equal(t, "apple", skills[0].Name, "want just the two real skills, sorted by name")
-	require.Equal(t, "zebra", skills[1].Name, "want just the two real skills, sorted by name")
+	require.Len(t, loaded, 2, "want just the two real skills, sorted by name")
+	require.Equal(t, "apple", loaded[0].Name, "want just the two real skills, sorted by name")
+	require.Equal(t, "zebra", loaded[1].Name, "want just the two real skills, sorted by name")
 }
 
 // The folder was named in the config, so one that cannot be read is an error
 // rather than an empty set.
 func TestLoadSkillsFailsOnAMissingDirectory(t *testing.T) {
-	_, err := Load(filepath.Join(t.TempDir(), "nope"))
+	_, err := skills.Load(filepath.Join(t.TempDir(), "nope"))
 	require.Error(t, err, "a missing skills directory must be an error")
 }
 
@@ -96,13 +98,13 @@ func TestLoadSkillsRefusesTwoSkillsWithOneName(t *testing.T) {
 	writeSkill(t, root, "a", "---\nname: same\n---\n")
 	writeSkill(t, root, "b", "---\nname: same\n---\n")
 
-	_, err := Load(root)
+	_, err := skills.Load(root)
 	require.Error(t, err, "want it to name the clashing skill")
 	require.Contains(t, err.Error(), `"same"`, "want it to name the clashing skill")
 }
 
 func TestParseSkillStripsQuotes(t *testing.T) {
-	skill := parseSkill("dir", "/d", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
+	skill := skills.ParseSkill("dir", "/d", "---\nname: \"quoted name\"\ndescription: 'quoted desc'\n---\n")
 
 	assert.Equal(t, "quoted name", skill.Name)
 

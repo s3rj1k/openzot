@@ -1,4 +1,4 @@
-package order
+package order_test
 
 import (
 	"os"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/order"
 )
 
 func write(t *testing.T, path, content string) {
@@ -21,10 +23,10 @@ func write(t *testing.T, path, content string) {
 const validOrder = "---\nobjective: do the thing\n---\n"
 
 // parsed is the valid order, for the tests of what a prompt does with it.
-func parsed(t *testing.T) Order {
+func parsed(t *testing.T) order.Order {
 	t.Helper()
 
-	o, err := Parse([]byte(validOrder))
+	o, err := order.Parse([]byte(validOrder))
 	require.NoError(t, err)
 
 	return o
@@ -47,18 +49,18 @@ constraints:
 ---
 `)
 
-	order, err := Load(path)
+	loaded, err := order.Load(path)
 	require.NoError(t, err)
 
-	assert.Equal(t, litRateLimiting, order.Title)
-	assert.Equal(t, "add rate limiting to the API", order.Objective)
+	assert.Equal(t, litRateLimiting, loaded.Title)
+	assert.Equal(t, "add rate limiting to the API", loaded.Objective)
 
-	assert.Len(t, order.Acceptance, 2, "want two trimmed criteria and no blank one")
-	assert.Equal(t, "the suite passes", order.Acceptance[1], "want two trimmed criteria and no blank one")
+	assert.Len(t, loaded.Acceptance, 2, "want two trimmed criteria and no blank one")
+	assert.Equal(t, "the suite passes", loaded.Acceptance[1], "want two trimmed criteria and no blank one")
 
-	assert.Len(t, order.Constraints, 1)
+	assert.Len(t, loaded.Constraints, 1)
 
-	assert.Equal(t, path, order.Path)
+	assert.Equal(t, path, loaded.Path)
 }
 
 func TestLoadErrors(t *testing.T) {
@@ -80,31 +82,31 @@ func TestLoadErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Parse([]byte(test.content))
+			_, err := order.Parse([]byte(test.content))
 			require.Error(t, err)
 
 			assert.Contains(t, err.Error(), test.want)
 		})
 	}
 
-	_, err := Load(filepath.Join(t.TempDir(), "missing.md"))
+	_, err := order.Load(filepath.Join(t.TempDir(), "missing.md"))
 	require.Error(t, err, "a missing file must fail")
 }
 
 // Blank lines around the front matter and Windows line endings are harmless. Anything
 // else after the closing line is text, and an order holds none.
 func TestFrontMatterSplitting(t *testing.T) {
-	order, err := Parse([]byte("\n\n---\r\nobjective: go\r\n---\r\n\n  \n"))
+	loaded, err := order.Parse([]byte("\n\n---\r\nobjective: go\r\n---\r\n\n  \n"))
 	require.NoError(t, err)
 
-	assert.Equal(t, "go", order.Objective)
+	assert.Equal(t, "go", loaded.Objective)
 
-	_, err = Parse([]byte("---\nobjective: go\n---\nabove\n---\nbelow\n"))
+	_, err = order.Parse([]byte("---\nobjective: go\n---\nabove\n---\nbelow\n"))
 	require.Error(t, err, "want the text after the front matter refused, its own --- included")
 }
 
-var testEnv = Env{
-	Tools:    []Tool{{Name: "shell", Description: "runs commands"}, {Name: "tasks", Description: "keeps the plan"}},
+var testEnv = order.Env{
+	Tools:    []order.Tool{{Name: "shell", Description: "runs commands"}, {Name: "tasks", Description: "keeps the plan"}},
 	Workdir:  "/work/project",
 	Date:     "2026-09-19",
 	Model:    "glm-5.2",
@@ -114,7 +116,7 @@ var testEnv = Env{
 }
 
 func TestRenderSubstitutesTheOrderAndTheRun(t *testing.T) {
-	order, err := Parse([]byte(`---
+	loaded, err := order.Parse([]byte(`---
 title: The Thing
 objective: fix the parser
 acceptance:
@@ -126,7 +128,7 @@ constraints:
 `))
 	require.NoError(t, err)
 
-	got, err := order.Render(`{{ .Title }} | {{ .Objective }}
+	got, err := loaded.Render(`{{ .Title }} | {{ .Objective }}
 {{ range $i, $a := .Acceptance }}{{ inc $i }}) {{ $a }}
 {{ end }}{{ range .Constraints }}- {{ . }}
 {{ end }}{{ range .Tools }}[{{ .Name }}: {{ .Description }}]{{ end }}
@@ -186,14 +188,14 @@ func TestTheFileAndEnvFunctions(t *testing.T) {
 
 	t.Setenv("ZOT_TEST_VALUE", "from-the-environment")
 
-	got, err := parsed(t).Render(`{{ file "style.txt" }}|{{ file "`+absolute+`" }}|{{ env "ZOT_TEST_VALUE" }}|{{ env "ZOT_TEST_UNSET" }}|`, Env{Workdir: workdir})
+	got, err := parsed(t).Render(`{{ file "style.txt" }}|{{ file "`+absolute+`" }}|{{ env "ZOT_TEST_VALUE" }}|{{ env "ZOT_TEST_UNSET" }}|`, order.Env{Workdir: workdir})
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasPrefix(got, "use tabs|absolute|from-the-environment||"))
 
 	// a file that is not there is an error, not an empty string. A prompt that
 	// silently lost its style guide is a worse failure than one that says so
-	_, err = parsed(t).Render(`{{ file "nope.txt" }}`, Env{Workdir: workdir})
+	_, err = parsed(t).Render(`{{ file "nope.txt" }}`, order.Env{Workdir: workdir})
 	require.Error(t, err, "rendering a prompt that includes a missing file must fail")
 }
 
@@ -203,22 +205,22 @@ func TestFileExpandsTheHomeDirectory(t *testing.T) {
 	t.Setenv("HOME", home)
 	write(t, filepath.Join(home, "notes.txt"), "from home")
 
-	got, err := parsed(t).Render(`{{ file "~/notes.txt" }}`, Env{Workdir: t.TempDir()})
+	got, err := parsed(t).Render(`{{ file "~/notes.txt" }}`, order.Env{Workdir: t.TempDir()})
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(got, "from home"))
 }
 
 // The scaffold is a blank form. It must be written before it can run.
 func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
-	_, err := Parse([]byte(Blank()))
+	_, err := order.Parse([]byte(order.Blank()))
 	require.Error(t, err, "the blank form parsed as an order with an objective")
 
-	filled := strings.Replace(Blank(), "objective:\n", "objective: fix the typo\n", 1)
+	filled := strings.Replace(order.Blank(), "objective:\n", "objective: fix the typo\n", 1)
 
-	order, err := Parse([]byte(filled))
+	loaded, err := order.Parse([]byte(filled))
 	require.NoError(t, err)
 
-	assert.Equal(t, "fix the typo", order.Objective)
+	assert.Equal(t, "fix the typo", loaded.Objective)
 }
 
 // A title is a label for people. A declared one wins. Without one the file name
@@ -227,42 +229,42 @@ func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
 func TestDisplayTitlePrefersTheDeclaredOneThenTheFileName(t *testing.T) {
 	tests := []struct {
 		name  string
-		order Order
+		order order.Order
 		want  string
 	}{
 		{
 			name:  "a declared title wins",
-			order: Order{Title: litRateLimiting, Path: "/book/.zot/orders/add-rate-limiting-to-the-api.md"},
+			order: order.Order{Title: litRateLimiting, Path: "/book/.zot/orders/add-rate-limiting-to-the-api.md"},
 			want:  litRateLimiting,
 		},
 		{
 			name:  "the file name becomes one",
-			order: Order{Path: "/book/.zot/orders/fix-the-flaky-test.md"},
+			order: order.Order{Path: "/book/.zot/orders/fix-the-flaky-test.md"},
 			want:  "Fix the flaky test",
 		},
 		{
 			name:  "underscores read as spaces too",
-			order: Order{Path: "fix_the_flaky_test.md"},
+			order: order.Order{Path: "fix_the_flaky_test.md"},
 			want:  "Fix the flaky test",
 		},
 		{
 			name:  "a one-word name still capitalises",
-			order: Order{Path: "cleanup.md"},
+			order: order.Order{Path: "cleanup.md"},
 			want:  "Cleanup",
 		},
 		{
 			name:  "an already-capitalised name is left alone",
-			order: Order{Path: "API-cleanup.md"},
+			order: order.Order{Path: "API-cleanup.md"},
 			want:  "API cleanup",
 		},
 		{
 			name:  "a name that is only separators yields nothing to show",
-			order: Order{Path: "---.md"},
+			order: order.Order{Path: "---.md"},
 			want:  "",
 		},
 		{
 			name:  "an order that was never a file has no name to show",
-			order: Order{Objective: "a synthesized order with a very long objective nobody wants as a title"},
+			order: order.Order{Objective: "a synthesized order with a very long objective nobody wants as a title"},
 			want:  "",
 		},
 	}
@@ -281,7 +283,7 @@ func TestCreateNamesTheFileForTheMoment(t *testing.T) {
 
 	now := time.Unix(1758300000, 0)
 
-	path, err := Create(dir, now)
+	path, err := order.Create(dir, now)
 	require.NoError(t, err)
 
 	assert.Equal(t, "1758300000.md", filepath.Base(path), "want the unix timestamp")
@@ -289,7 +291,7 @@ func TestCreateNamesTheFileForTheMoment(t *testing.T) {
 	written, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	assert.Equal(t, Blank(), string(written))
+	assert.Equal(t, order.Blank(), string(written))
 }
 
 // Two orders in the same second are routine. The second must not overwrite the
@@ -299,12 +301,12 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 
 	now := time.Unix(1758300000, 0)
 
-	first, err := Create(dir, now)
+	first, err := order.Create(dir, now)
 	require.NoError(t, err)
 
 	write(t, first, "keep me")
 
-	second, err := Create(dir, now)
+	second, err := order.Create(dir, now)
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first, second)
@@ -326,6 +328,6 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 
 	write(t, blocker, "x")
 
-	_, err := Create(filepath.Join(blocker, "orders"), time.Now())
+	_, err := order.Create(filepath.Join(blocker, "orders"), time.Now())
 	require.Error(t, err, "creating under a file must fail")
 }

@@ -1,22 +1,24 @@
-package conversation
+package conversation_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // costs prices a message by the length of its text, so a test states its window
 // in plain numbers.
-func costs(message Message) int { return len(message.Text) }
+func costs(message conversation.Message) int { return len(message.Text) }
 
 // ten returns n messages costing ten each.
-func ten(n int) []Message {
-	messages := make([]Message, n)
+func ten(n int) []conversation.Message {
+	messages := make([]conversation.Message, n)
 
 	for i := range messages {
-		messages[i] = Message{Type: TypeUser, Text: strings.Repeat("x", 10)}
+		messages[i] = conversation.Message{Type: conversation.TypeUser, Text: strings.Repeat("x", 10)}
 	}
 
 	return messages
@@ -47,7 +49,7 @@ func TestForget(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs))
+			assert.Equal(t, test.want, conversation.Forget(ten(test.n), test.from, test.used, 1000, 50, 90, costs))
 		})
 	}
 }
@@ -55,19 +57,19 @@ func TestForget(t *testing.T) {
 // One oversized newest message is kept, whatever it costs, and what came
 // before it is what goes.
 func TestForgetSpendsTheOldestFirstAndKeepsAnOversizedNewest(t *testing.T) {
-	messages := append(ten(3), Message{Type: TypeUser, Text: strings.Repeat("y", 5000)})
+	messages := append(ten(3), conversation.Message{Type: conversation.TypeUser, Text: strings.Repeat("y", 5000)})
 
-	assert.Equal(t, 2, Forget(messages, 0, 5030, 1000, 50, 90, costs), "want the two oldest gone and the newest two kept")
+	assert.Equal(t, 2, conversation.Forget(messages, 0, 5030, 1000, 50, 90, costs), "want the two oldest gone and the newest two kept")
 }
 
 // A tool call carries its cost outside the text. Priced by text alone, a request
 // half would look free and a large write would slip past the window.
 func TestMessageCostCountsTheToolCall(t *testing.T) {
-	bare := Message{Type: TypeActivity}
+	bare := conversation.Message{Type: conversation.TypeActivity}
 
-	call := Message{Type: TypeActivity, Activity: &Activity{
-		Kind: ActivityRequest, ID: "c1", Name: "write", Arguments: strings.Repeat("x", 900),
+	call := conversation.Message{Type: conversation.TypeActivity, Activity: &conversation.Activity{
+		Kind: conversation.ActivityRequest, ID: "c1", Name: "write", Arguments: strings.Repeat("x", 900),
 	}}
 
-	assert.Greater(t, Cost(call), Cost(bare)+200, "a request's arguments must be priced: %d vs %d", Cost(call), Cost(bare))
+	assert.Greater(t, conversation.Cost(call), conversation.Cost(bare)+200, "a request's arguments must be priced: %d vs %d", conversation.Cost(call), conversation.Cost(bare))
 }

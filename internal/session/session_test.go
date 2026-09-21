@@ -1,4 +1,4 @@
-package session
+package session_test
 
 import (
 	"bytes"
@@ -14,11 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/session"
 )
 
 // readLog reads a log the way anyone does. One JSON value per line. A line that
 // is not JSON fails the test, which is the point - the format is the contract.
-func readLog(t *testing.T, path string) []Record {
+func readLog(t *testing.T, path string) []session.Record {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
@@ -28,14 +29,14 @@ func readLog(t *testing.T, path string) []Record {
 		require.Equal(t, byte('\n'), data[len(data)-1], "log does not end on a line")
 	}
 
-	var records []Record
+	var records []session.Record
 
 	for i, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 
-		var record Record
+		var record session.Record
 
 		err := json.Unmarshal([]byte(line), &record)
 		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
@@ -46,8 +47,8 @@ func readLog(t *testing.T, path string) []Record {
 	return records
 }
 
-func kinds(records []Record) []Kind {
-	out := make([]Kind, 0, len(records))
+func kinds(records []session.Record) []session.Kind {
+	out := make([]session.Kind, 0, len(records))
 
 	for _, record := range records {
 		out = append(out, record.Kind)
@@ -59,7 +60,7 @@ func kinds(records []Record) []Kind {
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
 
-	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint, Model: "m", Provider: "p", Workdir: "/w"})
+	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint, Model: "m", Provider: "p", Workdir: "/w"})
 	require.NoError(t, err)
 
 	defer writer.Close()
@@ -69,7 +70,7 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	records := readLog(t, path)
 
 	require.Len(t, records, 1, "a new log should open with exactly its meta record")
-	require.Equal(t, KindMeta, records[0].Kind, "a new log should open with exactly its meta record")
+	require.Equal(t, session.KindMeta, records[0].Kind, "a new log should open with exactly its meta record")
 	require.NotNil(t, records[0].Meta, "a new log should open with exactly its meta record")
 
 	meta := records[0].Meta
@@ -94,7 +95,7 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "t"})
+	writer, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	steps := []func() error{
@@ -107,8 +108,8 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 				Kind: "request", ID: "c1", Name: litShell, Arguments: litCommandLs,
 			}})
 		},
-		func() error { return writer.Event(Event{Kind: "toolCallStart", Tool: litShell, Iteration: 1}) },
-		func() error { return writer.Result(Result{Reason: litSettled, Iterations: 1}) },
+		func() error { return writer.Event(session.Event{Kind: "toolCallStart", Tool: litShell, Iteration: 1}) },
+		func() error { return writer.Result(session.Result{Reason: litSettled, Iterations: 1}) },
 	}
 
 	for i, step := range steps {
@@ -117,7 +118,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 
 	got := kinds(readLog(t, path))
 
-	want := []Kind{KindMeta, KindMessage, KindMessage, KindMessage, KindEvent, KindResult}
+	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindMessage, session.KindMessage, session.KindEvent, session.KindResult}
 
 	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
 
@@ -134,7 +135,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "t"})
+	writer, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	previous, _ := os.ReadFile(path)
@@ -145,7 +146,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 		if i%2 == 0 {
 			err = writer.Message(conversation.Message{Type: "bot", Text: fmt.Sprintf("message %d", i)})
 		} else {
-			err = writer.Event(Event{Kind: "iteration", Iteration: i})
+			err = writer.Event(session.Event{Kind: "iteration", Iteration: i})
 		}
 
 		require.NoError(t, err)
@@ -164,7 +165,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "t"})
+	writer, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	defer writer.Close()
@@ -176,7 +177,7 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 
 	last := records[len(records)-1]
 
-	assert.Equal(t, KindMessage, last.Kind)
+	assert.Equal(t, session.KindMessage, last.Kind)
 	assert.EqualValues(t, litReasoning, last.Message.Type)
 	assert.Equal(t, "the model's own words", last.Message.Text)
 }
@@ -187,26 +188,26 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	first, err := Open(path, Meta{Task: "the brief"})
+	first, err := session.Open(path, session.Meta{Task: "the brief"})
 	require.NoError(t, err)
 
 	_ = first.Message(conversation.Message{Type: litUser, Text: "first run"})
-	_ = first.Result(Result{Reason: litSettled})
+	_ = first.Result(session.Result{Reason: litSettled})
 
 	before, _ := os.ReadFile(path)
 
-	second, err := Open(path, Meta{Task: "the brief"})
+	second, err := session.Open(path, session.Meta{Task: "the brief"})
 	require.NoError(t, err)
 
 	_ = second.Message(conversation.Message{Type: litUser, Text: "second run"})
-	_ = second.Result(Result{Reason: "failed"})
+	_ = second.Result(session.Result{Reason: "failed"})
 
 	after, _ := os.ReadFile(path)
 
 	require.True(t, bytes.HasPrefix(after, before), "the second run changed what the first run wrote")
 
 	got := kinds(readLog(t, path))
-	want := []Kind{KindMeta, KindMessage, KindResult, KindMeta, KindMessage, KindResult}
+	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindResult, session.KindMeta, session.KindMessage, session.KindResult}
 
 	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "records = %v, want two runs one after the other", got)
 }
@@ -217,7 +218,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	first, err := Open(path, Meta{Task: "t"})
+	first, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	_ = first.Message(conversation.Message{Type: litUser, Text: "before the kill"})
@@ -232,10 +233,10 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 
 	_ = file.Close()
 
-	second, err := Open(path, Meta{Task: "t"})
+	second, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err, "Open over a torn line")
 
-	_ = second.Result(Result{Reason: litSettled})
+	_ = second.Result(session.Result{Reason: litSettled})
 
 	data, _ := os.ReadFile(path)
 
@@ -246,7 +247,7 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	require.NotContains(t, lines[2], `"kind":"meta"`, "the torn line should stand alone")
 
 	for i, line := range lines[3:] {
-		var record Record
+		var record session.Record
 
 		err := json.Unmarshal([]byte(line), &record)
 		require.NoError(t, err, "line %d after the torn one is not a record: %v: %s", i+4, err, line)
@@ -259,10 +260,10 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 func TestACleanLogIsNotPaddedBeforeTheNextRun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	first, _ := Open(path, Meta{Task: "t"})
-	_ = first.Result(Result{Reason: litSettled})
+	first, _ := session.Open(path, session.Meta{Task: "t"})
+	_ = first.Result(session.Result{Reason: litSettled})
 
-	second, err := Open(path, Meta{Task: "t"})
+	second, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	_ = second.Close()
@@ -277,7 +278,7 @@ func TestACleanLogIsNotPaddedBeforeTheNextRun(t *testing.T) {
 func TestConcurrentWritesNeverInterleave(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "t"})
+	writer, err := session.Open(path, session.Meta{Task: "t"})
 	require.NoError(t, err)
 
 	const writers, each = 20, 25
@@ -305,9 +306,9 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Open(path, Meta{Task: "t"})
+	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	require.NoError(t, writer.Result(Result{Reason: litSettled}))
+	require.NoError(t, writer.Result(session.Result{Reason: litSettled}))
 
 	require.Error(t, writer.Message(conversation.Message{Type: litUser, Text: "too late"}), "writing after the result must be an error, not a silent drop")
 
@@ -322,10 +323,10 @@ func TestOpenReportsAnUnusableLocation(t *testing.T) {
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
 
 	// a directory that cannot be made, and a path that is itself a directory
-	_, err := Open(filepath.Join(blocker, "sub", "task.jsonl"), Meta{})
+	_, err := session.Open(filepath.Join(blocker, "sub", "task.jsonl"), session.Meta{})
 	require.Error(t, err, "a log under a file must not open")
 
-	_, err = Open(t.TempDir(), Meta{})
+	_, err = session.Open(t.TempDir(), session.Meta{})
 	require.Error(t, err)
 }
 
@@ -334,7 +335,7 @@ func TestOpenReportsAnUnusableLocation(t *testing.T) {
 func TestAToolCallIsRecordedInFull(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Open(path, Meta{Task: "t"})
+	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
 	_ = writer.Message(conversation.Message{Type: litActivity, Activity: &conversation.Activity{
 		Kind: "response", ID: litCall1, Name: litShell, Arguments: litCommandGoTest, Result: "ok",

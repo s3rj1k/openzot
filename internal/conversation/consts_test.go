@@ -1,4 +1,4 @@
-package conversation
+package conversation_test
 
 // The strings the tests of this package repeat.
 const (

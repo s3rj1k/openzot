@@ -33,9 +33,9 @@ type Skill struct {
 // frontMatterFence opens and closes the front matter of a SKILL.md.
 const frontMatterFence = "---"
 
-// parseSkill reads the name and description out of a SKILL.md. Front matter is preferred, and the first heading-free
+// ParseSkill reads the name and description out of a SKILL.md. Front matter is preferred, and the first heading-free
 // line is the fallback so a skill without front matter still works.
-func parseSkill(directoryName, dir, content string) Skill {
+func ParseSkill(directoryName, dir, content string) Skill {
 	skill := Skill{Name: directoryName, Dir: dir, Content: content}
 
 	lines := strings.Split(content, "\n")
@@ -109,7 +109,7 @@ func Load(dir string) ([]Skill, error) {
 			continue
 		}
 
-		skill := parseSkill(entry.Name(), skillDir, string(content))
+		skill := ParseSkill(entry.Name(), skillDir, string(content))
 
 		if other, clash := seen[skill.Name]; clash {
 			return nil, fmt.Errorf("skills %s and %s are both named %q", other, skillDir, skill.Name)

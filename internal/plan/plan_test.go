@@ -1,10 +1,12 @@
-package plan
+package plan_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/plan"
 )
 
 // taskCall builds the arguments of a call to the tasks tool the way the model
@@ -24,7 +26,7 @@ func task(title, status string) map[string]any {
 }
 
 func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
-	tasks, err := ParseTasks(taskCall(
+	tasks, err := plan.ParseTasks(taskCall(
 		task("read the parser", "done"),
 		map[string]any{litTitle: "  fix the lexer  ", litStatus: "in_progress", "note": " hit in TestLex "},
 		task("add a test", "pending"),
@@ -32,11 +34,11 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	want := []Task{
-		{Title: "read the parser", Status: TaskDone},
-		{Title: "fix the lexer", Status: TaskInProgress, Note: "hit in TestLex"},
-		{Title: "add a test", Status: TaskPending},
-		{Title: "deploy", Status: TaskBlocked, Note: litNeedsCredentials},
+	want := []plan.Task{
+		{Title: "read the parser", Status: plan.TaskDone},
+		{Title: "fix the lexer", Status: plan.TaskInProgress, Note: "hit in TestLex"},
+		{Title: "add a test", Status: plan.TaskPending},
+		{Title: "deploy", Status: plan.TaskBlocked, Note: litNeedsCredentials},
 	}
 
 	require.Len(t, tasks, len(want))
@@ -49,10 +51,10 @@ func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {
 // A model listing the work for the first time often leaves the status off. That
 // is a pending task, not a reason to reject the list.
 func TestATaskWithNoStatusIsPending(t *testing.T) {
-	tasks, err := ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
+	tasks, err := plan.ParseTasks(taskCall(map[string]any{litTitle: "write it"}))
 	require.NoError(t, err)
 
-	assert.Equal(t, TaskPending, tasks[0].Status)
+	assert.Equal(t, plan.TaskPending, tasks[0].Status)
 }
 
 // Each of these is a mistake the model can correct once it is told what it was,
@@ -74,7 +76,7 @@ func TestParseTasksRefusesAMalformedList(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := ParseTasks(test.args)
+			_, err := plan.ParseTasks(test.args)
 			require.Error(t, err)
 
 			assert.Contains(t, err.Error(), test.want)
@@ -83,21 +85,21 @@ func TestParseTasksRefusesAMalformedList(t *testing.T) {
 }
 
 func TestCountDoneCountsOnlyFinishedTasks(t *testing.T) {
-	tasks := []Task{
-		{Status: TaskDone}, {Status: TaskInProgress}, {Status: TaskDone}, {Status: TaskBlocked}, {Status: TaskPending},
+	tasks := []plan.Task{
+		{Status: plan.TaskDone}, {Status: plan.TaskInProgress}, {Status: plan.TaskDone}, {Status: plan.TaskBlocked}, {Status: plan.TaskPending},
 	}
 
-	got := CountDone(tasks)
+	got := plan.CountDone(tasks)
 	assert.Equal(t, 2, got, "only done counts, not in_progress or blocked")
 
-	assert.Equal(t, 0, CountDone(nil), "no tasks is nothing done")
+	assert.Equal(t, 0, plan.CountDone(nil), "no tasks is nothing done")
 }
 
 func TestTheChecklistMarkersAreDistinct(t *testing.T) {
-	seen := map[string]TaskStatus{}
+	seen := map[string]plan.TaskStatus{}
 
-	for _, status := range []TaskStatus{TaskPending, TaskInProgress, TaskDone, TaskBlocked} {
-		marker := TaskMarker(status)
+	for _, status := range []plan.TaskStatus{plan.TaskPending, plan.TaskInProgress, plan.TaskDone, plan.TaskBlocked} {
+		marker := plan.TaskMarker(status)
 
 		other, dup := seen[marker]
 		assert.False(t, dup, "%q and %q share the marker %q", status, other, marker)
@@ -110,11 +112,11 @@ func TestTheChecklistMarkersAreDistinct(t *testing.T) {
 // with the note beside it. On a long run the latest result is the one place the
 // whole plan is always in view.
 func TestFormatTasksReadsTheListBack(t *testing.T) {
-	got := FormatTasks([]Task{
-		{Title: "read the code", Status: TaskDone},
-		{Title: "fix it", Status: TaskInProgress, Note: "the handler"},
-		{Title: "ship", Status: TaskBlocked, Note: litNeedsCredentials},
-		{Title: "celebrate", Status: TaskPending},
+	got := plan.FormatTasks([]plan.Task{
+		{Title: "read the code", Status: plan.TaskDone},
+		{Title: "fix it", Status: plan.TaskInProgress, Note: "the handler"},
+		{Title: "ship", Status: plan.TaskBlocked, Note: litNeedsCredentials},
+		{Title: "celebrate", Status: plan.TaskPending},
 	})
 
 	want := "tasks: 1/4 done\n[x] read the code\n[>] fix it - the handler\n[!] ship - needs credentials\n[ ] celebrate"

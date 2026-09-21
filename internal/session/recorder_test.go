@@ -1,4 +1,4 @@
-package session
+package session_test
 
 import (
 	"encoding/json"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/session"
 )
 
 // The model's reasoning is part of the record. The scratchpad is often the only
@@ -22,10 +23,10 @@ import (
 func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
+	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint})
 	require.NoError(t, err)
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	recorder.Conversation([]conversation.Message{
 		{Type: conversation.TypeUser, Text: litAddAHealthEndpoint},
@@ -53,10 +54,10 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
+	writer, err := session.Open(path, session.Meta{Task: litAddAHealthEndpoint})
 	require.NoError(t, err)
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	messages := make([]conversation.Message, 0, 2)
 	messages = append(messages, conversation.Message{Type: conversation.TypeUser, Text: litAddAHealthEndpoint})
@@ -87,7 +88,7 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	records := readLog(t, path)
 
 	got := kinds(records)
-	want := []Kind{KindMeta, KindMessage, KindEvent, KindMessage, KindResult}
+	want := []session.Kind{session.KindMeta, session.KindMessage, session.KindEvent, session.KindMessage, session.KindResult}
 
 	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
 
@@ -123,9 +124,9 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 func TestTokenNarrationIsNotRecorded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Open(path, Meta{Task: "t"})
+	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	for _, kind := range []loop.EventKind{loop.EventToken, loop.EventReasoningToken} {
 		recorder.Event(loop.Event{Kind: kind, Text: "hello", Iteration: 1})
@@ -137,7 +138,7 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	records := readLog(t, path)
 
-	require.Equal(t, fmt.Sprint([]Kind{KindMeta, KindEvent}), fmt.Sprint(kinds(records)), "want the meta and the one real event")
+	require.Equal(t, fmt.Sprint([]session.Kind{session.KindMeta, session.KindEvent}), fmt.Sprint(kinds(records)), "want the meta and the one real event")
 
 	assert.Equal(t, "iteration", records[1].Event.Kind)
 }
@@ -145,12 +146,12 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 // A log that stops taking lines is a run that has stopped being recorded, and the
 // caller is told at once - once, however many lines follow - so it can end the run.
 func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
-	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
+	writer, err := session.Open(filepath.Join(t.TempDir(), "task.jsonl"), session.Meta{Task: "x"})
 	require.NoError(t, err)
 
 	var told []error
 
-	recorder := NewRecorder(writer, func(err error) { told = append(told, err) })
+	recorder := session.NewRecorder(writer, func(err error) { told = append(told, err) })
 
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
@@ -171,12 +172,12 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 
 // Without anyone to tell, the failure is still kept.
 func TestARecorderKeepsAFailureNobodyAskedAbout(t *testing.T) {
-	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
+	writer, err := session.Open(filepath.Join(t.TempDir(), "task.jsonl"), session.Meta{Task: "x"})
 	require.NoError(t, err)
 
 	writer.Close()
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
 	require.Error(t, recorder.Err())
@@ -185,10 +186,10 @@ func TestARecorderKeepsAFailureNobodyAskedAbout(t *testing.T) {
 func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "x"})
+	writer, err := session.Open(path, session.Meta{Task: "x"})
 	require.NoError(t, err)
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	recorder.Result(&loop.Result{
 		Reason:  loop.StopError,
@@ -219,10 +220,10 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, err := Open(path, Meta{Task: "x"})
+	writer, err := session.Open(path, session.Meta{Task: "x"})
 	require.NoError(t, err)
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	messages := make([]conversation.Message, 0, 3)
 	messages = append(messages,
@@ -242,7 +243,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 	var got []string
 
 	for _, record := range readLog(t, path) {
-		if record.Kind == KindMessage {
+		if record.Kind == session.KindMessage {
 			got = append(got, record.Message.Text)
 		}
 	}
@@ -257,9 +258,9 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Open(path, Meta{Task: "t"})
+	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	recorder := NewRecorder(writer, nil)
+	recorder := session.NewRecorder(writer, nil)
 
 	recorder.Event(loop.Event{Kind: loop.EventUsage, InputTokens: 567000, OutputTokens: 1200, Iteration: 4})
 
@@ -278,9 +279,9 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 	for reason, want := range map[loop.StopReason]int{loop.StopSettled: 0, loop.StopFailed: 1, loop.StopAborted: 1} {
 		path := filepath.Join(t.TempDir(), "task.jsonl")
 
-		writer, _ := Open(path, Meta{Task: "t"})
+		writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-		NewRecorder(writer, nil).Result(&loop.Result{Reason: reason})
+		session.NewRecorder(writer, nil).Result(&loop.Result{Reason: reason})
 
 		records := readLog(t, path)
 
@@ -293,9 +294,9 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
-	writer, _ := Open(path, Meta{Task: "t"})
+	writer, _ := session.Open(path, session.Meta{Task: "t"})
 
-	NewRecorder(writer, nil).Conversation([]conversation.Message{{
+	session.NewRecorder(writer, nil).Conversation([]conversation.Message{{
 		Type: conversation.TypeActivity,
 		Text: "ok",
 		Activity: &conversation.Activity{

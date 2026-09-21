@@ -1,4 +1,4 @@
-package conversation
+package conversation_test
 
 import (
 	"strings"
@@ -7,17 +7,19 @@ import (
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/conversation"
 )
 
 // activity builds one half of a tool-call pair.
-func activity(kind ActivityKind, name, arguments string, result any) Message {
-	entry := &Activity{Kind: kind, ID: "c1", Name: name, Arguments: arguments}
+func activity(kind conversation.ActivityKind, name, arguments string, result any) conversation.Message {
+	entry := &conversation.Activity{Kind: kind, ID: "c1", Name: name, Arguments: arguments}
 
-	if kind == ActivityResponse {
+	if kind == conversation.ActivityResponse {
 		entry.Result = result
 	}
 
-	return Message{Type: TypeActivity, Text: entry.ResultText(), Activity: entry}
+	return conversation.Message{Type: conversation.TypeActivity, Text: entry.ResultText(), Activity: entry}
 }
 
 // toolCallOf returns the call an assistant message carries, if it carries one.
@@ -49,14 +51,14 @@ func textOf(message fantasy.Message) string {
 }
 
 func TestToPromptPairsToolCalls(t *testing.T) {
-	messages := []Message{
-		{Type: TypeUser, Text: "list the files"},
-		activity(ActivityRequest, "shell", `{"command":"ls"}`, nil),
-		activity(ActivityResponse, "shell", `{"command":"ls"}`, "README.md"),
-		{Type: TypeBot, Text: "there is a README"},
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "list the files"},
+		activity(conversation.ActivityRequest, "shell", `{"command":"ls"}`, nil),
+		activity(conversation.ActivityResponse, "shell", `{"command":"ls"}`, "README.md"),
+		{Type: conversation.TypeBot, Text: "there is a README"},
 	}
 
-	prompt := ToPrompt(messages)
+	prompt := conversation.ToPrompt(messages)
 
 	require.Len(t, prompt, 4)
 
@@ -83,12 +85,12 @@ func TestToPromptPairsToolCalls(t *testing.T) {
 // A tool result whose request was trimmed away would be rejected by the
 // provider, so it must not be sent on its own.
 func TestToPromptDropsOrphanedResult(t *testing.T) {
-	messages := []Message{
-		{Type: TypeUser, Text: "go"},
-		activity(ActivityResponse, "shell", `{}`, "output"),
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "go"},
+		activity(conversation.ActivityResponse, "shell", `{}`, "output"),
 	}
 
-	for _, message := range ToPrompt(messages) {
+	for _, message := range conversation.ToPrompt(messages) {
 		require.NotEqual(t, fantasy.MessageRoleTool, message.Role, "an orphaned tool result must be dropped")
 	}
 }
@@ -96,12 +98,12 @@ func TestToPromptDropsOrphanedResult(t *testing.T) {
 // The mirror case. A request whose result never arrived leaves the conversation
 // invalid, so the assistant turn goes too.
 func TestToPromptDropsDanglingRequest(t *testing.T) {
-	messages := []Message{
-		{Type: TypeUser, Text: "go"},
-		activity(ActivityRequest, "shell", `{}`, nil),
+	messages := []conversation.Message{
+		{Type: conversation.TypeUser, Text: "go"},
+		activity(conversation.ActivityRequest, "shell", `{}`, nil),
 	}
 
-	prompt := ToPrompt(messages)
+	prompt := conversation.ToPrompt(messages)
 
 	for _, message := range prompt {
 		_, ok := toolCallOf(message)
@@ -112,14 +114,14 @@ func TestToPromptDropsDanglingRequest(t *testing.T) {
 }
 
 func TestToPromptRoleMapping(t *testing.T) {
-	messages := []Message{
-		{Type: TypeInstructions, Text: "you are an agent"},
-		{Type: TypeReasoning, Text: "thinking out loud"},
-		{Type: TypeBot, Text: "the answer"},
-		{Type: TypeUser, Text: "a question"},
+	messages := []conversation.Message{
+		{Type: conversation.TypeInstructions, Text: "you are an agent"},
+		{Type: conversation.TypeReasoning, Text: "thinking out loud"},
+		{Type: conversation.TypeBot, Text: "the answer"},
+		{Type: conversation.TypeUser, Text: "a question"},
 	}
 
-	prompt := ToPrompt(messages)
+	prompt := conversation.ToPrompt(messages)
 
 	// reasoning is the model's scratchpad and providers reject their own
 	// reasoning content on the way back in, so it is not replayed
@@ -141,12 +143,12 @@ func TestToPromptRoleMapping(t *testing.T) {
 }
 
 func TestToPromptEncodesStructuredResults(t *testing.T) {
-	messages := []Message{
-		activity(ActivityRequest, "search", `{}`, nil),
-		activity(ActivityResponse, "search", `{}`, map[string]any{"records": []any{}}),
+	messages := []conversation.Message{
+		activity(conversation.ActivityRequest, "search", `{}`, nil),
+		activity(conversation.ActivityResponse, "search", `{}`, map[string]any{"records": []any{}}),
 	}
 
-	prompt := ToPrompt(messages)
+	prompt := conversation.ToPrompt(messages)
 
 	require.Len(t, prompt, 2)
 
@@ -157,14 +159,14 @@ func TestToPromptEncodesStructuredResults(t *testing.T) {
 }
 
 func TestMalformedActivitiesDoNotReachTheWire(t *testing.T) {
-	cases := []Message{
-		{Type: TypeActivity},
-		{Type: TypeActivity, Activity: &Activity{}},
-		{Type: TypeActivity, Activity: &Activity{Kind: "somethingelse", ID: "c1"}},
+	cases := []conversation.Message{
+		{Type: conversation.TypeActivity},
+		{Type: conversation.TypeActivity, Activity: &conversation.Activity{}},
+		{Type: conversation.TypeActivity, Activity: &conversation.Activity{Kind: "somethingelse", ID: "c1"}},
 	}
 
 	for index, message := range cases {
-		prompt := ToPrompt([]Message{message})
+		prompt := conversation.ToPrompt([]conversation.Message{message})
 		assert.Empty(t, prompt, "case %d: a malformed activity reached the wire as %+v", index, prompt)
 	}
 }
