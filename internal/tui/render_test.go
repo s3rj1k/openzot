@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // The header shows the project you are in, not the machine you are on.

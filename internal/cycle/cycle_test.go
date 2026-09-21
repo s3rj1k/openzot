@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/cycle"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/cycle"
 )
 
 // Cases the corpus cannot carry, since JSON cannot express a reference cycle. The question survives the port. A tool result

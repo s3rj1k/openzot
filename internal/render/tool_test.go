@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openzot/openzot/internal/render"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/render"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // A shell tool reports failure on stderr, and that is exactly the output an

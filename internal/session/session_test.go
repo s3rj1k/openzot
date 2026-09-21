@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/session"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {

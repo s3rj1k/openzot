@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openzot/openzot/internal/tui"
+	"github.com/s3rj1k/agent/internal/tui"
 )
 
 // The startup line shows before the first frame. Once sized the title badge

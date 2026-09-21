@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/openzot/openzot/configs"
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/configs"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/session"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // TestMain gives every test a stand-in for the terminal and the full-screen

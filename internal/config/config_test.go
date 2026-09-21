@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // validConfig returns a minimal config that passes Validate, optionally tweaked.
@@ -698,6 +698,6 @@ func TestConfigImportsNoOtherPackageOfTheModule(t *testing.T) {
 	require.Contains(t, pkg.Imports, "gopkg.in/yaml.v3", "the check reads no imports at all")
 
 	for _, path := range pkg.Imports {
-		assert.NotContains(t, path, "openzot/openzot/")
+		assert.NotContains(t, path, "s3rj1k/agent/")
 	}
 }

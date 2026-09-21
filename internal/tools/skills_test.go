@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/skills"
-	"github.com/openzot/openzot/internal/tools"
+	"github.com/s3rj1k/agent/internal/skills"
+	"github.com/s3rj1k/agent/internal/tools"
 )
 
 func skillsCall(t *testing.T, offered []skills.Skill, args map[string]any) (any, error) {

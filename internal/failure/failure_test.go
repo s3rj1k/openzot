@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/failure"
+	"github.com/s3rj1k/agent/internal/failure"
 )
 
 // rejected is an error as fantasy reports one. A status and the provider's words.

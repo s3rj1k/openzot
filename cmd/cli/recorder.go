@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/session"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/failure"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/session"
 )
 
 // A recorder writes a run into a session log as the engine hands it over. The engine knows nothing of files. A line that

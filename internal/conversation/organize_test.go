@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/request"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/request"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // These cases are the shapes that reached production - a result whose call was trimmed away, two matching

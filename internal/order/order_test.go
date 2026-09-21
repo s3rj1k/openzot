@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // validOrder is the smallest order that parses.

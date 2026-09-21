@@ -6,7 +6,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/plan"
+	"github.com/s3rj1k/agent/internal/plan"
 )
 
 // tasksInput is what the tasks tool is called with. The struct is the schema.

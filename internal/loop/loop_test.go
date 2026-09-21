@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/testutils"
-	"github.com/openzot/openzot/internal/window"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/testutils"
+	"github.com/s3rj1k/agent/internal/window"
 )
 
 // testWindow is the context window every test engine is given. A window is

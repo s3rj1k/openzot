@@ -16,12 +16,12 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/schema"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/cycle"
-	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/request"
-	"github.com/openzot/openzot/internal/window"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/cycle"
+	"github.com/s3rj1k/agent/internal/failure"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/request"
+	"github.com/s3rj1k/agent/internal/window"
 )
 
 // Options configures a run.

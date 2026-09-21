@@ -14,15 +14,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/skills"
-	"github.com/openzot/openzot/internal/testutils"
-	"github.com/openzot/openzot/internal/tools"
-	"github.com/openzot/openzot/internal/window"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/session"
+	"github.com/s3rj1k/agent/internal/skills"
+	"github.com/s3rj1k/agent/internal/testutils"
+	"github.com/s3rj1k/agent/internal/tools"
+	"github.com/s3rj1k/agent/internal/window"
 )
 
 func TestLoadProjectContext(t *testing.T) {

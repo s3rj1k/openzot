@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/failure"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/failure"
 )
 
 // Kind identifies a record.

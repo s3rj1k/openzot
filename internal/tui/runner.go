@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/s3rj1k/agent/internal/loop"
 )
 
 // These messages are how the background run talks to the Bubble Tea program. The

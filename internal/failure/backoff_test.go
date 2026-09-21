@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/openzot/openzot/internal/failure"
+	"github.com/s3rj1k/agent/internal/failure"
 )
 
 // The pause doubles per consecutive retry so a persistent outage is not retried

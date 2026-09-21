@@ -15,9 +15,9 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/tui"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/tui"
 )
 
 // Seams for tests, which have no terminal. Production always uses the real

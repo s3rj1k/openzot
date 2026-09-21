@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/skills"
-	"github.com/openzot/openzot/internal/tui"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/session"
+	"github.com/s3rj1k/agent/internal/skills"
+	"github.com/s3rj1k/agent/internal/tui"
 )
 
 // taskKickoff is the user message that starts a run. The goal is in the

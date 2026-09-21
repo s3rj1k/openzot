@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/cycle"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/cycle"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // The corpus pins the cycle heuristics and the runaway guards against the engine they were ported from, one call per record.

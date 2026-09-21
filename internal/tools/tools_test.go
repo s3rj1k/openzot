@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/tools"
+	"github.com/s3rj1k/agent/internal/tools"
 )
 
 // findTool picks a tool out of a set by name.

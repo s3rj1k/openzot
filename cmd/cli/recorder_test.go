@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/session"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/session"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // The model's reasoning is part of the record. The scratchpad is often the only

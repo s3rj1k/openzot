@@ -7,11 +7,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/configs"
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/tui"
+	"github.com/s3rj1k/agent/configs"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/tui"
 )
 
 // HeadlessViewer is tui.Run without the screen. It prints the task, the streamed tokens and the final message, and

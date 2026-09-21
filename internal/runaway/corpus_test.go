@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/runaway"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/runaway"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // The corpus pins the runaway guard against the engine it was ported from. A text-run record is a single call, and a

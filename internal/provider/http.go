@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openzot/openzot/internal/failure"
+	"github.com/s3rj1k/agent/internal/failure"
 )
 
 // The bounds on a turn. None is a wall-clock cap on the exchange, on purpose, since http.Client.Timeout would kill a

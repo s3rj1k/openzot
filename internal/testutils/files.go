@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/session"
+	"github.com/s3rj1k/agent/internal/session"
 )
 
 // Write writes content to path, creating the directories above it.

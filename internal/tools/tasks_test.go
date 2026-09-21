@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/plan"
-	"github.com/openzot/openzot/internal/testutils"
-	"github.com/openzot/openzot/internal/tools"
+	"github.com/s3rj1k/agent/internal/plan"
+	"github.com/s3rj1k/agent/internal/testutils"
+	"github.com/s3rj1k/agent/internal/tools"
 )
 
 // The tool answers with the list, so the model reads its own state back on every

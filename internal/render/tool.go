@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/internal/plan"
+	"github.com/s3rj1k/agent/internal/plan"
 )
 
 // taskMarker is the glyph drawn beside a task, colored for its status.

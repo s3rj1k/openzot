@@ -3,7 +3,7 @@ package window
 import (
 	"encoding/json"
 
-	"github.com/openzot/openzot/internal/conversation"
+	"github.com/s3rj1k/agent/internal/conversation"
 )
 
 // Short-term memory is the context window, managed lazily. Nothing is summarized or lost, since the log keeps

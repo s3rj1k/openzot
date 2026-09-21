@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/order"
-	"github.com/openzot/openzot/internal/plan"
-	"github.com/openzot/openzot/internal/provider"
-	"github.com/openzot/openzot/internal/skills"
-	"github.com/openzot/openzot/internal/tools"
-	"github.com/openzot/openzot/internal/tui"
-	"github.com/openzot/openzot/internal/window"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/order"
+	"github.com/s3rj1k/agent/internal/plan"
+	"github.com/s3rj1k/agent/internal/provider"
+	"github.com/s3rj1k/agent/internal/skills"
+	"github.com/s3rj1k/agent/internal/tools"
+	"github.com/s3rj1k/agent/internal/tui"
+	"github.com/s3rj1k/agent/internal/window"
 )
 
 // orderEnv is what the prompt can know about the run beyond the order. The

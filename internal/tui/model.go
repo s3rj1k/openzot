@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/internal/render"
+	"github.com/s3rj1k/agent/internal/render"
 )
 
 type Status int

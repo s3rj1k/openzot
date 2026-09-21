@@ -1,6 +1,6 @@
 package loop
 
-import "github.com/openzot/openzot/internal/conversation"
+import "github.com/s3rj1k/agent/internal/conversation"
 
 // EventKind identifies what happened.
 type EventKind string

@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/testutils"
-	"github.com/openzot/openzot/internal/window"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/failure"
+	"github.com/s3rj1k/agent/internal/testutils"
+	"github.com/s3rj1k/agent/internal/window"
 )
 
 // testWindow is large enough that no test forgets by accident.

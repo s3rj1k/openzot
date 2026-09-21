@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/outcome"
+	"github.com/s3rj1k/agent/internal/outcome"
 )
 
 // Every notice must be recognizable as an injected instruction rather than the

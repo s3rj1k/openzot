@@ -39,7 +39,7 @@ tasks:
     cmds:
       - |
         profile="$(mktemp)"
-        {{.GO}} test ./... -count=1 -coverprofile="$profile" | grep coverage | grep -v internal/testutils | sed 's|github.com/openzot/openzot||'
+        {{.GO}} test ./... -count=1 -coverprofile="$profile" | grep coverage | grep -v internal/testutils | sed 's|github.com/s3rj1k/agent||'
         grep -v internal/testutils "$profile" > "$profile.kept"
         echo "total: $({{.GO}} tool cover -func="$profile.kept" | tail -1 | awk '{print $NF}')"
         rm -f "$profile" "$profile.kept"

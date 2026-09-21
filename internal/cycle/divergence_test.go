@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // Cases the corpus could not carry, and what replaced them. Anything the capture left out is a hole in the guarantee that

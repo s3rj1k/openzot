@@ -8,7 +8,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/skills"
+	"github.com/s3rj1k/agent/internal/skills"
 )
 
 // MaxListedDescription bounds one skill's description in the listing the skills

@@ -5,7 +5,7 @@ package request
 import (
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/conversation"
+	"github.com/s3rj1k/agent/internal/conversation"
 )
 
 // singleToolCall returns the call an assistant message consists of, if it is one.

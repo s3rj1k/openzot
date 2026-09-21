@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/provider"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/failure"
+	"github.com/s3rj1k/agent/internal/provider"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 // wireRequest is what a fake endpoint saw.

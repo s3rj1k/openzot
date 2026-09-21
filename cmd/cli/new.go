@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/openzot/openzot/configs"
-	"github.com/openzot/openzot/internal/config"
-	"github.com/openzot/openzot/internal/order"
+	"github.com/s3rj1k/agent/configs"
+	"github.com/s3rj1k/agent/internal/config"
+	"github.com/s3rj1k/agent/internal/order"
 )
 
 // openInEditor opens a file in the user's editor and waits for it to close, trying $VISUAL, then $EDITOR, then the first of

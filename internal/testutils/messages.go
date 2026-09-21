@@ -6,7 +6,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/conversation"
+	"github.com/s3rj1k/agent/internal/conversation"
 )
 
 // Activity builds one half of a tool-call pair. Only a response carries the result.

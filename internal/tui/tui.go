@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
 
-	"github.com/openzot/openzot/internal/loop"
+	"github.com/s3rj1k/agent/internal/loop"
 )
 
 // Meta is the header display information shown above the activity log.

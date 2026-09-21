@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/openzot/openzot/internal/render"
+	"github.com/s3rj1k/agent/internal/render"
 )
 
 func (m *Model) Badge() string {

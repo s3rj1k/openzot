@@ -13,8 +13,8 @@ import (
 	"charm.land/fantasy"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/provider"
 )
 
 // Turn is one reply of a fake model endpoint. Frames are answered as an event stream, and anything else is a plain

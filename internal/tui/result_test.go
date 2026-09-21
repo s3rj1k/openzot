@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/tui"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/tui"
 )
 
 func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {

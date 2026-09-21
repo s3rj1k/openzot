@@ -12,9 +12,9 @@ import (
 	"charm.land/fantasy/providers/openai"
 	"charm.land/fantasy/providers/openaicompat"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/runaway"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/runaway"
 )
 
 // errRunaway is what the streaming guard ends a degenerate turn with. It is

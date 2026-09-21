@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/openzot/openzot/internal/skills"
+	"github.com/s3rj1k/agent/internal/skills"
 )
 
 // The file agent looks for under each context directory.

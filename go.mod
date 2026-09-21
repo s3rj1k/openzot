@@ -1,4 +1,4 @@
-module github.com/openzot/openzot
+module github.com/s3rj1k/agent
 
 go 1.27.0
 

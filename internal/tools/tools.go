@@ -11,7 +11,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/skills"
+	"github.com/s3rj1k/agent/internal/skills"
 )
 
 // DefaultOutputPercent is the share of the context window, in percent, that a

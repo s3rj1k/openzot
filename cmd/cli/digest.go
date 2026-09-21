@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/outcome"
-	"github.com/openzot/openzot/internal/render"
+	"github.com/s3rj1k/agent/internal/loop"
+	"github.com/s3rj1k/agent/internal/outcome"
+	"github.com/s3rj1k/agent/internal/render"
 )
 
 // digestStatus maps a run's stop reason and exit code to the one human word a

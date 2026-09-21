@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/plan"
-	"github.com/openzot/openzot/internal/testutils"
+	"github.com/s3rj1k/agent/internal/plan"
+	"github.com/s3rj1k/agent/internal/testutils"
 )
 
 func TestParseTasksReadsTitlesStatusesAndNotes(t *testing.T) {

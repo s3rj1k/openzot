@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openzot/openzot/internal/render"
+	"github.com/s3rj1k/agent/internal/render"
 )
 
 func TestRenderDigestIsColumnarAndParsable(t *testing.T) {

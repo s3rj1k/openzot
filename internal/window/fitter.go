@@ -10,8 +10,8 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/failure"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/failure"
 )
 
 // The defaults of the window rules, applied where a caller leaves one at zero.

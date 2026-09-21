@@ -7,7 +7,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/s3rj1k/agent/internal/provider"
 )
 
 // turn is what one model call produced.

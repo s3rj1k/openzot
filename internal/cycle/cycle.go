@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/runaway"
+	"github.com/s3rj1k/agent/internal/conversation"
+	"github.com/s3rj1k/agent/internal/runaway"
 )
 
 // The cycle heuristics decide whether a conversation has stopped making progress. They overlap by design, each covering
