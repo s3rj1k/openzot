@@ -6,13 +6,8 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 )
 
-// Cases the corpus cannot carry. See notPortableCases in divergence_test.go for
-// which captured records these stand in for.
-//
-// Both concern a value containing a reference cycle. JSON has no way to express
-// one, so these could not be seeded - but the underlying question survives the
-// port. A tool result that cannot be marshaled must not be the thing that aborts
-// a run. A cycle check that panics is worse than no cycle check.
+// Cases the corpus cannot carry, since JSON cannot express a reference cycle. The question survives the port. A tool result
+// that cannot be marshaled must not abort a run, because a cycle check that panics is worse than none.
 
 // cyclicValue returns a map that contains itself, which json.Marshal rejects.
 func cyclicValue() map[string]any {

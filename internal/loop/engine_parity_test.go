@@ -51,10 +51,8 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 	}
 }
 
-// Forgetting must price a tool call by its whole payload, not just its text. A
-// request half has no text - its cost is the name and arguments - so an
-// argument-heavy call (writing a big file) must be counted, or a request the
-// estimate thinks fits gets rejected by the provider.
+// Forgetting must price a tool call by its whole payload, not just its text. A request half has no text, so an argument-heavy
+// call (writing a big file) must be counted, or a request the estimate thinks fits gets rejected by the provider.
 func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	// a window the huge call alone overflows, and the two recent turns fit in
 	engine, err := New(&Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
@@ -100,10 +98,8 @@ func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	}
 }
 
-// An empty turn stays bounded by the tight empty budget (a model
-// producing nothing is stuck and must not burn the whole settle budget on
-// silence), but its nudge points at the terminal tools so the model is told what
-// settling actually requires - not the plain "say you are finished".
+// An empty turn stays bounded by the tight empty budget, since a model producing nothing is stuck and must not burn the settle
+// budget on silence. Its nudge points at the terminal tools, so the model is told what settling requires.
 func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// every turn is empty (no content, finish=stop) and the
 	// empty budget is tighter than the settle budget
@@ -152,11 +148,8 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 	}
 }
 
-// The empty budget counts CONSECUTIVE empty turns, as its own documentation says.
-// A productive turn between must reset it, so single stalls scattered over a
-// long run do not add up to a false StopEmpty. (Regressed once. The counter was
-// cumulative, so a run could die to its third stall hundreds of iterations after
-// the first.)
+// The empty budget counts consecutive empty turns, so a productive turn between must reset it and scattered stalls do not
+// add up to a false StopEmpty. It regressed once, when the counter was cumulative and a run died to its third stall.
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 	result := run(t, &Options{
 		ContextWindow: testWindow,

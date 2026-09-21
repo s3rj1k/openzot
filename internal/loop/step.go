@@ -40,15 +40,9 @@ type turnRequest struct {
 	maxOutput *int64
 }
 
-// step is one iteration's model call, and the tools it runs, as the engine sees
-// them.
-//
-// Fantasy's Agent does the work of a step - the call, checking and repairing the
-// tool calls, running the tools - and this is what keeps the engine's own
-// conversation in step with it. It turns the agent's callbacks into events and
-// into the messages the conversation is made of, in the order the engine has
-// always written them. One step is used for the whole run and reset per
-// iteration.
+// step is one iteration's model call and the tools it runs, as the engine sees them. Fantasy's Agent does the work, and this
+// keeps the engine's conversation in step with it, turning the agent's callbacks into events and messages in the order the
+// engine has always written them. One step is used for the whole run and reset per iteration.
 type step struct {
 	engine   *Engine
 	messages *[]conversation.Message
@@ -111,10 +105,8 @@ func (e *Engine) providerOptions() fantasy.ProviderOptions {
 	return openaicompat.NewProviderOptions(options)
 }
 
-// guardedTool is a tool as fantasy runs it, with the engine looking on. It is
-// where the conversation and the events learn of a call being made, in the same
-// order and at the same moments as ever - the request is written, and handed over,
-// before the tool runs, and the answer after.
+// guardedTool is a tool as fantasy runs it, with the engine looking on. It is where the conversation and events learn of a
+// call, in the same order as ever. The request is written and handed over before the tool runs, and the answer after.
 type guardedTool struct {
 	fantasy.AgentTool
 	step *step
@@ -284,10 +276,8 @@ func decodeInput(input string) map[string]any {
 	return arguments
 }
 
-// begin writes a call's request into the conversation and announces it. With
-// handOver set the conversation is given to the caller too, before the tool runs.
-// A shell call can outlast the run, and a run killed inside one must still leave
-// what the model thought and asked for.
+// begin writes a call's request into the conversation and announces it. With handOver set the conversation is given to the
+// caller before the tool runs, since a shell call can outlast the run and a killed run must still leave what the model asked for.
 func (s *step) begin(call fantasy.ToolCallContent, handOver bool) {
 	*s.messages = append(*s.messages, activityMessage(conversation.ActivityRequest, call, nil, ""))
 

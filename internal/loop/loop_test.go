@@ -351,10 +351,8 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 	}
 }
 
-// The two terminal tools mean opposite things, so a caller has to be able to
-// tell them apart. Both used to end a run as StopSettled, which exits 0 and
-// renders as "done" - a mission the model gave up on was reported to scripts,
-// schedules and the session log as a success.
+// The two terminal tools mean opposite things, so a caller must tell them apart. Both once ended a run as StopSettled, which
+// exits 0, so a mission the model gave up on was reported to scripts, schedules and the log as a success.
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 	settled := run(t, &Options{
 		ContextWindow: testWindow,
@@ -579,12 +577,8 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 	}
 }
 
-// The runaway guard ends a turn while the provider is still streaming, so the
-// stream it walks away from has to be canceled. It was not. The transport's
-// producer goroutine stayed parked on a send nobody would ever receive, holding
-// its HTTP response body open for the life of the process, and every trip of the
-// guard - a routine event in a long run, which is why the guard exists - leaked
-// another one.
+// The runaway guard ends a turn while the provider is still streaming, so the stream it walks away from must be canceled.
+// It was not, and the transport goroutine held the response body open for the life of the process, leaking once per guard trip.
 func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 	canceled := make(chan struct{})
 
@@ -710,12 +704,8 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 	}
 }
 
-// Forgetting takes the oldest first, which is the run's opening user message -
-// leaving a conversation with no
-// user turn at all, which strict providers reject wholesale with an opaque
-// 400 from that iteration on (bisected live. The same request with one
-// user message injected was accepted). The request must always carry a user
-// turn.
+// Forgetting takes the oldest first, which is the run's opening user message, and a conversation with no user turn is rejected
+// wholesale by strict providers from then on. The request must always carry a user turn.
 func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	engine, err := New(&Options{
 		Client: stub(t, []string{stop()}),

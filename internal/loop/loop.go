@@ -115,14 +115,9 @@ type Result struct {
 	Err error
 }
 
-// ExitCode is the process-style exit code the run's ending maps onto.
-//
-// Zero means the run reached a conclusion it stands behind and that conclusion was
-// success - the model settled, or finished talking in a run that does not require
-// settling. Everything else means the task did not get done. Either the model
-// declared it could not be done (StopFailed) or the run was cut short by a guard.
-// A caller scripting against zot needs to tell those apart from success without
-// parsing prose.
+// ExitCode is the process-style exit code the run's ending maps onto. Zero means the model settled with success, and
+// everything else means the task did not get done, whether the model declared it could not (StopFailed) or a guard cut it
+// short. A caller scripting against zot can tell those apart from success without parsing prose.
 func (r *Result) ExitCode() int {
 	switch r.Reason {
 	case StopSettled:
@@ -162,11 +157,8 @@ type Engine struct {
 	toolTokens int
 }
 
-// toolSchemaTokens is what the tool definitions cost on the wire.
-//
-// They are sent with every request and can be large - a dozen tools with
-// detailed JSON Schema runs to thousands of tokens - so leaving them out of the
-// budget is how a thread that "fits" gets rejected.
+// toolSchemaTokens is what the tool definitions cost on the wire. They go with every request and can run to thousands of
+// tokens, so leaving them out of the budget is how a request that seems to fit gets rejected.
 func (e *Engine) toolSchemaTokens(tools []fantasy.Tool) int {
 	if e.toolTokens > 0 || len(tools) == 0 {
 		return e.toolTokens
@@ -229,20 +221,16 @@ func New(options *Options) (*Engine, error) {
 	}, nil
 }
 
-// canContinue reports whether another recovery attempt is within both bounds.
-// The consecutive run of them, and the total across the run. Both are checked
-// at every site that spends one, so neither can be reached by taking a
-// different route into recovery.
+// canContinue reports whether another recovery attempt is within both bounds, the consecutive run and the total across the
+// run. Both are checked wherever one is spent, so neither can be dodged by a different route into recovery.
 func (e *Engine) canContinue(budget Budget) bool {
 	return budget.Continuations < e.maxContinuations &&
 		budget.Recoveries < e.maxRecoveries
 }
 
-// backoffFor is the pause before the attempt'th consecutive retry. Base,
-// doubling per attempt, capped at MaxRetryBackoff - including a base that
-// already exceeds the cap, so a generous RetryBackoff cannot make the first
-// retry the longest wait of the run. A non-positive base means the caller asked
-// for no wait at all.
+// backoffFor is the pause before the attempt'th consecutive retry. It is base, doubling per attempt, capped at
+// MaxRetryBackoff even when base alone exceeds the cap, so no generous RetryBackoff makes the first retry the longest wait.
+// A non-positive base means no wait at all.
 func backoffFor(base time.Duration, attempt int) time.Duration {
 	if base <= 0 || attempt <= 0 {
 		return 0
@@ -265,17 +253,9 @@ func backoffFor(base time.Duration, attempt int) time.Duration {
 	return delay
 }
 
-// rateLimitWait is how long to sit out a rate limit. The larger of the delay
-// the provider advised and the ordinary backoff for this retry.
-//
-// The backoff is a floor, not just a fallback. A provider that keeps answering
-// 429 with "Retry-After: 0" (or a date already past) would otherwise be
-// hammered with instant retries - the exact tight loop the backoff exists to
-// prevent - while a large advice still wins over a small backoff.
-//
-// The advice is capped. A run that waits out a real rate-limit window is doing
-// the right thing, but an unattended run must not be parked for hours by a
-// mistaken or hostile header, and no legitimate window needs longer than the cap.
+// rateLimitWait is how long to sit out a rate limit, the larger of the provider's advised delay and the ordinary backoff. The
+// backoff is a floor, so a "Retry-After: 0" cannot become a tight loop. The advice is capped, since an unattended run must not
+// be parked for hours by a mistaken or hostile header.
 func rateLimitWait(advised time.Duration, ok bool, fallback time.Duration) time.Duration {
 	if !ok {
 		return fallback
@@ -400,21 +380,9 @@ func (e *Engine) checkCycle(messages []conversation.Message, budget *Budget) ([]
 	return append(messages, conversation.Message{Type: conversation.TypeUser, Text: cycleNotice(cycleDetail(detected))}), nil
 }
 
-// narrowWindow lowers the context window requests are held under, after a
-// provider rejected a request as too long. It reports whether the window went
-// down - if not there is nothing left to try, and the rejection is a real
-// failure.
-//
-// The provider's stated window beats the configured one. A rejection is
-// precisely the case where the configured window was wrong - a serving endpoint
-// with a smaller ceiling than the operator stated - so believing the error is
-// what makes the retry fit instead of guessing again. A rejection that states no
-// window, or one no lower than the window already in force, still has to shrink
-// something or the retry would send the same request. The window steps down
-// by a quarter instead, until it reaches a fraction of the configured one.
-//
-// Only the window changes. The conversation itself is untouched. The oldest
-// messages are forgotten to fit it on the next request.
+// narrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
+// it went down. The provider's stated window beats the configured one, since a rejection means the configured one was wrong.
+// Without a usable number the window steps down a quarter, to a floor. Only the window changes, not the conversation.
 func (e *Engine) narrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
 	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.window {
 		e.window = limit.SuggestedLimit
@@ -493,10 +461,8 @@ func (e *Engine) forgetOldest(messages []conversation.Message, forgotten *int, t
 	return true
 }
 
-// repostedPlan is the model's latest plan - its last successful call of the plan
-// tool - as a fresh call and result to append to the conversation. It reports
-// false when there is no plan, or when the plan is still in the window and so
-// needs no help.
+// repostedPlan is the model's latest plan, its last successful plan-tool call, as a fresh call and result to append. It reports
+// false when there is no plan or the plan is still in the window and needs no help.
 func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([]conversation.Message, bool) {
 	if e.options.PlanTool == "" {
 		return nil, false
@@ -527,10 +493,8 @@ func (e *Engine) repostedPlan(messages []conversation.Message, forgotten int) ([
 	return nil, false
 }
 
-// fitToWindow forgets the oldest messages as the window fills, and puts the plan
-// back in front of the model when forgetting has left it with too little to go
-// on. It returns the conversation, which has grown by the plan when that was
-// posted. Forgotten is the run's offset into messages and only moves forward.
+// fitToWindow forgets the oldest messages as the window fills and puts the plan back in front of the model when forgetting left
+// it too little to go on. It returns the conversation, grown by the plan when posted. The forgotten offset only moves forward.
 func (e *Engine) fitToWindow(messages []conversation.Message, forgotten *int, turnStarts []int, tools []fantasy.Tool, emit func(Event)) []conversation.Message {
 	if !e.forgetOldest(messages, forgotten, tools, emit) {
 		return messages
@@ -632,11 +596,8 @@ func (e *Engine) toolDefinitions() []fantasy.Tool {
 	return tools
 }
 
-// Run drives the conversation to a conclusion, emitting events as it goes.
-//
-// Run returns the Result. Watch sees each event as it happens, and a nil watch is
-// allowed. Events are delivered synchronously on the calling goroutine, so a
-// slow consumer throttles the run rather than dropping anything.
+// Run drives the conversation to a conclusion, emitting events as it goes, and returns the Result. Watch sees each event as it
+// happens and may be nil. Events are delivered synchronously, so a slow consumer throttles the run rather than dropping any.
 func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 	emit := func(event Event) {
 		if e.options.OnEvent != nil {

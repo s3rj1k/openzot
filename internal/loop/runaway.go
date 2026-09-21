@@ -63,11 +63,8 @@ func (o textRunOptions) maxUniqueRatio() float64 {
 	return 0.5
 }
 
-// segmentNormalizedUnits splits text into normalised sentence-like units.
-//
-// Lowercasing, stripping punctuation and collapsing whitespace means phrases
-// differing only in spacing or trailing punctuation collapse to the same key,
-// while really different sentences stay apart.
+// segmentNormalizedUnits splits text into normalized sentence-like units. Lowercasing, stripping punctuation and collapsing
+// whitespace makes phrases that differ only in spacing or punctuation share a key, while really different sentences stay apart.
 func segmentNormalizedUnits(text string) []string {
 	var units []string
 
@@ -97,12 +94,8 @@ func segmentNormalizedUnits(text string) []string {
 	return units
 }
 
-// hasRepeatedTextRun reports a runaway repetition inside a single block of text -
-// a model stuck cycling the same handful of sentences.
-//
-// Unlike the thread-level heuristics this works within one message, so it
-// catches a turn that loops in its own reasoning without ever emitting a tool
-// call - which the thread-level checks never see.
+// hasRepeatedTextRun reports a runaway repetition inside a single block of text. Unlike the conversation-level heuristics it
+// works within one message, so it catches a turn looping in its own reasoning without ever emitting a tool call.
 func hasRepeatedTextRun(text string, options textRunOptions) bool {
 	if text == "" {
 		return false
@@ -204,12 +197,9 @@ type guardReason struct {
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
 
-// runawayGuard is an incremental runaway-repetition detector.
-//
-// Where hasRepeatedTextRun re-scans a whole block, runawayGuard keeps a rolling
-// window of normalised words and a running count of every phrase in it. Each
-// pushed chunk costs O(1) amortized, so it can run on every streamed token and
-// latch within a few repeats - long before the heavier fallback would react.
+// runawayGuard is an incremental runaway-repetition detector. It keeps a rolling window of normalized words and a count of
+// every phrase, so each pushed chunk costs O(1) amortized and it can run on every streamed token, latching within a few
+// repeats, long before the heavier fallback would react.
 type runawayGuard struct {
 	ngram          int
 	window         int
@@ -285,10 +275,8 @@ func (g *runawayGuard) hapaxRatio() float64 {
 	return float64(hapax) / float64(len(g.words))
 }
 
-// distinctLineLeads counts distinct line-leading tokens. A stuck loop repeats
-// the same line so has one or two. A progressing enumeration keeps starting
-// lines with new keys. This rescues lists whose long shared suffix sinks the
-// hapax ratio.
+// distinctLineLeads counts distinct line-leading tokens. A stuck loop repeats one line and has one or two, while a progressing
+// enumeration keeps starting lines with new keys, which rescues lists whose long shared suffix sinks the hapax ratio.
 func (g *runawayGuard) distinctLineLeads() int {
 	leads := map[string]struct{}{}
 
@@ -368,10 +356,8 @@ func (g *runawayGuard) addWord(word, original string, newlines int) {
 	}
 }
 
-// normalizeWord strips a token to letters and digits, preserving Unicode.
-//
-// Keeping non-ASCII letters is on purpose. An ASCII-only strip left CJK text as
-// a run of bare digits, which read as a phantom loop.
+// normalizeWord strips a token to letters and digits, preserving Unicode. Keeping non-ASCII letters is on purpose, since an
+// ASCII-only strip left CJK text as a run of bare digits, which read as a phantom loop.
 func normalizeWord(raw string) string {
 	var builder strings.Builder
 

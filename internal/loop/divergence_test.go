@@ -7,14 +7,9 @@ import (
 	"testing"
 )
 
-// Cases the corpus could not carry, and what replaced them.
-//
-// The corpus is the guarantee that this package answers as the implementation
-// it was ported from did, so anything the capture had to leave out is a hole in
-// that guarantee. A hole nobody wrote down is indistinguishable from a case
-// that was simply forgotten - which is why these are enumerated here, each
-// naming the hand-written test that took its place, and why the suite checks
-// that test still exists.
+// Cases the corpus could not carry, and what replaced them. Anything the capture left out is a hole in the guarantee that
+// this package answers as the original did, and an unwritten hole looks like a forgotten case. So each is enumerated here
+// with the hand-written test that replaced it, and the suite checks that test still exists.
 
 // notPortable is a captured case that cannot be expressed as corpus data.
 type notPortable struct {
@@ -29,13 +24,9 @@ type notPortable struct {
 	Why string
 }
 
-// notPortableCases is the complete set for this package.
-//
-// All three are the same hazard. A value containing a reference cycle. JSON has
-// no way to express one, so they could not be seeded - but the question
-// survives the port, because a malformed payload from a provider must not be
-// the thing that aborts a run. A cycle check that panics is worse than no cycle
-// check.
+// notPortableCases is the complete set. All three are one hazard, a value containing a reference cycle, which JSON cannot
+// express. The question survives the port, since a malformed provider payload must not abort a run and a cycle check that
+// panics is worse than none.
 var notPortableCases = []notPortable{
 	{
 		ID:          "hasRepeatedSuffix/e577bc4f1b53",

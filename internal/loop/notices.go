@@ -7,27 +7,13 @@ import (
 	"charm.land/fantasy"
 )
 
-// The notices the loop injects into the conversation when it detects a problem.
-//
-// They are written as instructions to the model rather than as diagnostics,
-// because that is what they are for. The loop has noticed something the model
-// cannot see about itself, and the only lever it has is the next prompt.
-//
-// Each is prefixed so a reader of the thread or the session log can tell a
-// notice from the model's own output. The prefix is a label, not a filter. The
-// cycle detector scans notices like any other message. Detection survives that
-// because the nudge for a given repetition is itself the same every time it is
-// injected, so an interleaved notice repeats along with the behavior it is
-// answering instead of breaking up the run of it - and the result-run detector,
-// which is what fires on a tool loop, reads only tool results and never sees
-// them at all.
+// The notices the loop injects when it detects a problem. They are instructions, not diagnostics, since the loop has seen something the
+// model cannot see about itself. Each carries a prefix so a reader can tell a notice from the model's own output. The prefix labels
+// rather than filters, and the cycle detector still works because a repeated nudge repeats along with the behavior it answers.
 const noticePrefix = "!NB:"
 
-// cycleNotice tells the model it is repeating itself.
-//
-// Naming the specific behavior matters. "You appear to be stuck" produces
-// another lap. "you have called the same tool with the same arguments and got
-// the same answer" produces a different approach.
+// cycleNotice tells the model it is repeating itself. Naming the specific behavior matters, since "you appear to be stuck"
+// produces another lap and "you have called the same tool with the same arguments" produces a different approach.
 func cycleNotice(detail string) string {
 	if detail == "" {
 		detail = "you appear to be repeating the same steps"
@@ -73,11 +59,8 @@ func terminalHandler[T any](context.Context, T, fantasy.ToolCall) (fantasy.ToolR
 	return fantasy.NewTextResponse("recorded"), nil
 }
 
-// terminalTools are the tool definitions injected into every run.
-//
-// They are given to the model as ordinary tools because that is the mechanism it
-// already understands. The loop intercepts them rather than dispatching to a
-// handler.
+// terminalTools are the tool definitions injected into every run. They are ordinary tools to the model, the mechanism it
+// already understands, and the loop intercepts them rather than dispatching to a handler.
 func terminalTools() []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		fantasy.NewAgentTool(SuccessTool,

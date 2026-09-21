@@ -1,10 +1,6 @@
-// Package loop runs the agentic conversation. Call the model, execute the tools
-// it asks for, feed the results back, repeat until the task settles.
-//
-// Most of this file is bounds. Each one exists because an unbounded agent fails
-// in a specific, expensive way - burning a token budget on a loop it cannot see,
-// retrying an error that will never succeed, or declaring victory because it
-// happened to use the word "completed".
+// Package loop runs the agentic conversation. It calls the model, executes the tools it asks for, feeds the results back and
+// repeats until the task settles. Most of this file is bounds, each for a specific expensive failure of an unbounded agent, such
+// as a token budget lost to a loop it cannot see, an error retried forever, or victory declared on the word "completed".
 package loop
 
 import (

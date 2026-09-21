@@ -17,14 +17,9 @@ import (
 	"github.com/openzot/openzot/internal/provider"
 )
 
-// Budget semantics, ported from the TypeScript engine's maxIterations and
-// recursion suites.
-//
-// The budgets look interchangeable and are not. Iterations count every trip
-// round the loop. Continuations count only the times the model was cut off
-// mid-answer. Conflating them is how a run that is making steady progress
-// through tool calls gets killed for "running out of output space", and how a
-// model that never stops being truncated runs forever. Both were real.
+// Budget semantics. The budgets look interchangeable and are not. Iterations count every trip round the loop and
+// continuations only the times the model was cut off mid-answer. Conflating them kills a run making steady progress for
+// "running out of output space", or lets a model that is always truncated run forever.
 
 // A time cap ends a run at the iteration boundary. Unbounded by default, but a
 // run pinned to a deadline must stop with StopTime rather than running to the
@@ -224,13 +219,8 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 	}
 }
 
-// A non-positive budget means "unset", not "zero".
-//
-// The distinction. The iteration count and the no-progress guards (cycles,
-// empties) are hard fallbacks - a non-positive value must never leave them
-// unbounded, because that is how a runaway run fails dangerously. The call and
-// time budgets are the opposite. Unbounded is their intended default, so a
-// non-positive value means exactly that.
+// A non-positive budget means "unset", not "zero". The iteration count and the no-progress guards (cycles, empties) are hard
+// fallbacks and must never be left unbounded, while unbounded is the intended default for the call and time budgets.
 func TestBudgetDefaults(t *testing.T) {
 	for _, value := range []int{0, -1, -1000} {
 		engine, err := New(&Options{
@@ -498,11 +488,8 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 	}
 }
 
-// A retriable provider failure has to be waited out, not hammered. Retrying
-// instantly spends the whole continuation budget inside a single outage - twenty
-// round trips in a few milliseconds - so a run dies to a blip that a short pause
-// would have outlived, and the retries pile onto an endpoint that is already
-// failing.
+// A retriable provider failure has to be waited out, not hammered. Retrying instantly spends the whole continuation budget
+// inside one outage in a few milliseconds, so a run dies to a blip that a short pause would have outlived.
 func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -662,11 +649,8 @@ func TestBackoffDoublesAndIsCapped(t *testing.T) {
 	}
 }
 
-// A rate limit must not kill a run. 429 is by design excluded from
-// IsRetriable because it needs the provider's own schedule rather than a tight
-// loop - but nothing waited on that schedule, so the loop fell straight through
-// to StopError. One throttle response at iteration 400 of an overnight run ended
-// it, with the whole continuation budget unspent.
+// A rate limit must not kill a run. 429 is excluded from IsRetriable because it needs the provider's own schedule, but with
+// nothing waiting on it the loop fell through to StopError, so one throttle response ended an overnight run.
 func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
 	var (
 		mu    sync.Mutex
@@ -749,11 +733,8 @@ func TestAnAbsurdRetryAfterIsCapped(t *testing.T) {
 	}
 }
 
-// The backoff is a floor under the provider's advice, not just a fallback for
-// its absence. "Retry-After: 0" (or a date already past) is advice to retry
-// now - and a provider that keeps sending it while still answering 429 would
-// otherwise be hammered with instant retries, the exact tight loop the backoff
-// exists to prevent.
+// The backoff is a floor under the provider's advice, not only a fallback for its absence. "Retry-After: 0" is advice to
+// retry now, and a provider that keeps sending it would otherwise be hammered with the tight loop the backoff prevents.
 func TestAZeroRetryAfterIsFlooredByTheBackoff(t *testing.T) {
 	if got := rateLimitWait(0, true, 4*time.Second); got != 4*time.Second {
 		t.Errorf("wait = %s, want the 4s backoff floor under \"retry now\"", got)
@@ -814,10 +795,8 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 	}
 }
 
-// The backoff paces *consecutive* failures. Once a turn succeeds, the outage it
-// was pacing is over, and the next blip - hours later, in a long run - must
-// start again from the base delay rather than from wherever the last outage
-// left the schedule.
+// The backoff paces consecutive failures. Once a turn succeeds the outage is over, and the next blip, hours later, must
+// start again from the base delay rather than wherever the last outage left the schedule.
 func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -902,11 +881,8 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 	}
 }
 
-// The consecutive-failure counter is the backoff's own, not the continuation
-// budget. That budget is also spent by truncation recoveries (and context-limit
-// retries), so keying the backoff off it made an unrelated first blip start
-// at an escalated wait - here, 8x base for a run whose only prior continuations
-// were truncated answers.
+// The consecutive-failure counter is the backoff's own, not the continuation budget, which truncation recoveries and
+// context-limit retries also spend. Keying the backoff off it started an unrelated first blip at 8x base.
 func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -984,10 +960,8 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 	}
 }
 
-// A stuck or stalling provider that returns an empty turn renders as bare
-// iteration dividers unless the nudge is surfaced. A run being nudged back to
-// life looked exactly like a hang (a live provider held a stream for three
-// silent minutes and returned nothing - and the viewer showed nothing).
+// A stalling provider that returns an empty turn renders as bare iteration dividers unless the nudge is surfaced. A run being
+// nudged back to life looked exactly like a hang, as when a live provider held a stream for three silent minutes.
 func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 	engine, err := New(&Options{
 		ContextWindow: testWindow,
@@ -1028,10 +1002,8 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 	}
 }
 
-// The continuation bound asks "can this run get going again", not "how much has
-// gone wrong since it started". Blips that were each recovered from are not
-// evidence of anything, and a run that has been working for hours must not be
-// ended by its twenty-first one.
+// The continuation bound asks whether this run can get going again, not how much has gone wrong since it started. Blips that
+// were each recovered from prove nothing, and a run working for hours must not be ended by its twenty-first.
 func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -1141,13 +1113,9 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 	}
 }
 
-// The shape MaxContinuations cannot see. A provider that answers just often
-// enough to keep resetting the consecutive count, while the run spends its life
-// retrying rather than working. Every good turn says the upstream is fine and
-// the tally says it is not, so the tally has to be the thing that ends it.
-//
-// Iterations are set far above the recovery bound so it is unambiguous which
-// one fired.
+// The shape MaxContinuations cannot see. A provider answering just often enough to keep resetting the consecutive count,
+// while the run spends its life retrying, so the tally has to end it. Iterations are set far above the recovery bound to
+// make it unambiguous which one fired.
 func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -1219,12 +1187,8 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 	}
 }
 
-// The bound is by design absolute rather than a multiple of
-// MaxContinuations, because tying them together would put this bug back. A
-// caller who lowers the consecutive bound to fail fast on a stuck provider
-// would silently lower the total too, and a long healthy run would then die of
-// scattered blips it had already recovered from - the accumulating budget the
-// consecutive count exists to get rid of.
+// The recovery bound is absolute rather than a multiple of MaxContinuations. Tying them would let a caller who lowers the
+// consecutive bound to fail fast silently lower the total too, and a long healthy run would die of scattered recovered blips.
 func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
 	var (
 		mu       sync.Mutex

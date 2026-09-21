@@ -9,20 +9,9 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 )
 
-// The corpus pins the cycle heuristics and the runaway guards against the
-// implementation they were ported from. Each record is one call. A
-// function, its arguments and the value it must return.
-//
-// The corpus was captured from an engine whose messages are open maps. Zot's are
-// typed. So each record is first read into conversation.Message, and a record whose shape
-// the typed model cannot express - a message field zot has no place for, a
-// recorded usage, an option the port turned into a constant - is counted and
-// skipped rather than bent to fit. The floors in TestCorpus fail the suite if the
-// share that is checked shrinks, so skipping cannot become the default.
-//
-// Ids are digests rather than names on purpose - the corpus is published and the
-// suite it came from is not. To trace a failing id, look it up in the private
-// provenance map. See docs/rfcs/zot-native-agent-engine.md.
+// The corpus pins the cycle heuristics and the runaway guards against the engine they were ported from, one call per record.
+// It came from an engine with open-map messages, so each record is read into conversation.Message, and one the typed model
+// cannot express is counted and skipped, with floors in TestCorpus failing if the checked share shrinks. Ids are digests.
 
 type corpusFile struct {
 	Records []corpusRecord `json:"records"`
@@ -63,10 +52,8 @@ func loadCorpus(t *testing.T) corpusFile {
 // Messages and activities the typed model can hold, read out of a record's
 // message maps. Ok is false for anything it cannot express.
 
-// argumentForms records how each arguments value was written in a record, as an
-// object or as a string. The typed model holds arguments only as the string the
-// provider sent, so a record that writes the same call both ways and expects the
-// two to differ is one it cannot express.
+// argumentForms records how each arguments value was written in a record, as an object or a string. The typed model holds
+// only the string the provider sent, so a record writing the same call both ways and expecting them to differ cannot be expressed.
 type argumentForms map[string]string
 
 func typedActivity(meta any, forms argumentForms) (*conversation.Activity, bool) {

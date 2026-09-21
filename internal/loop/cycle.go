@@ -8,13 +8,9 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 )
 
-// The cycle heuristics decide whether a conversation has stopped making
-// progress. They overlap by design - each covers a blind spot of the others -
-// and the first to fire is the one reported, because a stuck run is otherwise
-// only ever "stopped for looping" and the four fail in very different ways.
-//
-// Their behavior was pinned against the implementation they were ported from.
-// See corpus_test.go.
+// The cycle heuristics decide whether a conversation has stopped making progress. They overlap by design, each covering
+// a blind spot of the others, and the first to fire is the one reported, since the four fail in very different ways.
+// Their behavior is pinned by the corpus (see corpus_test.go).
 
 const (
 	// How many consecutive repeats of a pattern make a
@@ -34,14 +30,9 @@ const (
 	cycleMinTail = 8
 )
 
-// safeStringify renders a value as JSON for use as a comparison key, degrading
-// to a sentinel rather than failing.
-//
-// Values reaching the heuristics include tool results, which can be anything -
-// including structures that cannot be marshaled. A cycle check must never be
-// the thing that aborts a run, so an unserialisable value collapses to a
-// constant - which makes two such values compare equal, and is the intended
-// trade. The alternative is no check at all.
+// safeStringify renders a value as JSON for use as a comparison key, degrading to a sentinel rather than failing. A cycle
+// check must never abort a run, so a tool result that cannot be marshaled collapses to a constant, making two such values
+// compare equal. That is the intended trade, since the alternative is no check at all.
 func safeStringify(value any) string {
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -51,17 +42,9 @@ func safeStringify(value any) string {
 	return string(encoded)
 }
 
-// hasRepeatedSuffix reports whether the conversation ends in a repeating block
-// of messages - the plainest form of a loop, where the model and its context
-// cycle through the same exchange verbatim.
-//
-// Messages are reduced to a fingerprint of (type, text, activity), and patterns
-// are tried shortest-first because tight loops are both more common and more
-// urgent than long ones.
-//
-// It requires the repeats to be byte-for-byte the same and adjacent, which is its
-// blind spot. One interleaved message - a reasoning turn between tool calls -
-// breaks the run. HasRepeatedResultRun covers that case.
+// hasRepeatedSuffix reports whether the conversation ends in a repeating block of messages, the plainest form of a loop.
+// Messages are fingerprinted by (type, text, activity) and patterns tried shortest-first, since tight loops are more common
+// and urgent. The repeats must be byte-for-byte the same and adjacent, so one interleaved reasoning message defeats it.
 func hasRepeatedSuffix(messages []conversation.Message) bool {
 	if len(messages) < cycleMinPatternLength*cycleMinRepetitions {
 		return false
@@ -116,16 +99,9 @@ func distinct(values []string) int {
 	return len(seen)
 }
 
-// hasRepeatedActivityTail reports whether the conversation ends in a run of tool
-// calls that keeps re-treading the same small set of signatures.
-//
-// It compresses the trailing contiguous activity messages to (kind, name, input,
-// output) and asks whether that set has collapsed. Unlike hasRepeatedSuffix it
-// tolerates the text around the calls varying, which catches a model that
-// narrates differently each time while doing the same thing.
-//
-// A request whose repeats produce really different outputs is spared. Polling
-// an endpoint until it changes is progress, not a loop.
+// hasRepeatedActivityTail reports whether the conversation ends in tool calls that keep re-treading the same small set of
+// signatures. It compresses the trailing activities to (kind, name, input, output), so it tolerates varying text around the
+// calls. A request whose repeats produce really different outputs is spared, since polling until it changes is progress.
 func hasRepeatedActivityTail(messages []conversation.Message) bool {
 	var tail []activityTailEntry
 
@@ -231,21 +207,9 @@ func hasRepeatedActivityTail(messages []conversation.Message) bool {
 		!progressing
 }
 
-// hasRepeatedResultRun reports whether the last few tool results are the same -
-// the model issuing the same call and getting the same answer, learning nothing.
-//
-// It walks only the tool-result stream, skipping every message between. That
-// is the gap it fills. HasRepeatedSuffix needs the surrounding messages to
-// repeat byte-for-byte, and hasRepeatedActivityTail needs a contiguous run of
-// activities, so a single interleaved reasoning message defeats both - and a
-// reasoning model emits one between every tool call.
-//
-// Arguments are part of the signature. A model issuing different calls that
-// happen to return the same trivial result (several distinct shell commands
-// each producing empty output) is making progress, not looping.
-//
-// Synthetic "_"-prefixed activities are skipped, so a notice injected to nudge
-// the model out of a loop cannot break the run and mask the loop.
+// hasRepeatedResultRun reports whether the last few tool results are the same, the model issuing the same call and learning
+// nothing. It walks only the tool results, so an interleaved reasoning message cannot defeat it. Arguments are part of the
+// signature, and synthetic "_"-prefixed activities are skipped so an injected notice cannot mask the loop.
 func hasRepeatedResultRun(messages []conversation.Message) bool {
 	var signatures []string
 
@@ -286,14 +250,9 @@ func hasRepeatedResultRun(messages []conversation.Message) bool {
 	return true
 }
 
-// hasRepeatedMessageTextRun is the conversation-level adapter around
-// hasRepeatedTextRun. A fallback for a degenerate message that reached the
-// conversation despite the streaming guard.
-//
-// Reasoning and activity messages are exempt. The reasoning channel is the
-// model's scratchpad and activity carries tool output. Both are properly
-// repetitive - enumerations, grids, table rows - and neither is the answer the
-// user sees.
+// hasRepeatedMessageTextRun is the conversation-level fallback for a degenerate message that got past the streaming guard.
+// Reasoning and activity messages are exempt, since the scratchpad and tool output are properly repetitive (enumerations,
+// grids, table rows) and neither is the answer the user sees.
 func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
 	start := max(len(messages)-5, 0)
 
