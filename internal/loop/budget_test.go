@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -485,7 +485,7 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 	// The abort landed during a backoff wait, but the provider failure before it travels with it as
 	// evidence. A bare "context canceled" would discard the exchange the operator quit to read.
 	require.Error(t, result.Err, "want the last provider failure preserved")
-	assert.True(t, provider.IsProviderError(result.Err), "want the last provider failure preserved")
+	assert.True(t, failure.IsProviderError(result.Err), "want the last provider failure preserved")
 }
 
 // The default backoff must be a real pause. A zero default would silently

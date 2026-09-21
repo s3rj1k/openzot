@@ -14,6 +14,7 @@ import (
 	"charm.land/fantasy/schema"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/provider"
 )
 
@@ -383,7 +384,7 @@ func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]
 // NarrowWindow lowers the context window requests are held under after a provider rejected one as too long, and reports whether
 // it went down. The provider's stated window beats the configured one, since a rejection means the configured one was wrong.
 // Without a usable number the window steps down a quarter, to a floor. Only the window changes, not the conversation.
-func (e *Engine) NarrowWindow(limit provider.ContextLimit, emit func(Event)) bool {
+func (e *Engine) NarrowWindow(limit failure.ContextLimit, emit func(Event)) bool {
 	if limit.SuggestedLimit > 0 && limit.SuggestedLimit < e.Window {
 		e.Window = limit.SuggestedLimit
 
@@ -685,7 +686,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			// Remember the failure so an abort during the backoff still carries it. Only a provider error, so a
 			// bare cancellation does not overwrite the exchange worth keeping.
-			if provider.IsProviderError(err) {
+			if failure.IsProviderError(err) {
 				lastFailure = err
 			}
 
@@ -697,7 +698,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			// a context-limit rejection is recoverable. Narrow the window the
 			// thread is trimmed to and retry
-			if limit, ok := provider.DetectContextLimit(err); ok && e.canContinue(budget) {
+			if limit, ok := failure.DetectContextLimit(err); ok && e.canContinue(budget) {
 				budget.spendContinuation()
 
 				if e.NarrowWindow(limit, emit) {
@@ -707,9 +708,9 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 
 			// A rate limit is recoverable, on the provider's schedule, which is why 429 is not IsRetriable.
 			// Waiting out the advised delay is the other half. Without it one throttle response ends an overnight run.
-			limited := provider.IsRateLimited(err)
+			limited := failure.IsRateLimited(err)
 
-			if (limited || provider.IsRetriable(err)) && e.canContinue(budget) {
+			if (limited || failure.IsRetriable(err)) && e.canContinue(budget) {
 				budget.spendContinuation()
 
 				retries++
@@ -723,7 +724,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 				if limited {
 					// The advised delay is honored, but the backoff stays a floor under it, so "Retry-After: 0" cannot
 					// become the instant-retry loop the backoff exists to prevent.
-					advised, ok := provider.RetryAfter(err)
+					advised, ok := failure.RetryAfter(err)
 					delay = RateLimitWait(advised, ok, delay)
 				}
 
@@ -839,7 +840,7 @@ func (e *Engine) Run(ctx context.Context, watch func(Event)) Result {
 }
 
 // activityMessage renders one half of a tool-call pair.
-func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallContent, result any, failure string) conversation.Message {
+func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallContent, result any, problem string) conversation.Message {
 	activity := &conversation.Activity{
 		Kind:      kind,
 		ID:        call.ToolCallID,
@@ -849,7 +850,7 @@ func activityMessage(kind conversation.ActivityKind, call fantasy.ToolCallConten
 
 	if kind == conversation.ActivityResponse {
 		activity.Result = result
-		activity.Failure = failure
+		activity.Failure = problem
 	}
 
 	// the text is what the model is shown. A request shows nothing, because the

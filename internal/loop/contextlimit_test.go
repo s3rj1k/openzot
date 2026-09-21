@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
@@ -116,7 +117,7 @@ func TestNarrowingStopsAtTheFloor(t *testing.T) {
 	engine.Window = floor
 
 	// no stated window, so the only move is stepping the window down
-	assert.False(t, engine.NarrowWindow(provider.ContextLimit{}, func(loop.Event) {}), "the window narrowed to %d, below the %d floor", engine.Window, floor)
+	assert.False(t, engine.NarrowWindow(failure.ContextLimit{}, func(loop.Event) {}), "the window narrowed to %d, below the %d floor", engine.Window, floor)
 
 	assert.Equal(t, floor, engine.Window)
 }
@@ -128,7 +129,7 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Client: client})
 	require.NoError(t, err)
 
-	require.True(t, engine.NarrowWindow(provider.ContextLimit{}, func(loop.Event) {}))
+	require.True(t, engine.NarrowWindow(failure.ContextLimit{}, func(loop.Event) {}))
 
 	assert.Equal(t, 30_000, engine.Window)
 }

@@ -1,4 +1,6 @@
-package provider
+// Package failure classifies what went wrong talking to a model provider. It tells a transient failure from a fatal one,
+// finds a rate limit's wait and a context-length rejection in an error, and extracts the wire evidence for the log.
+package failure
 
 import (
 	"errors"
@@ -19,6 +21,10 @@ import (
 // developer dump wants the whole exchange, but capped so a pathological
 // request cannot pin arbitrary memory on the error that ends a run.
 const MaxDumpBody = 1 << 20 // 1 MiB
+
+// ErrStreamStalled is what a stream that went silent fails with. A sentinel, so the retry rules can recognize it by
+// type rather than by its wording.
+var ErrStreamStalled = errors.New("the stream stalled")
 
 // providerError is the error fantasy raises for anything an endpoint did wrong.
 func providerError(err error) (*fantasy.ProviderError, bool) {
@@ -211,9 +217,9 @@ func DetectContextLimit(err error) (ContextLimit, bool) {
 	return limit, true
 }
 
-// Failure is the wire evidence behind a provider rejection. It is recorded in the
+// Evidence is the wire evidence behind a provider rejection. It is recorded in the
 // session log as it is, so its JSON tags are the log's schema.
-type Failure struct {
+type Evidence struct {
 	// Status is the HTTP status of the rejection.
 	Status int `json:"status"`
 
@@ -248,14 +254,14 @@ func clip(s string, limit int) string {
 	return s
 }
 
-// FailureOf extracts the wire evidence from an error, when it carries any.
-func FailureOf(err error) *Failure {
+// EvidenceOf extracts the wire evidence from an error, when it carries any.
+func EvidenceOf(err error) *Evidence {
 	found, ok := providerError(err)
 	if !ok || found.StatusCode == 0 {
 		return nil
 	}
 
-	return &Failure{
+	return &Evidence{
 		Status:       found.StatusCode,
 		ResponseBody: clip(bodyOf(found.ResponseBody), MaxDumpBody),
 		RequestBytes: len(found.RequestBody),

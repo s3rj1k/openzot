@@ -1,13 +1,14 @@
 package provider
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/openzot/openzot/internal/failure"
 )
 
 // The bounds on a turn. None is a wall-clock cap on the exchange, on purpose, since http.Client.Timeout would kill a
@@ -82,10 +83,6 @@ func (t stallTransport) RoundTrip(request *http.Request) (*http.Response, error)
 	return response, nil
 }
 
-// ErrStreamStalled is what a stream that went silent fails with. A sentinel, so
-// the retry rules can recognize it by type rather than by its wording.
-var ErrStreamStalled = errors.New("the stream stalled")
-
 func (r *stallReader) didStall() bool {
 	r.mu.Lock()
 
@@ -102,7 +99,7 @@ func (r *stallReader) Read(p []byte) (int, error) {
 	}
 
 	if err != nil && r.didStall() {
-		return n, fmt.Errorf("%w: nothing arrived for %s", ErrStreamStalled, r.timeout)
+		return n, fmt.Errorf("%w: nothing arrived for %s", failure.ErrStreamStalled, r.timeout)
 	}
 
 	return n, err

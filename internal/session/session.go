@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/openzot/openzot/internal/conversation"
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/failure"
 )
 
 // Kind identifies a record.
@@ -87,7 +87,7 @@ type Result struct {
 
 	// The wire evidence behind Error when the failure was a provider response. An opaque upstream "ERROR"
 	// and a context-length message read the same in Error, but the rejected request's size tells them apart.
-	Failure *provider.Failure `json:"failure,omitempty"`
+	Failure *failure.Evidence `json:"failure,omitempty"`
 
 	Code int `json:"code"`
 

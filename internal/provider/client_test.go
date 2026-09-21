@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openzot/openzot/internal/failure"
 	"github.com/openzot/openzot/internal/provider"
 	"github.com/openzot/openzot/internal/testutils"
 )
@@ -155,8 +156,8 @@ func TestStreamSurfacesAnInBandErrorAsRetriable(t *testing.T) {
 
 	require.Error(t, result.err)
 
-	assert.True(t, provider.IsProviderError(result.err))
-	assert.True(t, provider.IsRetriable(result.err))
+	assert.True(t, failure.IsProviderError(result.err))
+	assert.True(t, failure.IsRetriable(result.err))
 }
 
 func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
@@ -169,7 +170,7 @@ func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
 	result := collect(client, hello())
 
 	require.Error(t, result.err, "want a retriable failure for a stream with no ending")
-	assert.True(t, provider.IsRetriable(result.err), "want a retriable failure for a stream with no ending")
+	assert.True(t, failure.IsRetriable(result.err), "want a retriable failure for a stream with no ending")
 }
 
 // A connection cut at each point of a turn - after a frame, before any response,
@@ -202,7 +203,7 @@ func TestACutConnectionIsRetriable(t *testing.T) {
 			err := collect(testutils.Serve(t, handler), hello()).err
 			require.Error(t, err, "a cut connection must surface as an error")
 
-			assert.True(t, provider.IsRetriable(err))
+			assert.True(t, failure.IsRetriable(err))
 		})
 	}
 }
@@ -236,15 +237,15 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 			err := collect(client, hello()).err
 			require.Error(t, err)
 
-			assert.Equal(t, test.retriable, provider.IsRetriable(err))
-			assert.Equal(t, test.limited, provider.IsRateLimited(err))
+			assert.Equal(t, test.retriable, failure.IsRetriable(err))
+			assert.Equal(t, test.limited, failure.IsRateLimited(err))
 
-			failure := provider.FailureOf(err)
-			assert.NotNil(t, failure)
-			assert.Equal(t, test.status, failure.Status)
+			evidence := failure.EvidenceOf(err)
+			assert.NotNil(t, evidence)
+			assert.Equal(t, test.status, evidence.Status)
 
 			if test.limited {
-				delay, ok := provider.RetryAfter(err)
+				delay, ok := failure.RetryAfter(err)
 				assert.True(t, ok)
 				assert.Equal(t, 7*time.Second, delay)
 			}
@@ -258,7 +259,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.","code":"context_length_exceeded"}}`)
 	})
 
-	limit, ok := provider.DetectContextLimit(collect(client, hello()).err)
+	limit, ok := failure.DetectContextLimit(collect(client, hello()).err)
 	assert.True(t, ok)
 	assert.Equal(t, 8192, limit.MaxTokens)
 }
@@ -591,7 +592,7 @@ func TestAStalledStreamFailsRetriably(t *testing.T) {
 	case result := <-done:
 		require.Error(t, result.err, "a stream that went silent must not hang forever")
 
-		assert.True(t, provider.IsRetriable(result.err), "a stalled stream should be retriable")
+		assert.True(t, failure.IsRetriable(result.err), "a stalled stream should be retriable")
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "a stream that went silent was never cut off")
 	}
