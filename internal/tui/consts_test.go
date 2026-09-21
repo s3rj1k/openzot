@@ -7,8 +7,5 @@ const (
 	litElapsed   = "elapsed"
 	litFailed    = "failed"
 	litShell     = "shell"
-	litSrvAPI    = "/srv/api"
-	litStdout    = "stdout"
-	litTasks     = "tasks"
 	litTestModel = "test-model"
 )

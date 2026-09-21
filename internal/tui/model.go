@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/render"
 )
 
 type Status int
@@ -83,7 +84,7 @@ const DefaultMaxScrollback = 5000
 func NewModel(task, modelName, provider, workdir string) *Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(colYellow)
+	sp.Style = lipgloss.NewStyle().Foreground(render.ColYellow)
 
 	return &Model{
 		Task:       task,
@@ -152,7 +153,7 @@ func (m *Model) wrapRecord(s string) string {
 		return strings.Join(rows, "\n")
 	}
 
-	return strings.Join(rows[:limit-1], "\n") + "\n" + outputStyle.Render("    …")
+	return strings.Join(rows[:limit-1], "\n") + "\n" + render.OutputStyle.Render("    …")
 }
 
 // Render pushes the current committed log plus any in-flight narration into the
@@ -164,7 +165,7 @@ func (m *Model) Render() {
 
 	body := m.CommittedWrapped
 	if m.Truncated {
-		marker := m.wrap(dividerStyle.Render("  ⋮ earlier activity trimmed — the full run is in the session log"))
+		marker := m.wrap(render.DividerStyle.Render("  ⋮ earlier activity trimmed — the full run is in the session log"))
 		if body != "" {
 			body = marker + "\n" + body
 		} else {
@@ -177,7 +178,7 @@ func (m *Model) Render() {
 			body += "\n"
 		}
 
-		body += m.wrapRecord(thoughtStyle.Render("  ◆ " + p))
+		body += m.wrapRecord(render.ThoughtStyle.Render("  ◆ " + p))
 	}
 
 	m.Viewport.SetContent(body)
@@ -238,7 +239,7 @@ func (m *Model) FlushPending() {
 		return
 	}
 
-	m.AppendEntry(thoughtStyle.Render("  ◆ " + text))
+	m.AppendEntry(render.ThoughtStyle.Render("  ◆ " + text))
 }
 
 // HandleEvent folds one event of the run into the UI state.
@@ -249,7 +250,7 @@ func (m *Model) HandleEvent(ev *loop.Event) {
 		m.FlushPending()
 		// A fixed short rule. One that fills the width would wrap at a narrow
 		// terminal and smear the divider across two rows.
-		m.AppendEntry(dividerStyle.Render(fmt.Sprintf("─── iteration %d ───", ev.Iteration)))
+		m.AppendEntry(render.DividerStyle.Render(fmt.Sprintf("─── iteration %d ───", ev.Iteration)))
 
 	case loop.EventToken:
 		m.pending += ev.Text
@@ -257,27 +258,27 @@ func (m *Model) HandleEvent(ev *loop.Event) {
 
 	case loop.EventToolCallStart:
 		m.FlushPending()
-		m.AppendEntry(RenderToolStart(ev.Tool, ev.Args))
+		m.AppendEntry(render.RenderToolStart(ev.Tool, ev.Args))
 
 	case loop.EventToolCallEnd:
-		if s := RenderToolEnd(ev.Tool, ev.Result); s != "" {
+		if s := render.RenderToolEnd(ev.Tool, ev.Result); s != "" {
 			m.AppendEntry(s)
 		}
 
 	case loop.EventToolCallError:
-		m.AppendEntry(errStyle.Render("    ✗ " + ev.Tool + ": " + ev.Text))
+		m.AppendEntry(render.ErrStyle.Render("    ✗ " + ev.Tool + ": " + ev.Text))
 
 	case loop.EventNotice:
 		// A corrective nudge (empty turn, truncation continuation, settle reminder). Without this line the
 		// recovery renders as bare iteration dividers, indistinguishable from a hang.
 		m.FlushPending()
-		m.AppendEntry(statusRunningStyle.Render("⚠ ") + metaStyle.Render(ev.Text))
+		m.AppendEntry(render.StatusRunningStyle.Render("⚠ ") + render.MetaStyle.Render(ev.Text))
 
 	case loop.EventRetry:
 		// A retried provider failure spends a continuation and waits out a backoff. Without this line the wait
 		// renders as empty iterations stacking up, so a surviving run looks like a hanging one.
 		m.FlushPending()
-		m.AppendEntry(statusRunningStyle.Render("↻ retrying") + "  " + metaStyle.Render(ev.Text))
+		m.AppendEntry(render.StatusRunningStyle.Render("↻ retrying") + "  " + render.MetaStyle.Render(ev.Text))
 
 	case loop.EventUsage:
 		// provider-reported cumulative token usage, shown in the meta bar
@@ -303,22 +304,22 @@ func (m *Model) Finish(result *loop.Result) {
 	switch {
 	case code == 0:
 		m.Status = StatusDone
-		m.AppendEntry("\n" + okStyle.Render("✓ done") + "  " + taskStyle.Render(result.Message))
+		m.AppendEntry("\n" + render.OkStyle.Render("✓ done") + "  " + render.TaskStyle.Render(result.Message))
 
 	case result.Reason == loop.StopFailed:
 		// the model reached a conclusion and the conclusion is "no" - an
 		// outcome, not a malfunction, so it does not get a process exit code
 		m.Status = StatusFailed
-		m.AppendEntry("\n" + errStyle.Render("✗ failed") + "  " + taskStyle.Render(result.Message))
+		m.AppendEntry("\n" + render.ErrStyle.Render("✗ failed") + "  " + render.TaskStyle.Render(result.Message))
 
 	default:
 		m.Status = StatusFailed
-		m.AppendEntry("\n" + errStyle.Render(fmt.Sprintf("✗ exited (code %d)", code)) + "  " + taskStyle.Render(result.Message))
+		m.AppendEntry("\n" + render.ErrStyle.Render(fmt.Sprintf("✗ exited (code %d)", code)) + "  " + render.TaskStyle.Render(result.Message))
 	}
 
 	if result.Err != nil && m.Err == nil {
 		m.Err = result.Err
-		m.AppendEntry(errStyle.Render("✗ " + result.Err.Error()))
+		m.AppendEntry(render.ErrStyle.Render("✗ " + result.Err.Error()))
 	}
 }
 
@@ -398,18 +399,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) Badge() string {
 	switch m.Status {
 	case StatusDone:
-		return statusDoneStyle.Render("✓ done")
+		return render.StatusDoneStyle.Render("✓ done")
 	case StatusFailed:
-		return statusFailStyle.Render("✗ failed")
+		return render.StatusFailStyle.Render("✗ failed")
 	default:
 		// Keep the spinner and label as separate same-color pieces. Nesting the
 		// spinner's own ANSI inside another style breaks the run of color.
-		return m.spinner.View() + statusRunningStyle.Render("working")
+		return m.spinner.View() + render.StatusRunningStyle.Render("working")
 	}
 }
 
 func (m *Model) TitleBar() string {
-	left := titleStyle.Render("✦ agent") + " " + m.Badge()
+	left := render.TitleStyle.Render("✦ agent") + " " + m.Badge()
 
 	room := m.Width - lipgloss.Width(left) - 2
 	if room < 8 {
@@ -422,7 +423,7 @@ func (m *Model) TitleBar() string {
 		label = m.Task
 	}
 
-	return left + " " + taskStyle.Render(Truncate(label, room))
+	return left + " " + render.TaskStyle.Render(render.Truncate(label, room))
 }
 
 // cell pads v on the right to at least width columns, so a value that changes length keeps the segments after it
@@ -435,28 +436,11 @@ func cell(v string, width int) string {
 	return v
 }
 
-// FmtTokens renders a token count compactly. 532, 45.2k, 1.2M.
-func FmtTokens(n int) string {
-	switch {
-	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-	case n >= 1_000:
-		return fmt.Sprintf("%.1fk", float64(n)/1_000)
-	default:
-		return strconv.Itoa(n)
-	}
-}
-
-func FmtDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	return fmt.Sprintf("%02d:%02d", int(d.Minutes()), int(d.Seconds())%60)
-}
-
 // MetaBar is the header, provider, model, iteration, elapsed time, tokens and directory, in that order. The bar drops
 // what does not fit, so what comes first survives a narrow terminal, and dir is last because it never changes.
 func (m *Model) MetaBar() string {
 	seg := func(k, v string, value lipgloss.Style) string {
-		return metaKey.Render(k+" ") + value.Render(v)
+		return render.MetaKey.Render(k+" ") + value.Render(v)
 	}
 
 	// iterations renders "n" or "n/max" when a limit is set, so progress against a
@@ -469,25 +453,25 @@ func (m *Model) MetaBar() string {
 		iterationsWidth = lipgloss.Width(fmt.Sprintf("%d/%d", m.MaxIterations, m.MaxIterations))
 	}
 
-	elapsed := FmtDuration(m.Elapsed)
+	elapsed := render.FmtDuration(m.Elapsed)
 	if m.MaxDuration > 0 {
-		elapsed += "/" + FmtDuration(m.MaxDuration)
+		elapsed += "/" + render.FmtDuration(m.MaxDuration)
 	}
 
 	// Live values sit in fixed-width cells (see cell) so a number gaining a digit does not shove every later
 	// segment sideways. A value that outgrows its cell renders whole, and the bar shifts once rather than clipping.
 	segments := []string{
-		seg("provider", m.provider, metaProvider),
-		seg("model", m.model, metaModel),
-		seg("iter", cell(iterations, iterationsWidth), metaCount),
-		seg("elapsed", elapsed, metaStyle),
-		seg("tokens", fmt.Sprintf("↑%s ↓%s", cell(FmtTokens(m.InputTokens), 6), cell(FmtTokens(m.OutputTokens), 6)), metaModel),
-		seg("dir", ShortPath(m.Workdir, 28), metaStyle),
+		seg("provider", m.provider, render.MetaProvider),
+		seg("model", m.model, render.MetaModel),
+		seg("iter", cell(iterations, iterationsWidth), render.MetaCount),
+		seg("elapsed", elapsed, render.MetaStyle),
+		seg("tokens", fmt.Sprintf("↑%s ↓%s", cell(render.FmtTokens(m.InputTokens), 6), cell(render.FmtTokens(m.OutputTokens), 6)), render.MetaModel),
+		seg("dir", render.ShortPath(m.Workdir, 28), render.MetaStyle),
 	}
 
 	// A segment is shown whole or not at all, since clipping left half-rendered segments ("elap", "tok") that
 	// read as a broken UI. The bar takes segments in order while they fit and stops at the first that does not.
-	separator := metaStyle.Render("  ·  ")
+	separator := render.MetaStyle.Render("  ·  ")
 	separatorWidth := lipgloss.Width(separator)
 
 	parts := make([]string, 0, len(segments))
@@ -515,16 +499,16 @@ func (m *Model) MetaBar() string {
 }
 
 func (m *Model) Footer() string {
-	hints := footerStyle.Render(
-		keyHint.Render("↑/↓") + " scroll  " +
-			keyHint.Render("g/G") + " top/bottom  " +
-			keyHint.Render("q") + " quit",
+	hints := render.FooterStyle.Render(
+		render.KeyHint.Render("↑/↓") + " scroll  " +
+			render.KeyHint.Render("g/G") + " top/bottom  " +
+			render.KeyHint.Render("q") + " quit",
 	)
 	if m.Status == StatusRunning {
 		return hints
 	}
 
-	tail := footerStyle.Render("  ·  press " + keyHint.Render("q") + " to exit")
+	tail := render.FooterStyle.Render("  ·  press " + render.KeyHint.Render("q") + " to exit")
 
 	return hints + tail
 }

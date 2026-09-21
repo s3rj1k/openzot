@@ -14,6 +14,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -198,26 +199,6 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 	}
 }
 
-func stripANSI(s string) string {
-	var (
-		builder strings.Builder
-		inEsc   bool
-	)
-
-	for _, r := range s {
-		switch {
-		case r == '\x1b':
-			inEsc = true
-		case inEsc && (r == 'm' || r == 'K'):
-			inEsc = false
-		case !inEsc:
-			builder.WriteRune(r)
-		}
-	}
-
-	return builder.String()
-}
-
 // A run the model declared a failure is not a crash and not a budget cut. It
 // reached a conclusion. Reporting it as "exited (code 1)" reads as a use
 // malfunction, which sends the operator looking in the wrong place.
@@ -226,7 +207,7 @@ func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 
 	m.Finish(&loop.Result{Reason: loop.StopFailed, Message: "cannot reach the host"})
 
-	log := stripANSI(strings.Join(m.Entries, "\n"))
+	log := testutils.StripANSI(strings.Join(m.Entries, "\n"))
 
 	assert.Contains(t, log, "cannot reach the host", "log %q should carry the model's stated reason", log)
 
@@ -397,60 +378,6 @@ func TestSpinnerStopsWhenTheRunEnds(t *testing.T) {
 	assert.Nil(t, cmd, "the clock must stop once the run has ended")
 }
 
-// The renderers have to know the real tool names. A mismatch is not a compile
-// error - it just renders the agent's most-used tool as an anonymous
-// key/value dump, which is how `shell` went unstyled.
-func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
-	tests := []struct {
-		tool string
-		args map[string]any
-		want string
-	}{
-		{litShell, map[string]any{"command": "go test ./..."}, "go test"},
-
-		// a caller's own tool still renders, just generically
-		{litCustom, map[string]any{"thing": "value"}, "thing=value"},
-	}
-
-	for _, test := range tests {
-		got := stripANSI(tui.RenderToolStart(test.tool, test.args))
-
-		assert.Contains(t, got, test.want)
-	}
-}
-
-// agent's tools return strings, so a summary that only understood maps rendered
-// nothing at all.
-func TestRenderToolEndHandlesStringResults(t *testing.T) {
-	tests := []struct {
-		name    string
-		tool    string
-		result  any
-		wantAny bool
-		want    string
-	}{
-		{"shell echoes its output", litShell, "hello\nworld", true, "hello"},
-		{"a silent command still confirms", litShell, "", true, litDone},
-		{"an unknown tool echoes", litCustom, "some output", true, "some output"},
-		{"an unknown tool with nothing to say", litCustom, "", false, ""},
-		{"a non-string, non-map result", litShell, 42, false, ""},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := stripANSI(tui.RenderToolEnd(test.tool, test.result))
-
-			if !test.wantAny {
-				assert.Empty(t, got)
-
-				return
-			}
-
-			assert.Contains(t, got, test.want)
-		})
-	}
-}
-
 // One record must not scroll the rest of the run off the screen. It is cut at a
 // third of the terminal's height, the last row an ellipsis.
 func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
@@ -464,7 +391,7 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: strings.Join(lines, "\n")})
 
-	rows := strings.Split(stripANSI(m.CommittedWrapped), "\n")
+	rows := strings.Split(testutils.StripANSI(m.CommittedWrapped), "\n")
 
 	require.Len(t, rows, 10, "the record took %d rows on a 30-row terminal, want 10", len(rows))
 
@@ -491,7 +418,7 @@ func TestARecordThatFitsIsNotClipped(t *testing.T) {
 
 	m.HandleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: "one\ntwo\nthree"})
 
-	got := stripANSI(m.CommittedWrapped)
+	got := testutils.StripANSI(m.CommittedWrapped)
 
 	assert.NotContains(t, got, "…", "a short record must be shown whole")
 	assert.Contains(t, got, "three", "a short record must be shown whole")
@@ -518,20 +445,6 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 	after := len(strings.Split(m.CommittedWrapped, "\n"))
 	assert.Equal(t, 20, after, "rows after growing the window = %d (was %d), want 20", after, before)
 	assert.Greater(t, after, before, "rows after growing the window = %d (was %d), want 20", after, before)
-}
-
-func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
-	failure := stripANSI(tui.RenderToolEnd(litShell, map[string]any{
-		"success": false,
-		"error":   "exit status 1",
-		"stderr":  "compile failed",
-	}))
-
-	assert.Contains(t, failure, "exit status 1")
-
-	success := stripANSI(tui.RenderToolEnd(litShell, map[string]any{litStdout: "all good"}))
-
-	assert.Contains(t, success, "all good", "structured output must surface")
 }
 
 // A key nobody bound must reach the viewport rather than being swallowed, and
@@ -588,22 +501,6 @@ func TestFooterAddsAnExitHintWhenTheRunIsOver(t *testing.T) {
 	assert.Contains(t, finished, "exit", "the finished footer must say how to leave")
 }
 
-func TestFormattedDuration(t *testing.T) {
-	tests := []struct {
-		duration time.Duration
-		want     string
-	}{
-		{duration: 0, want: "00:00"},
-		{duration: 45 * time.Second, want: "00:45"},
-		{duration: 90 * time.Second, want: "01:30"},
-		{duration: 61 * time.Minute, want: "61:00"},
-	}
-
-	for _, test := range tests {
-		assert.Equal(t, test.want, tui.FmtDuration(test.duration))
-	}
-}
-
 // The header has to survive a terminal too narrow for it. A run watched over a
 // phone-sized ssh session is still a run.
 func TestTitleBarSurvivesANarrowTerminal(t *testing.T) {
@@ -616,43 +513,6 @@ func TestTitleBarSurvivesANarrowTerminal(t *testing.T) {
 
 		assert.NotContains(t, title, "\n", "width %d wrapped the title bar", width)
 	}
-}
-
-func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
-	tests := []struct {
-		in   string
-		max  int
-		want string
-	}{
-		{in: "short", max: 10, want: "short"},
-		{in: "exactly-10", max: 10, want: "exactly-10"},
-		{in: "a longer string", max: 8, want: "a longe…"},
-		{in: "two\nlines", max: 20, want: "two lines"},
-		{in: "two\nlines here", max: 6, want: "two l…"},
-
-		// A task or tool argument in CJK or emoji was cut mid-rune, rendering a replacement character, and the cap
-		// counted bytes, so the line was cut far short of its width.
-		{in: "日本語のタスク説明文です", max: 6, want: "日本語のタ…"},
-		{in: "🚀🚀🚀🚀🚀", max: 3, want: "🚀🚀…"},
-		{in: "日本語", max: 10, want: "日本語"},
-	}
-
-	for _, test := range tests {
-		assert.Equal(t, test.want, tui.Truncate(test.in, test.max))
-	}
-}
-
-// A shell tool reports failure on stderr, and that is exactly the output an
-// operator reading a failed run needs to see.
-func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
-	assert.Contains(t, tui.CommandOutput(map[string]any{litStdout: "all good\n"}), "all good")
-
-	got := tui.CommandOutput(map[string]any{litStdout: "", "stderr": "permission denied\n"})
-
-	assert.Contains(t, got, "permission denied", "stderr was not rendered when stdout was empty")
-
-	got = tui.CommandOutput(map[string]any{})
-	assert.Empty(t, got, "a silent command rendered %q, want nothing", got)
 }
 
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
@@ -716,7 +576,7 @@ func TestMetaBarOrder(t *testing.T) {
 	m := sized(t, 400, 30)
 	m.Workdir = "/work/project"
 
-	bar := stripANSI(m.MetaBar())
+	bar := testutils.StripANSI(m.MetaBar())
 
 	last := -1
 
@@ -734,7 +594,7 @@ func TestMetaBarOrder(t *testing.T) {
 func metaSegments(bar string) []string {
 	var out []string
 
-	for part := range strings.SplitSeq(stripANSI(bar), "·") {
+	for part := range strings.SplitSeq(testutils.StripANSI(bar), "·") {
 		if part = strings.TrimSpace(part); part != "" {
 			out = append(out, part)
 		}
@@ -801,7 +661,7 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 func TestMetaBarIsEmptyWhenNothingFits(t *testing.T) {
 	m := sized(t, 3, 30)
 
-	assert.Empty(t, strings.TrimSpace(stripANSI(m.MetaBar())), "nothing fits at 3 columns, so nothing should be drawn")
+	assert.Empty(t, strings.TrimSpace(testutils.StripANSI(m.MetaBar())), "nothing fits at 3 columns, so nothing should be drawn")
 }
 
 // The header shows the provider-reported token usage, and progress against any
@@ -832,20 +692,6 @@ func TestHandleEventRecordsUsage(t *testing.T) {
 
 	assert.Equal(t, 1234, m.InputTokens, "usage not recorded: in=%d out=%d", m.InputTokens, m.OutputTokens)
 	assert.Equal(t, 567, m.OutputTokens, "usage not recorded: in=%d out=%d", m.InputTokens, m.OutputTokens)
-}
-
-func TestFmtTokens(t *testing.T) {
-	for _, tc := range []struct {
-		n    int
-		want string
-	}{
-		{0, "0"},
-		{532, "532"},
-		{45200, "45.2k"},
-		{1_200_000, "1.2M"},
-	} {
-		assert.Equal(t, tc.want, tui.FmtTokens(tc.n))
-	}
 }
 
 // The error behind a failed run is kept and shown - it is usually the run's only
@@ -890,7 +736,7 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	withTitle.Task = task
 	withTitle.Title = "Rate limiting"
 
-	bar := stripANSI(withTitle.TitleBar())
+	bar := testutils.StripANSI(withTitle.TitleBar())
 
 	assert.Contains(t, bar, "Rate limiting", "the title bar should show the title")
 
@@ -900,7 +746,7 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 	untitled := sized(t, 120, 30)
 	untitled.Task = task
 
-	assert.Contains(t, stripANSI(untitled.TitleBar()), "add rate limiting", "an untitled run must fall back to the task")
+	assert.Contains(t, testutils.StripANSI(untitled.TitleBar()), "add rate limiting", "an untitled run must fall back to the task")
 }
 
 // A live value growing a digit (nine iterations becoming ten, 999 tokens becoming 1.0k) must not shove later segments
@@ -940,66 +786,12 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 
 			test.before(m)
 
-			was := strings.Index(stripANSI(m.MetaBar()), test.next)
+			was := strings.Index(testutils.StripANSI(m.MetaBar()), test.next)
 
 			test.after(m)
 
-			now := strings.Index(stripANSI(m.MetaBar()), test.next)
-			assert.Equal(t, was, now, "the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.MetaBar()))
+			now := strings.Index(testutils.StripANSI(m.MetaBar()), test.next)
+			assert.Equal(t, was, now, "the change moved %q from column %d to %d:\n%q", test.next, was, now, testutils.StripANSI(m.MetaBar()))
 		})
-	}
-}
-
-// tasksArgs is the arguments of a tasks call as the model sends them.
-func tasksArgs(tasks ...[3]string) map[string]any {
-	list := make([]any, 0, len(tasks))
-
-	for _, task := range tasks {
-		entry := map[string]any{"title": task[0], "status": task[1]}
-
-		if task[2] != "" {
-			entry["note"] = task[2]
-		}
-
-		list = append(list, entry)
-	}
-
-	return map[string]any{litTasks: list}
-}
-
-// The task list is the one piece of the run worth reading in full, so it renders
-// as a checklist. What is done, what is under way, what is left, what is stuck.
-func TestRenderTasksShowsTheChecklist(t *testing.T) {
-	out := stripANSI(tui.RenderToolStart(litTasks, tasksArgs(
-		[3]string{"read the handler", litDone, ""},
-		[3]string{"add validation", "in_progress", "the error path is missing"},
-		[3]string{"write a test", "pending", ""},
-		[3]string{"deploy", "blocked", "needs credentials"},
-	)))
-
-	for _, want := range []string{
-		litTasks, "1/4 done",
-		"✓ read the handler", "▶ add validation", "· write a test", "✗ deploy",
-		"the error path is missing", "needs credentials",
-	} {
-		assert.Contains(t, out, want, "rendered tasks missing %q", want)
-	}
-}
-
-// A call the tool rejects - no tasks, an unknown status - still shows its header
-// rather than crashing the render, and draws nothing it cannot vouch for.
-func TestRenderTasksIsRobust(t *testing.T) {
-	for name, args := range map[string]map[string]any{
-		"no arguments":  {},
-		"an empty list": {litTasks: []any{}},
-		"a bad status":  tasksArgs([3]string{"a", "started", ""}),
-		"not a list":    {litTasks: "do it"},
-		"a non-object":  {litTasks: []any{"do it"}},
-	} {
-		out := stripANSI(tui.RenderToolStart(litTasks, args))
-
-		assert.Contains(t, out, litTasks, "%s: should still render a header", name)
-
-		assert.NotContains(t, out, litDone, "%s: a refused list must not report progress", name)
 	}
 }

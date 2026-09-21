@@ -1,4 +1,4 @@
-package tui
+package render
 
 import "github.com/charmbracelet/lipgloss"
 
@@ -11,49 +11,49 @@ var (
 	colFaint  = lipgloss.Color("#4A4A4A")
 	colGreen  = lipgloss.Color("#2DD4A7")
 	colRed    = lipgloss.Color("#FF5A5A")
-	colYellow = lipgloss.Color("#F2C94C")
+	ColYellow = lipgloss.Color("#F2C94C")
 	colCyan   = lipgloss.Color("#56C2FF")
 	colBlue   = lipgloss.Color("#5B8CFF")
 )
 
 var (
 	// Header.
-	titleStyle = lipgloss.NewStyle().
+	TitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#FFFFFF")).
 			Background(colAccent).
 			Padding(0, 1)
 
-	taskStyle = lipgloss.NewStyle().Foreground(colFg)
+	TaskStyle = lipgloss.NewStyle().Foreground(colFg)
 
-	metaStyle = lipgloss.NewStyle().Foreground(colDim)
-	metaKey   = lipgloss.NewStyle().Foreground(colFaint)
+	MetaStyle = lipgloss.NewStyle().Foreground(colDim)
+	MetaKey   = lipgloss.NewStyle().Foreground(colFaint)
 
 	// Meta-bar value colors. Fixed functional hues (not the brand accent), so the
 	// header carries color and stays scannable even under a neutral theme. The
 	// Model and provider are highlighted, the counters read by kind, and paths and
 	// timing stay muted.
-	metaModel    = lipgloss.NewStyle().Foreground(colCyan)
-	metaProvider = lipgloss.NewStyle().Foreground(colBlue)
-	metaCount    = lipgloss.NewStyle().Foreground(colFg)
+	MetaModel    = lipgloss.NewStyle().Foreground(colCyan)
+	MetaProvider = lipgloss.NewStyle().Foreground(colBlue)
+	MetaCount    = lipgloss.NewStyle().Foreground(colFg)
 
 	// Footer / hints.
-	footerStyle = lipgloss.NewStyle().Foreground(colDim)
-	keyHint     = lipgloss.NewStyle().Foreground(colCyan)
+	FooterStyle = lipgloss.NewStyle().Foreground(colDim)
+	KeyHint     = lipgloss.NewStyle().Foreground(colCyan)
 
 	// Status badges. Bold colored foreground (no background block) so the spinner
 	// and label read as one solid color - embedding the spinner's own ANSI inside
 	// a background style otherwise breaks the fill.
-	statusRunningStyle = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
-	statusDoneStyle    = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
-	statusFailStyle    = lipgloss.NewStyle().Bold(true).Foreground(colRed)
+	StatusRunningStyle = lipgloss.NewStyle().Bold(true).Foreground(ColYellow)
+	StatusDoneStyle    = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
+	StatusFailStyle    = lipgloss.NewStyle().Bold(true).Foreground(colRed)
 
 	// Activity log.
-	dividerStyle = lipgloss.NewStyle().Foreground(colFaint)
-	thoughtStyle = lipgloss.NewStyle().Foreground(colDim).Italic(true)
-	outputStyle  = lipgloss.NewStyle().Foreground(colFaint)
-	okStyle      = lipgloss.NewStyle().Foreground(colGreen)
-	errStyle     = lipgloss.NewStyle().Foreground(colRed)
+	DividerStyle = lipgloss.NewStyle().Foreground(colFaint)
+	ThoughtStyle = lipgloss.NewStyle().Foreground(colDim).Italic(true)
+	OutputStyle  = lipgloss.NewStyle().Foreground(colFaint)
+	OkStyle      = lipgloss.NewStyle().Foreground(colGreen)
+	ErrStyle     = lipgloss.NewStyle().Foreground(colRed)
 
 	// Per-tool accents so the eye can scan the stream.
 	toolExecStyle  = lipgloss.NewStyle().Foreground(colBlue)

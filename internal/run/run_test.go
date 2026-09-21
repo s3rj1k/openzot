@@ -1074,3 +1074,20 @@ func TestTheConfigAndTheEngineAgreeOnTheContextDefaults(t *testing.T) {
 	assert.Equal(t, loop.DefaultContextSoft, opts.ContextSoft, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
 	assert.Equal(t, loop.DefaultContextHard, opts.ContextHard, "a default config resolves to %d/%d, want the engine's %d/%d", opts.ContextSoft, opts.ContextHard, loop.DefaultContextSoft, loop.DefaultContextHard)
 }
+
+func TestDigestStatus(t *testing.T) {
+	cases := []struct {
+		reason string
+		code   int
+		want   string
+	}{
+		{string(loop.StopSettled), 0, litDone},
+		{string(loop.StopFailed), 1, litFailed},
+		{string(loop.StopAborted), 1, "canceled"},
+		{string(loop.StopIterations), 3, litFailed},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, run.DigestStatus(c.reason, c.code))
+	}
+}

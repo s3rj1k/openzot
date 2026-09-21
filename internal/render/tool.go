@@ -1,4 +1,4 @@
-package tui
+package render
 
 import (
 	"fmt"
@@ -15,13 +15,13 @@ import (
 func taskMarker(status plan.TaskStatus) string {
 	switch status {
 	case plan.TaskDone:
-		return okStyle.Render("✓")
+		return OkStyle.Render("✓")
 	case plan.TaskInProgress:
 		return toolOtherStyle.Render("▶")
 	case plan.TaskBlocked:
-		return errStyle.Render("✗")
+		return ErrStyle.Render("✗")
 	default:
-		return outputStyle.Render("·")
+		return OutputStyle.Render("·")
 	}
 }
 
@@ -30,11 +30,11 @@ func taskMarker(status plan.TaskStatus) string {
 func taskLineStyle(status plan.TaskStatus) lipgloss.Style {
 	switch status {
 	case plan.TaskDone:
-		return outputStyle
+		return OutputStyle
 	case plan.TaskBlocked:
-		return errStyle
+		return ErrStyle
 	default:
-		return taskStyle
+		return TaskStyle
 	}
 }
 
@@ -66,14 +66,14 @@ func renderTasks(args map[string]any) string {
 
 	var b strings.Builder
 
-	b.WriteString(head + outputStyle.Render(fmt.Sprintf("%d/%d done", plan.CountDone(tasks), len(tasks))))
+	b.WriteString(head + OutputStyle.Render(fmt.Sprintf("%d/%d done", plan.CountDone(tasks), len(tasks))))
 
 	for _, task := range tasks {
 		b.WriteString("\n    " + taskMarker(task.Status) + " ")
 		b.WriteString(taskLineStyle(task.Status).Render(Truncate(task.Title, 200)))
 
 		if task.Note != "" {
-			b.WriteString(outputStyle.Render(" - " + Truncate(task.Note, 160)))
+			b.WriteString(OutputStyle.Render(" - " + Truncate(task.Note, 160)))
 		}
 	}
 
@@ -111,11 +111,11 @@ func pad(s string, n int) string {
 func RenderToolStart(name string, args map[string]any) string {
 	switch name {
 	case "shell":
-		return toolExecStyle.Render("  shell  ") + taskStyle.Render(Truncate(str(args, "command"), 200))
+		return toolExecStyle.Render("  shell  ") + TaskStyle.Render(Truncate(str(args, "command"), 200))
 	case "tasks":
 		return renderTasks(args)
 	default:
-		return toolOtherStyle.Render("  "+pad(name, 6)+" ") + outputStyle.Render(compactArgs(args))
+		return toolOtherStyle.Render("  "+pad(name, 6)+" ") + OutputStyle.Render(compactArgs(args))
 	}
 }
 
@@ -132,7 +132,7 @@ func renderOutputLines(text string) string {
 			b.WriteString("\n")
 		}
 
-		b.WriteString(outputStyle.Render("    │ " + Truncate(l, 200)))
+		b.WriteString(OutputStyle.Render("    │ " + Truncate(l, 200)))
 	}
 
 	return b.String()
@@ -146,10 +146,10 @@ func renderTextResult(name, text string) string {
 	switch name {
 	case "shell":
 		if trimmed == "" {
-			return okStyle.Render("    ✓ done")
+			return OkStyle.Render("    ✓ done")
 		}
 
-		return okStyle.Render("    ✓ done") + "\n" + renderOutputLines(trimmed)
+		return OkStyle.Render("    ✓ done") + "\n" + renderOutputLines(trimmed)
 
 	default:
 		if trimmed == "" {
@@ -189,7 +189,7 @@ func RenderToolEnd(name string, result any) string {
 
 	if success, present := m["success"].(bool); present && !success {
 		if e := str(m, "error"); e != "" {
-			out := errStyle.Render("    ✗ " + Truncate(e, 200))
+			out := ErrStyle.Render("    ✗ " + Truncate(e, 200))
 			if tail := CommandOutput(m); tail != "" {
 				out += "\n" + tail
 			}
@@ -199,10 +199,10 @@ func RenderToolEnd(name string, result any) string {
 	}
 
 	if tail := CommandOutput(m); tail != "" {
-		return okStyle.Render("    ✓ done") + "\n" + tail
+		return OkStyle.Render("    ✓ done") + "\n" + tail
 	}
 
-	return okStyle.Render("    ✓ done")
+	return OkStyle.Render("    ✓ done")
 }
 
 // ShortPath fits a directory into limit columns from the right, since the informative end of a path is the last segment.

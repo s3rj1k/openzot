@@ -2,6 +2,8 @@ package run_test
 
 // The strings the tests of this package repeat.
 const (
+	litDone              = "done"
+	litFailed            = "failed"
 	litGlm52             = "glm-5.2"
 	litGpt4              = "gpt-4"
 	litGpt5              = "gpt-5"

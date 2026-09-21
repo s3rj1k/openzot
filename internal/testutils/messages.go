@@ -89,3 +89,20 @@ func TaskCall(tasks ...map[string]any) map[string]any {
 
 	return map[string]any{"tasks": list}
 }
+
+// TasksArgs is the arguments of a tasks call as the model sends them, each task a title, a status and an optional note.
+func TasksArgs(tasks ...[3]string) map[string]any {
+	list := make([]any, 0, len(tasks))
+
+	for _, task := range tasks {
+		entry := map[string]any{"title": task[0], "status": task[1]}
+
+		if task[2] != "" {
+			entry["note"] = task[2]
+		}
+
+		list = append(list, entry)
+	}
+
+	return map[string]any{"tasks": list}
+}

@@ -1,29 +1,12 @@
-package tui
+// Package render turns what a run does into text for the terminal. Tool calls and results, the token and time formats,
+// the end-of-run digest and the shared styles, none of it holding any state of the viewer.
+package render
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/openzot/openzot/internal/loop"
 )
-
-// DigestStatus maps a run's stop reason and exit code to the one human word a
-// digest shows. "done", "failed", or "canceled".
-func DigestStatus(reason string, code int) string {
-	switch reason {
-	case string(loop.StopAborted):
-		return "canceled"
-	case string(loop.StopFailed):
-		return "failed"
-	}
-
-	if code != 0 {
-		return "failed"
-	}
-
-	return "done"
-}
 
 // Digest is the compact end-of-run report printed after a run concludes. The viewer takes its stats with it when it
 // leaves the alternate screen, so this small fixed block survives on the main screen with what the run spent and where
