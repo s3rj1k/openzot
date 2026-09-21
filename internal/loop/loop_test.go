@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -17,81 +16,12 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // testWindow is the context window every test engine is given. A window is
 // required, and this one is large enough that no test trims by accident.
 const testWindow = 1_000_000
-
-// stub serves scripted turns over the OpenAI-compatible wire format, so the loop
-// can be driven without a model.
-func stub(t *testing.T, turns ...[]string) *provider.Client {
-	t.Helper()
-
-	turn := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		index := turn
-		if index >= len(turns) {
-			index = len(turns) - 1
-		}
-
-		turn++
-
-		for _, frame := range turns[index] {
-			fmt.Fprintf(w, "data: %s\n\n", frame)
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
-
-	return client
-}
-
-func text(s string) string {
-	return fmt.Sprintf(`{"choices":[{"delta":{"content":%q}}]}`, s)
-}
-
-func stop() string {
-	return `{"choices":[{"delta":{},"finish_reason":"stop"}]}`
-}
-
-func truncated() string {
-	return `{"choices":[{"delta":{},"finish_reason":"length"}]}`
-}
-
-// usageFrame is a final chunk carrying the provider's own token counts.
-func usageFrame(prompt, completion int) string {
-	return fmt.Sprintf(
-		`{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d}}`,
-		prompt, completion, prompt+completion,
-	)
-}
-
-func tool(id, name, arguments string) string {
-	return fmt.Sprintf(
-		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}]}`,
-		id, name, arguments,
-	)
-}
-
-// settle is a turn that ends the run. The model calls the success tool.
-func settle(summary string) string {
-	return tool("done", loop.SuccessTool, fmt.Sprintf(`{"summary":%q}`, summary))
-}
 
 func run(t *testing.T, options *loop.Options) loop.Result {
 	t.Helper()
@@ -139,7 +69,7 @@ func echoTool(calls *int) []fantasy.AgentTool {
 }
 
 func TestNewAppliesDefaults(t *testing.T) {
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	assert.Equal(t, loop.DefaultMaxIterations, engine.MaxIterations)
@@ -172,7 +102,7 @@ func TestIterationBudgetStopsTheRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", litEcho, `{}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c1", litEcho, `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 3,
@@ -191,7 +121,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", litEcho, `{}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c1", litEcho, `{}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxCalls:      2,
@@ -207,7 +137,7 @@ func TestCallBudgetStopsTheRun(t *testing.T) {
 func TestEmptyTurnsAreBounded(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{stop()}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxEmpties:    2,
 	})
@@ -220,9 +150,9 @@ func TestEmptyTurnsAreBounded(t *testing.T) {
 func TestTruncatedOutputIsContinued(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{text("half an answ"), truncated()},
-			[]string{settle("er, continued")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Text("half an answ"), testutils.Truncated()},
+			[]string{testutils.Settle("er, continued")},
 		),
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
@@ -247,7 +177,7 @@ func TestTruncatedOutputIsContinued(t *testing.T) {
 func TestTruncationIsBounded(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           stub(t, []string{text("x"), truncated()}),
+		Client:           testutils.ScriptedClient(t, []string{testutils.Text("x"), testutils.Truncated()}),
 		Messages:         []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxContinuations: 2,
 	})
@@ -260,7 +190,7 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", litEcho, `{"q":"same"}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c1", litEcho, `{"q":"same"}`)}),
 		Tools:         echoTool(&calls),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 50,
@@ -276,9 +206,9 @@ func TestRepeatedToolResultsTripTheCycleGuard(t *testing.T) {
 func TestSettleModeRequiresATerminalCall(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{text("All done, the task is completed."), stop()},
-			[]string{tool("c9", loop.SuccessTool, `{"summary":"really done"}`)},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Text("All done, the task is completed."), testutils.Stop()},
+			[]string{testutils.Tool("c9", loop.SuccessTool, `{"summary":"really done"}`)},
 		),
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles: 5,
@@ -294,7 +224,7 @@ func TestSettleModeRequiresATerminalCall(t *testing.T) {
 func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
@@ -309,14 +239,14 @@ func TestSettleModeFailureToolAlsoEnds(t *testing.T) {
 func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 	settled := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c1", loop.SuccessTool, `{"summary":"shipped it"}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c1", loop.SuccessTool, `{"summary":"shipped it"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
 
 	failed := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c9", loop.FailureTool, `{"reason":"cannot reach the host"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    5,
 	})
@@ -331,7 +261,7 @@ func TestTerminalToolsReportOppositeOutcomes(t *testing.T) {
 func TestSettleModeGivesUpEventually(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{text("I believe I am finished."), stop()}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Text("I believe I am finished."), testutils.Stop()}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxSettles:    2,
 	})
@@ -342,7 +272,7 @@ func TestSettleModeGivesUpEventually(t *testing.T) {
 func TestCancellationStopsTheRun(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{text("hi"), stop()}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Text("hi"), testutils.Stop()}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	require.NoError(t, err)
@@ -359,9 +289,9 @@ func TestCancellationStopsTheRun(t *testing.T) {
 func TestUnknownToolIsFedBackNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("c1", "missing", `{}`)},
-			[]string{settle("recovered")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("c1", "missing", `{}`)},
+			[]string{testutils.Settle("recovered")},
 		),
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
@@ -386,9 +316,9 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("c1", "boom", `{}`)},
-			[]string{settle("noted")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("c1", "boom", `{}`)},
+			[]string{testutils.Settle("noted")},
 		),
 		Tools:    tools,
 		Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -408,7 +338,7 @@ func TestToolErrorIsFedBackNotFatal(t *testing.T) {
 func TestEventsAreEmitted(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{text("hello"), tool("c1", loop.SuccessTool, `{"summary":"done"}`)}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Text("hello"), testutils.Tool("c1", loop.SuccessTool, `{"summary":"done"}`)}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 	})
 	require.NoError(t, err)
@@ -436,7 +366,7 @@ func TestEventsAreEmitted(t *testing.T) {
 func TestTheTerminalToolsAreAlwaysOffered(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{stop()}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
 		Tools:         []fantasy.AgentTool{namedTool(litEcho, nil)},
 	})
 	require.NoError(t, err)
@@ -462,7 +392,7 @@ func TestToolDefinitionsAreOrderedByName(t *testing.T) {
 		tools = append(tools, namedTool(name, nil))
 	}
 
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), Tools: tools})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), Tools: tools})
 	require.NoError(t, err)
 
 	for range 20 {
@@ -483,7 +413,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 
 	done := sync.OnceFunc(func() { close(canceled) })
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Raw(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		flusher, _ := w.(http.Flusher)
@@ -499,7 +429,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 			default:
 			}
 
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", text("the same sentence over and over again. ")); err != nil {
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", testutils.Text("the same sentence over and over again. ")); err != nil {
 				done()
 
 				return
@@ -509,17 +439,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 				flusher.Flush()
 			}
 		}
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	})).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
@@ -550,7 +470,7 @@ func TestAnAbandonedStreamIsCancelled(t *testing.T) {
 // take, and a serving endpoint's real ceiling can be smaller than any model's
 // card. Forgetting follows the window that was given.
 func TestTheWindowIsTheConfiguredOne(t *testing.T) {
-	engine, err := loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: 32_000})
+	engine, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: 32_000})
 	require.NoError(t, err)
 
 	assert.Equal(t, 32_000, engine.Window)
@@ -559,13 +479,13 @@ func TestTheWindowIsTheConfiguredOne(t *testing.T) {
 // The thresholds are the operator's, and zero means the default. Whether they
 // make sense together is the config's to say, so the engine takes what it is given.
 func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
-	engine, err := loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: 1000})
+	engine, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: 1000})
 	require.NoError(t, err)
 
 	assert.Equal(t, loop.DefaultContextSoft, engine.SoftPercent)
 	assert.Equal(t, loop.DefaultContextHard, engine.HardPercent)
 
-	engine, err = loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: 1000, ContextSoft: 30, ContextHard: 60})
+	engine, err = loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: 1000, ContextSoft: 30, ContextHard: 60})
 	require.NoError(t, err)
 
 	assert.Equal(t, 30, engine.SoftPercent)
@@ -575,7 +495,7 @@ func TestContextThresholdsDefaultWhenUnset(t *testing.T) {
 // A run with no window has nothing to decide how much of a conversation to keep,
 // and guessing one is exactly what the operator is asked not to leave to agent.
 func TestNewRefusesARunWithoutAWindow(t *testing.T) {
-	client := stub(t, []string{stop()})
+	client := testutils.ScriptedClient(t, []string{testutils.Stop()})
 
 	for _, window := range []int{0, -1} {
 		if _, err := loop.New(&loop.Options{Client: client, ContextWindow: window}); err == nil {
@@ -590,7 +510,7 @@ func TestNewRefusesARunWithoutAWindow(t *testing.T) {
 // wholesale by strict providers from then on. The request must always carry a user turn.
 func TestATrimmedThreadStillCarriesAUserTurn(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
-		Client: stub(t, []string{stop()}),
+		Client: testutils.ScriptedClient(t, []string{testutils.Stop()}),
 		// a window small enough that the oldest messages must be forgotten
 		ContextWindow: 20_000,
 	})
@@ -646,13 +566,13 @@ func TestTheTurnIsHandedOverBeforeItsToolRuns(t *testing.T) {
 	})}
 
 	run(t, &loop.Options{
-		Client: stub(t,
+		Client: testutils.ScriptedClient(t,
 			[]string{
 				`{"choices":[{"delta":{"reasoning_content":"the file is probably in src"}}]}`,
-				text("looking"),
-				tool("c1", litEcho, "{}"),
+				testutils.Text("looking"),
+				testutils.Tool("c1", litEcho, "{}"),
 			},
-			[]string{settle("done")},
+			[]string{testutils.Settle("done")},
 		),
 		Tools:         tools,
 		ContextWindow: testWindow,

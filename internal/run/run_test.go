@@ -4,15 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,16 +120,7 @@ func testDefaults() *config.Config {
 func stubProvider(t *testing.T) *config.Config {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
+	server := testutils.Script(t, testutils.Frames(testutils.Settle("all done")))
 
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -187,35 +173,11 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	testutils.Write(t, filepath.Join(skillsDir, "deploy", "SKILL.md"),
 		"---\nname: deploy\ndescription: LISTING-MARKER\n---\n# Deploy\n\nINSTRUCTIONS-MARKER\n")
 
-	var (
-		requests atomic.Int32
-		bodies   = make(chan string, 8)
+	server := testutils.Script(t,
+		testutils.Frames(testutils.Tool("c", "skills", `{}`)),
+		testutils.Frames(testutils.Tool("c", "skills", `{"name":"deploy"}`)),
+		testutils.Frames(testutils.Settle("complete")),
 	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		body, _ := io.ReadAll(r.Body)
-		bodies <- string(body)
-
-		var call string
-
-		switch requests.Add(1) {
-		case 1:
-			call = `{"name":"skills","arguments":"{}"}`
-		case 2:
-			call = `{"name":"skills","arguments":"{\"name\":\"deploy\"}"}`
-		default:
-			call = `{"name":"success","arguments":"{\"summary\":\"complete\"}"}`
-		}
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","type":"function","function":`+call+`}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
 
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -234,12 +196,7 @@ func TestTheModelListsAndReadsASkill(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	close(bodies)
-
-	var all []string
-	for body := range bodies {
-		all = append(all, body)
-	}
+	all := server.Bodies()
 
 	require.Len(t, all, 3, "want list, read, settle")
 
@@ -283,23 +240,7 @@ func TestCredentialResolution(t *testing.T) {
 				t.Setenv(key, value)
 			}
 
-			seen := make(chan string, 1)
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				select {
-				case seen <- r.Header.Get("Authorization"):
-				default:
-				}
-
-				w.Header().Set("Content-Type", "text/event-stream")
-
-				fmt.Fprintf(w, "data: %s\n\n",
-					`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-				fmt.Fprint(w, "data: [DONE]\n\n")
-			}))
-
-			defer server.Close()
+			server := testutils.Script(t, testutils.Frames(testutils.Settle("done")))
 
 			path := testutils.WriteConfig(t, fmt.Sprintf(`
 agent:
@@ -321,12 +262,10 @@ provider:
 			})
 			require.NoError(t, err)
 
-			select {
-			case got := <-seen:
-				assert.Equal(t, test.want, got)
-			default:
-				require.FailNow(t, "the provider was never called")
-			}
+			calls := server.Calls()
+			require.NotEmpty(t, calls, "the provider was never called")
+
+			assert.Equal(t, test.want, calls[0].Header.Get("Authorization"))
 		})
 	}
 }
@@ -346,37 +285,7 @@ func TestContentArrayReachesTheWire(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			t.Setenv("AGENT_CONFIG", "")
 
-			seen := make(chan []json.RawMessage, 1)
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var body struct {
-					Messages []struct {
-						Content json.RawMessage `json:"content"`
-					} `json:"messages"`
-				}
-
-				_ = json.NewDecoder(r.Body).Decode(&body)
-
-				contents := make([]json.RawMessage, 0, len(body.Messages))
-
-				for _, message := range body.Messages {
-					contents = append(contents, message.Content)
-				}
-
-				select {
-				case seen <- contents:
-				default:
-				}
-
-				w.Header().Set("Content-Type", "text/event-stream")
-
-				fmt.Fprintf(w, "data: %s\n\n",
-					`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-				fmt.Fprint(w, "data: [DONE]\n\n")
-			}))
-
-			defer server.Close()
+			server := testutils.Script(t, testutils.Frames(testutils.Settle("done")))
 
 			path := testutils.WriteConfig(t, fmt.Sprintf(`
 prompt: '{{ .Objective }}'
@@ -399,15 +308,20 @@ provider:
 			})
 			require.NoError(t, err)
 
-			select {
-			case contents := <-seen:
-				require.GreaterOrEqual(t, len(contents), 2, "want the system prompt and the task")
+			bodies := server.Bodies()
+			require.NotEmpty(t, bodies, "the provider was never called")
 
-				for i, content := range contents {
-					assert.True(t, strings.HasPrefix(string(content), test.want), "message %d", i)
-				}
-			default:
-				require.FailNow(t, "the provider was never called")
+			var body struct {
+				Messages []struct {
+					Content json.RawMessage `json:"content"`
+				} `json:"messages"`
+			}
+
+			require.NoError(t, json.Unmarshal([]byte(bodies[0]), &body))
+			require.GreaterOrEqual(t, len(body.Messages), 2, "want the system prompt and the task")
+
+			for i, message := range body.Messages {
+				assert.True(t, strings.HasPrefix(string(message.Content), test.want), "message %d", i)
 			}
 		})
 	}
@@ -605,34 +519,10 @@ func TestTheViewerShowsTheIterationLimitTheRunEnforces(t *testing.T) {
 // transcript back. The tests' stand-in viewer prints what the run said, which is
 // what can be asserted on without a terminal.
 func TestRunTaskEndToEnd(t *testing.T) {
-	turn := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		frames := [][]string{
-			{
-				`{"choices":[{"delta":{"content":"working on it"}}]}`,
-				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
-			},
-			{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`},
-		}
-
-		index := turn
-		if index >= len(frames) {
-			index = len(frames) - 1
-		}
-
-		turn++
-
-		for _, frame := range frames[index] {
-			fmt.Fprintf(w, "data: %s\n\n", frame)
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t,
+		testutils.Frames(testutils.Text("working on it"), testutils.Stop()),
+		testutils.Frames(testutils.Settle("all done")),
+	)
 
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -779,27 +669,13 @@ func TestTheLogHoldsReasoningBeforeItsToolFinishes(t *testing.T) {
 	command, err := json.Marshal(map[string]string{"command": "cp " + path + " " + snapshot})
 	require.NoError(t, err)
 
-	call, err := json.Marshal(string(command))
-	require.NoError(t, err)
-
-	turn := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		turn++
-
-		if turn == 1 {
-			fmt.Fprint(w, `data: {"choices":[{"delta":{"reasoning_content":"copy the log while the shell runs"}}]}`+"\n\n")
-			fmt.Fprintf(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"shell","arguments":%s}}]},"finish_reason":"tool_calls"}]}`+"\n\n", call)
-		} else {
-			fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
+	server := testutils.Script(t,
+		testutils.Frames(
+			`{"choices":[{"delta":{"reasoning_content":"copy the log while the shell runs"}}]}`,
+			testutils.Tool("c1", "shell", string(command)),
+		),
+		testutils.Frames(testutils.Settle("all done")),
+	)
 
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -858,12 +734,9 @@ func TestPrintDigestNamesTheSessionLog(t *testing.T) {
 // A run that cannot be recorded is rejected before the provider is asked
 // anything. Its log is its record and its agent's long-term memory.
 func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
-	var asked atomic.Int32
-
 	cfg := stubProvider(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { asked.Add(1) }))
-	t.Cleanup(server.Close)
+	server := testutils.Script(t, testutils.Frames())
 
 	cfg.Provider.BaseURL = server.URL
 
@@ -880,7 +753,7 @@ func TestARunWithAnUnwritableSessionLogIsRefused(t *testing.T) {
 	require.Error(t, err, "err = %v, want the unwritable log refused and named\n%s", err, output)
 	require.Contains(t, err.Error(), "session log", "err = %v, want the unwritable log refused and named\n%s", err, output)
 
-	assert.EqualValues(t, 0, asked.Load(), "the provider was asked something before the log was known to work")
+	assert.Equal(t, 0, server.Requests(), "the provider was asked something before the log was known to work")
 }
 
 // There is no run without a log. The caller must say where it goes.
@@ -1135,25 +1008,7 @@ func TestTheStarterPromptForbidsWaitingForTheUser(t *testing.T) {
 
 // The prompt is the config's and agent adds no instructions to it, so the system message is what its template renders to.
 func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
-	bodies := make(chan string, 1)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		body, _ := io.ReadAll(r.Body)
-
-		select {
-		case bodies <- string(body):
-		default:
-		}
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"all done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
+	server := testutils.Script(t, testutils.Frames(testutils.Settle("all done")))
 
 	cfg := stubProvider(t)
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -1164,7 +1019,10 @@ func TestTheAgentIsToldWhatTheConfigsPromptRendersTo(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	body := <-bodies
+	bodies := server.Bodies()
+	require.NotEmpty(t, bodies)
+
+	body := bodies[0]
 
 	assert.Contains(t, body, `{"content":"You are a haiku bot. Write only haiku about the sea.","role":"system"}`, "want the rendered prompt as the whole system message")
 }
@@ -1250,28 +1108,7 @@ func TestToolOutputIsCappedAtAShareOfTheWindow(t *testing.T) {
 // The session log is the agent's long-term memory, so the prompt a run really
 // sends says where it is.
 func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
-	var (
-		mu     sync.Mutex
-		bodies []string
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-
-		mu.Lock()
-
-		bodies = append(bodies, string(body))
-		mu.Unlock()
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"done\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
+	server := testutils.Script(t, testutils.Frames(testutils.Settle("done")))
 
 	cfg := testDefaults()
 	cfg.Provider = config.ProviderConfig{BaseURL: server.URL, APIKey: "k", Models: declared(litGlm52)}
@@ -1284,8 +1121,7 @@ func TestTheRunTellsTheAgentWhereItsLogIs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	mu.Lock()
-	defer mu.Unlock()
+	bodies := server.Bodies()
 
 	require.Len(t, bodies, 1, "the provider saw %d requests, want 1", len(bodies))
 

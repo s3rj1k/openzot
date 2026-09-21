@@ -1,10 +1,8 @@
 package loop_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // The context-limit recovery path. A provider rejecting an oversized prompt is
@@ -22,43 +21,15 @@ import (
 
 // contextLimitOnce rejects the first request with a context-length error and
 // serves a normal turn afterwards.
-func contextLimitOnce(t *testing.T) (*provider.Client, *int) {
+func contextLimitOnce(t *testing.T) (*provider.Client, func() int) {
 	t.Helper()
 
-	requests := 0
+	server := testutils.Script(t,
+		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"This model's maximum context length is 8192 tokens, however you requested 9000"}}`),
+		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"recovered"}`)),
+	)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-
-		if requests == 1 {
-			w.WriteHeader(http.StatusBadRequest)
-
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				litError: map[string]any{
-					litMessage: "This model's maximum context length is 8192 tokens, however you requested 9000",
-				},
-			})
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"recovered\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
-
-	return client, &requests
+	return server.Client(t), server.Requests
 }
 
 // longConversation builds enough history to be worth trimming.
@@ -98,7 +69,7 @@ func TestContextLimitNarrowsTheBudgetAndRetries(t *testing.T) {
 
 	require.Equal(t, loop.StopSettled, result.Reason, "want the run to recover and stop normally")
 
-	assert.GreaterOrEqual(t, *requests, 2, "the request was not retried after the rejection (%d requests)", *requests)
+	assert.GreaterOrEqual(t, requests(), 2, "the request was not retried after the rejection (%d requests)", requests())
 
 	assert.Equal(t, 1, result.Budget.Recoveries, "want the rejection to count as one")
 
@@ -165,23 +136,7 @@ func TestNarrowingWithoutAStatedWindowStepsDown(t *testing.T) {
 // A context limit that persists is eventually a real failure rather than an
 // infinite retry loop.
 func TestPersistentContextLimitGivesUp(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			litError: map[string]any{litMessage: "maximum context length exceeded"},
-		})
-	}))
-
-	defer server.Close()
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusBadRequest, `{"error":{"message":"maximum context length exceeded"}}`)).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow:    testWindow,
@@ -202,34 +157,10 @@ func TestPersistentContextLimitGivesUp(t *testing.T) {
 
 // A transient provider failure is retried rather than ending the run.
 func TestRetriableProviderErrorIsRetried(t *testing.T) {
-	requests := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-
-		if requests == 1 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-
-			fmt.Fprint(w, `{"error":{"message":"Service temporarily unavailable"}}`)
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"second time lucky\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusServiceUnavailable, `{"error":{"message":"Service temporarily unavailable"}}`),
+		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"second time lucky"}`)),
+	).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
@@ -255,21 +186,7 @@ func TestRetriableProviderErrorIsRetried(t *testing.T) {
 // A 4xx that is not a context limit is terminal. Retrying a bad key or a missing
 // model only burns the budget.
 func TestNonRetriableErrorEndsTheRun(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-
-		fmt.Fprint(w, `{"error":{"message":"invalid api key"}}`)
-	}))
-
-	defer server.Close()
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusUnauthorized, `{"error":{"message":"invalid api key"}}`)).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
@@ -289,38 +206,10 @@ func TestNonRetriableErrorEndsTheRun(t *testing.T) {
 // truth in a way the configured window may not be, so the retry budgets against it
 // rather than guessing again.
 func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
-	requests := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-
-		if requests == 1 {
-			w.WriteHeader(http.StatusBadRequest)
-
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				litError: map[string]any{
-					litMessage: "This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens.",
-				},
-			})
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"fits now\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 40000 tokens."}}`),
+		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"fits now"}`)),
+	).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
@@ -339,35 +228,10 @@ func TestContextLimitAdoptsTheProviderStatedWindow(t *testing.T) {
 
 // A rejection with no number still recovers, using the engine's own estimate.
 func TestContextLimitWithoutANumberStillRecovers(t *testing.T) {
-	requests := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-
-		if requests == 1 {
-			w.WriteHeader(http.StatusBadRequest)
-
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				litError: map[string]any{litMessage: "prompt is too long"},
-			})
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprint(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"ok\"}"}}]},"finish_reason":"tool_calls"}]}`+"\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
-
-	client, _ := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusBadRequest, `{"error":{"message":"prompt is too long"}}`),
+		testutils.Frames(testutils.Tool("d", loop.SuccessTool, `{"summary":"ok"}`)),
+	).Client(t)
 
 	engine, err := loop.New(&loop.Options{ContextWindow: 40_000, Client: client, Messages: longConversation(40)})
 	require.NoError(t, err)

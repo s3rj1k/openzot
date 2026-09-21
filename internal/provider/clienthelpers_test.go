@@ -2,61 +2,13 @@ package provider_test
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
-	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/provider"
 )
-
-// serve stands up a fake endpoint and a client pointed at it.
-func serve(t *testing.T, handler http.HandlerFunc, tweak ...func(*provider.ClientConfig)) *provider.Client {
-	t.Helper()
-
-	server := httptest.NewServer(handler)
-
-	t.Cleanup(server.Close)
-
-	config := provider.ClientConfig{Provider: "test", Model: litTestModel, APIKey: "test-key", BaseURL: server.URL}
-
-	for _, change := range tweak {
-		change(&config)
-	}
-
-	client, err := provider.NewClient(t.Context(), config)
-	require.NoError(t, err)
-
-	return client
-}
-
-// sse renders frames as an event stream, one blank line between events.
-func sse(lines ...string) string {
-	var body strings.Builder
-
-	for _, line := range lines {
-		body.WriteString("data: " + line + "\n\n")
-	}
-
-	body.WriteString("data: [DONE]\n\n")
-
-	return body.String()
-}
-
-// frames serves a fixed SSE body, closed the way a real server closes it.
-func frames(t *testing.T, lines ...string) *provider.Client {
-	t.Helper()
-
-	return serve(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		_, _ = w.Write([]byte(sse(lines...)))
-	})
-}
 
 // turn is what one model call produced.
 type turn struct {

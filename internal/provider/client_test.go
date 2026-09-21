@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // wireRequest is what a fake endpoint saw.
@@ -43,7 +44,7 @@ func (r *wireRequest) capture(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 
-	fmt.Fprint(w, sse(`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`))
+	fmt.Fprint(w, testutils.SSE(`{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`))
 }
 
 func (r *wireRequest) messages() []map[string]any {
@@ -62,7 +63,7 @@ func (r *wireRequest) messages() []map[string]any {
 }
 
 func TestStreamAssemblesText(t *testing.T) {
-	result := collect(frames(t,
+	result := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"content":"Hel"}}]}`,
 		`{"choices":[{"delta":{"content":"lo"},"finish_reason":"stop"}]}`,
 	), hello())
@@ -74,7 +75,7 @@ func TestStreamAssemblesText(t *testing.T) {
 }
 
 func TestStreamAssemblesFragmentedParallelToolCalls(t *testing.T) {
-	result := collect(frames(t,
+	result := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"shell","arguments":"{\"cmd\":"}}]}}]}`,
 		`{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"b","type":"function","function":{"name":"read","arguments":"{\"path\":\"x\"}"}}]}}]}`,
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"pwd\"}"}}]},"finish_reason":"tool_calls"}]}`,
@@ -96,7 +97,7 @@ func TestStreamAssemblesFragmentedParallelToolCalls(t *testing.T) {
 
 // A model calling a tool with no parameters often sends "" for the arguments.
 func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
-	result := collect(frames(t,
+	result := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"list","arguments":""}}]},"finish_reason":"tool_calls"}]}`,
 	), hello())
 
@@ -108,7 +109,7 @@ func TestAToolCallWithEmptyArgumentsIsAnEmptyObject(t *testing.T) {
 // A turn cut off at the output limit mid tool call must not dispatch the half
 // call, and must say it was cut off so the loop can ask for the rest.
 func TestATruncatedTurnReportsLengthAndDropsTheHalfCall(t *testing.T) {
-	result := collect(frames(t,
+	result := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"content":"partial"}}]}`,
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"shell","arguments":"{\"cmd\":\"l"}}]},"finish_reason":"length"}]}`,
 	), hello())
@@ -120,7 +121,7 @@ func TestATruncatedTurnReportsLengthAndDropsTheHalfCall(t *testing.T) {
 
 func TestStreamAcceptsBothReasoningFields(t *testing.T) {
 	for field, want := range map[string]string{"reasoning_content": "thought one", "reasoning": "thought two"} {
-		result := collect(frames(t,
+		result := collect(testutils.Canned(t,
 			fmt.Sprintf(`{"choices":[{"delta":{%q:%q}}]}`, field, want),
 			`{"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}`,
 		), hello())
@@ -132,7 +133,7 @@ func TestStreamAcceptsBothReasoningFields(t *testing.T) {
 
 func TestStreamCapturesUsage(t *testing.T) {
 	// the shape real servers send. A trailing chunk with no choices
-	trailing := collect(frames(t,
+	trailing := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}`,
 		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}`,
 	), hello())
@@ -141,7 +142,7 @@ func TestStreamCapturesUsage(t *testing.T) {
 	assert.EqualValues(t, 3, trailing.usage.OutputTokens)
 
 	// a server may leave the total out, and the counts are still real
-	noTotal := collect(frames(t,
+	noTotal := collect(testutils.Canned(t,
 		`{"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1234,"completion_tokens":56}}`,
 	), hello())
 
@@ -150,7 +151,7 @@ func TestStreamCapturesUsage(t *testing.T) {
 }
 
 func TestStreamSurfacesAnInBandErrorAsRetriable(t *testing.T) {
-	result := collect(frames(t, `{"error":{"message":"upstream exploded","type":"server_error"}}`), hello())
+	result := collect(testutils.Canned(t, `{"error":{"message":"upstream exploded","type":"server_error"}}`), hello())
 
 	require.Error(t, result.err)
 
@@ -159,7 +160,7 @@ func TestStreamSurfacesAnInBandErrorAsRetriable(t *testing.T) {
 }
 
 func TestAStreamThatEndsUnfinishedIsRetriable(t *testing.T) {
-	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"cut"}}]}`+"\n\n")
@@ -198,7 +199,7 @@ func TestACutConnectionIsRetriable(t *testing.T) {
 
 	for name, handler := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := collect(serve(t, handler), hello()).err
+			err := collect(testutils.Serve(t, handler), hello()).err
 			require.Error(t, err, "a cut connection must surface as an error")
 
 			assert.True(t, provider.IsRetriable(err))
@@ -223,7 +224,7 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+			client := testutils.Serve(t, func(w http.ResponseWriter, _ *http.Request) {
 				if test.header != "" {
 					w.Header().Set("Retry-After", test.header)
 				}
@@ -252,7 +253,7 @@ func TestStreamClassifiesHTTPErrors(t *testing.T) {
 }
 
 func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
-	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = io.WriteString(w, `{"error":{"message":"This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.","code":"context_length_exceeded"}}`)
 	})
@@ -267,7 +268,7 @@ func TestAContextOverflowIsRecognisedFromTheWire(t *testing.T) {
 func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 	var seen wireRequest
 
-	client := serve(t, seen.capture)
+	client := testutils.Serve(t, seen.capture)
 
 	call := &fantasy.Call{
 		Prompt:          fantasy.Prompt{fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi")},
@@ -301,7 +302,7 @@ func TestStreamSendsTheRequestAsConfigured(t *testing.T) {
 func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" })
+	client := testutils.Serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" })
 
 	collect(client, &fantasy.Call{Prompt: hello().Prompt, MaxOutputTokens: new(int64(64))})
 
@@ -314,7 +315,7 @@ func TestTheLimitIsMaxTokensEvenForAReasoningModelName(t *testing.T) {
 func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 	var seen wireRequest
 
-	collect(serve(t, seen.capture), hello())
+	collect(testutils.Serve(t, seen.capture), hello())
 
 	for _, field := range []string{"max_tokens", "max_completion_tokens"} {
 		_, present := seen.body[field]
@@ -327,7 +328,7 @@ func TestStreamOmitsTheLimitWhenUnset(t *testing.T) {
 func TestAHostedModelNameDoesNotSelectAnotherWireFormat(t *testing.T) {
 	var seen wireRequest
 
-	collect(serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" }), hello())
+	collect(testutils.Serve(t, seen.capture, func(c *provider.ClientConfig) { c.Model = "gpt-5.4" }), hello())
 
 	assert.Equal(t, "/chat/completions", seen.path, "want chat-completions for any model name")
 }
@@ -348,7 +349,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 	for _, contentArray := range []bool{false, true} {
 		var seen wireRequest
 
-		client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = contentArray })
+		client := testutils.Serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = contentArray })
 
 		collect(client, &fantasy.Call{Prompt: prompt})
 
@@ -373,7 +374,7 @@ func TestAnEmptyToolResultStillCarriesContent(t *testing.T) {
 func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 	var seen wireRequest
 
-	collect(serve(t, seen.capture), &fantasy.Call{Prompt: fantasy.Prompt{
+	collect(testutils.Serve(t, seen.capture), &fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
 	}})
 
@@ -386,7 +387,7 @@ func TestContentIsAStringUnlessAnArrayIsAskedFor(t *testing.T) {
 func TestContentArrayWrapsEveryMessageInParts(t *testing.T) {
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = true })
+	client := testutils.Serve(t, seen.capture, func(c *provider.ClientConfig) { c.ContentArray = true })
 
 	collect(client, &fantasy.Call{Prompt: fantasy.Prompt{
 		fantasy.NewSystemMessage("be brief"), fantasy.NewUserMessage("hi"),
@@ -415,7 +416,7 @@ func TestNoAmbientCredentialReachesTheWire(t *testing.T) {
 
 	var seen wireRequest
 
-	client := serve(t, seen.capture, func(c *provider.ClientConfig) { c.APIKey = "" })
+	client := testutils.Serve(t, seen.capture, func(c *provider.ClientConfig) { c.APIKey = "" })
 
 	// loopback, so no key is required, and none may be invented
 	require.NoError(t, collect(client, hello()).err)
@@ -430,13 +431,13 @@ func TestAConfiguredKeyIsNotReplacedByTheEnvironment(t *testing.T) {
 
 	var seen wireRequest
 
-	collect(serve(t, seen.capture), hello())
+	collect(testutils.Serve(t, seen.capture), hello())
 
 	assert.Equal(t, "Bearer test-key", seen.headers.Get("Authorization"), "want the configured key")
 }
 
 func TestClientExposesItsResolvedConfig(t *testing.T) {
-	client := serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *provider.ClientConfig) { c.BaseURL += "/" })
+	client := testutils.Serve(t, func(http.ResponseWriter, *http.Request) {}, func(c *provider.ClientConfig) { c.BaseURL += "/" })
 
 	config := client.Config()
 
@@ -452,7 +453,7 @@ func TestNewRefusesAnInvalidConfig(t *testing.T) {
 func TestStreamCancellationStopsTheTurn(t *testing.T) {
 	release := make(chan struct{})
 
-	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"x"}}]}`+"\n\n")
@@ -495,7 +496,7 @@ func TestStreamCancellationStopsTheTurn(t *testing.T) {
 func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 	released := make(chan struct{})
 
-	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		for {
@@ -539,7 +540,7 @@ func TestAnAbandonedStreamReleasesItsConnection(t *testing.T) {
 func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 	withStallTimeout(t, 300*time.Millisecond)
 
-	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		for range 20 {
@@ -550,7 +551,7 @@ func TestASlowButProgressingStreamIsNotCutOff(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}
 
-		fmt.Fprint(w, sse(`{"choices":[{"delta":{},"finish_reason":"stop"}]}`))
+		fmt.Fprint(w, testutils.SSE(`{"choices":[{"delta":{},"finish_reason":"stop"}]}`))
 	})
 
 	result := collect(client, hello())
@@ -567,7 +568,7 @@ func TestAStalledStreamFailsRetriably(t *testing.T) {
 
 	hang := make(chan struct{})
 
-	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"x"}}]}`+"\n\n")
@@ -603,7 +604,7 @@ func TestAnErrorResponseWithAStalledBodyDoesNotWedge(t *testing.T) {
 
 	hang := make(chan struct{})
 
-	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 
 		w.(http.Flusher).Flush()

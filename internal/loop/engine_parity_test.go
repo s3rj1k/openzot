@@ -10,13 +10,14 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // The cycle budget counts CONSECUTIVE cyclic rounds. A clean round between
 // must reset it, so two unrelated repetitions far apart in a long run do not add
 // up to a false StopCycle. (Regressed once. The counter never reset.)
 func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	budget := &loop.Budget{}
@@ -53,7 +54,7 @@ func TestCycleCounterResetsWhenACycleBreaks(t *testing.T) {
 // call (writing a big file) must be counted, or a request the estimate thinks fits gets rejected by the provider.
 func TestBuildRequestCountsToolCallArgumentsInTheWindow(t *testing.T) {
 	// a window the huge call alone overflows, and the two recent turns fit in
-	engine, err := loop.New(&loop.Options{ContextWindow: 8000, Client: stub(t, []string{stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: 8000, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	// varied text so BPE cannot merge it away - this must really exceed the
@@ -97,7 +98,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 	// empty budget is tighter than the settle budget
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{stop()}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
 		MaxSettles:    5,
 		MaxEmpties:    2,
 	})
@@ -124,7 +125,7 @@ func TestSettleModeEmptyTurnIsBoundedButNudgesToSettle(t *testing.T) {
 // so a viewer or the session summary can show real usage. Each call bills its
 // whole prompt, so per-turn counts sum.
 func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
-	client := stub(t, []string{settle("all done"), usageFrame(100, 40)})
+	client := testutils.ScriptedClient(t, []string{testutils.Settle("all done"), testutils.Usage(100, 40)})
 
 	result := run(t, &loop.Options{ContextWindow: testWindow, Client: client})
 
@@ -137,12 +138,12 @@ func TestRunAccumulatesProviderReportedUsage(t *testing.T) {
 func TestEmptyCounterResetsAfterAProductiveTurn(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{stop()},                        // empty. 1/3
-			[]string{tool("call_1", litEcho, "{}")}, // productive - resets
-			[]string{stop()},                        // empty. 1/3 again
-			[]string{tool("call_2", litEcho, "{}")}, // productive - resets
-			[]string{settle("done")},                // settling ends the run
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Stop()},                        // empty. 1/3
+			[]string{testutils.Tool("call_1", litEcho, "{}")}, // productive - resets
+			[]string{testutils.Stop()},                        // empty. 1/3 again
+			[]string{testutils.Tool("call_2", litEcho, "{}")}, // productive - resets
+			[]string{testutils.Settle("done")},                // settling ends the run
 		),
 		Tools:      echoTool(new(int)),
 		Messages:   []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},

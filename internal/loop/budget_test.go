@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // Budget semantics. The budgets look interchangeable and are not. Iterations count every trip round the loop and
@@ -33,7 +32,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
 		// a stub that calls a tool forever
-		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxDuration:   time.Millisecond,
 		MaxIterations: 100000, // high, so time is what stops it, not iterations
@@ -50,7 +49,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 func TestTimeIsUnboundedByDefault(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{settle("done")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("done")}),
 		MaxIterations: 5,
 	})
 
@@ -63,10 +62,10 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("call_1", litEcho, "{}")},
-			[]string{tool("call_2", litEcho, "{}")},
-			[]string{settle("done")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("call_1", litEcho, "{}")},
+			[]string{testutils.Tool("call_2", litEcho, "{}")},
+			[]string{testutils.Settle("done")},
 		),
 		Tools:            echoTool(&calls),
 		MaxIterations:    10,
@@ -85,9 +84,9 @@ func TestToolRoundsDoNotSpendTheContinuationBudget(t *testing.T) {
 func TestTruncationSpendsTheContinuationBudget(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{text("half an ans"), truncated()},
-			[]string{settle("wer")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Text("half an ans"), testutils.Truncated()},
+			[]string{testutils.Settle("wer")},
 		),
 		MaxIterations: 10,
 	})
@@ -103,7 +102,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	// tool calls forever, with a continuation budget of one
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           stub(t, []string{tool("call_1", litEcho, "{}")}),
+		Client:           testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:            echoTool(&calls),
 		MaxIterations:    4,
 		MaxContinuations: 1,
@@ -117,7 +116,7 @@ func TestTheTwoBudgetsAreIndependent(t *testing.T) {
 	// and the other way round. Truncated forever, with plenty of iterations
 	result = run(t, &loop.Options{
 		ContextWindow:    testWindow,
-		Client:           stub(t, []string{text("more"), truncated()}),
+		Client:           testutils.ScriptedClient(t, []string{testutils.Text("more"), testutils.Truncated()}),
 		MaxIterations:    50,
 		MaxContinuations: 3,
 	})
@@ -138,16 +137,16 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 	}{
 		{
 			name:  "tool rounds",
-			turns: [][]string{{tool("call_1", litEcho, "{}")}},
+			turns: [][]string{{testutils.Tool("call_1", litEcho, "{}")}},
 			tools: echoTool(new(int)),
 		},
 		{
 			name:  "truncation retries",
-			turns: [][]string{{text("more"), truncated()}},
+			turns: [][]string{{testutils.Text("more"), testutils.Truncated()}},
 		},
 		{
 			name:  "empty turns",
-			turns: [][]string{{stop()}},
+			turns: [][]string{{testutils.Stop()}},
 		},
 	}
 
@@ -155,7 +154,7 @@ func TestEveryKindOfRoundCostsAnIteration(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result := run(t, &loop.Options{
 				ContextWindow:    testWindow,
-				Client:           stub(t, test.turns...),
+				Client:           testutils.ScriptedClient(t, test.turns...),
 				Tools:            test.tools,
 				MaxIterations:    3,
 				MaxCalls:         100,
@@ -177,7 +176,7 @@ func TestASingleIterationIsOneModelCall(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 1,
 		MaxCycles:     1000,
@@ -196,7 +195,7 @@ func TestBudgetDefaults(t *testing.T) {
 	for _, value := range []int{0, -1, -1000} {
 		engine, err := loop.New(&loop.Options{
 			ContextWindow: testWindow,
-			Client:        stub(t, []string{stop()}),
+			Client:        testutils.ScriptedClient(t, []string{testutils.Stop()}),
 			MaxCalls:      value,
 			MaxIterations: value,
 			MaxCycles:     value,
@@ -223,7 +222,7 @@ func TestADeepRunDoesNotGrowTheStack(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{tool("call_1", litEcho, "{}")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("call_1", litEcho, "{}")}),
 		Tools:         echoTool(&calls),
 		MaxIterations: 500,
 		MaxCalls:      500,
@@ -260,9 +259,9 @@ func TestMalformedArgumentsReachTheModelNotTheHandler(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("call_1", litEcho, `not json at all`)},
-			[]string{settle("let me try that again")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("call_1", litEcho, `not json at all`)},
+			[]string{testutils.Settle("let me try that again")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -289,9 +288,9 @@ func TestSlightlyMalformedArgumentsAreRepairedAndRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("call_1", litEcho, `{"value": "abc`)},
-			[]string{settle("done")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("call_1", litEcho, `{"value": "abc`)},
+			[]string{testutils.Settle("done")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -324,9 +323,9 @@ func TestAFailingToolIsReportedAndTheRunContinues(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("call_1", litEcho, "{}")},
-			[]string{settle("understood")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("call_1", litEcho, "{}")},
+			[]string{testutils.Settle("understood")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -368,9 +367,9 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{tool("call_1", litEcho, "{}")},
-			[]string{settle("done")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Tool("call_1", litEcho, "{}")},
+			[]string{testutils.Settle("done")},
 		),
 		Tools:         tools,
 		MaxIterations: 5,
@@ -387,12 +386,12 @@ func TestAHandlerReturningNothingStillAnswersTheCall(t *testing.T) {
 func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
+		Client: testutils.ScriptedClient(t,
 			[]string{
-				text("I cannot help with that"),
+				testutils.Text("I cannot help with that"),
 				`{"choices":[{"delta":{},"finish_reason":"content_filter"}]}`,
 			},
-			[]string{settle("stopped")},
+			[]string{testutils.Settle("stopped")},
 		),
 		MaxIterations: 5,
 	})
@@ -410,7 +409,7 @@ func TestAnUnrecognisedFinishReasonIsNotFatal(t *testing.T) {
 func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t, []string{
+		Client: testutils.ScriptedClient(t, []string{
 			`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
 		}),
 		MaxIterations: 3,
@@ -425,19 +424,7 @@ func TestAToolCallFinishWithNoCallsIsNotFatal(t *testing.T) {
 // A retriable provider failure has to be waited out, not hammered. Retrying instantly spends the whole continuation budget
 // inside one outage in a few milliseconds, so a run dies to a blip that a short pause would have outlived.
 func TestRetriableFailuresAreSpacedOut(t *testing.T) {
-	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-
-	t.Cleanup(failing.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  failing.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
 
 	started := time.Now()
 
@@ -469,19 +456,7 @@ func TestRetriableFailuresAreSpacedOut(t *testing.T) {
 // Canceling a run must cut a backoff short rather than making the caller wait
 // out a pause that no longer has a retry at the end of it.
 func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
-	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-
-	t.Cleanup(failing.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  failing.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow:    testWindow,
@@ -517,13 +492,13 @@ func TestBackoffEndsWhenTheRunIsCancelled(t *testing.T) {
 // restore the tight retry loop. Asserted on the constructed engine because
 // reaching it behaviourally costs a second of wall clock per retry.
 func TestRetryBackoffDefaultsToARealPause(t *testing.T) {
-	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: stub(t, []string{stop()})})
+	engine, err := loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()})})
 	require.NoError(t, err)
 
 	assert.Positive(t, engine.RetryBackoff, "want a positive pause")
 
 	// and a caller can still opt out, which is what keeps these tests fast
-	engine, err = loop.New(&loop.Options{ContextWindow: testWindow, Client: stub(t, []string{stop()}), RetryBackoff: -1})
+	engine, err = loop.New(&loop.Options{ContextWindow: testWindow, Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), RetryBackoff: -1})
 	require.NoError(t, err)
 
 	got := loop.BackoffFor(engine.RetryBackoff, 1)
@@ -557,39 +532,10 @@ func TestBackoffDoublesAndIsCapped(t *testing.T) {
 // A rate limit must not kill a run. 429 is excluded from IsRetriable because it needs the provider's own schedule, but with
 // nothing waiting on it the loop fell through to StopError, so one throttle response ended an overnight run.
 func TestARateLimitIsWaitedOutRatherThanFatal(t *testing.T) {
-	var (
-		mu    sync.Mutex
-		calls int
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		calls++
-		first := calls == 1
-		mu.Unlock()
-
-		if first {
-			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprint(w, `{"error":{"message":"slow down"}}`)
-
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "data: %s\n\n", tool("c1", loop.SuccessTool, `{"summary":"done anyway"}`))
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusTooManyRequests, `{"error":{"message":"slow down"}}`).WithHeader("Retry-After", "1"),
+		testutils.Frames(testutils.Tool("c1", loop.SuccessTool, `{"summary":"done anyway"}`)),
+	).Client(t)
 
 	started := time.Now()
 
@@ -637,21 +583,9 @@ func TestAZeroRetryAfterIsFlooredByTheBackoff(t *testing.T) {
 // retries out on the backoff schedule rather than burning the continuation
 // budget in milliseconds.
 func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Retry-After", "0")
-		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprint(w, `{"error":{"message":"slow down"}}`)
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusTooManyRequests, `{"error":{"message":"slow down"}}`).WithHeader("Retry-After", "0"),
+	).Client(t)
 
 	started := time.Now()
 
@@ -678,48 +612,14 @@ func TestRepeated429WithZeroRetryAfterStillBacksOff(t *testing.T) {
 // The backoff paces consecutive failures. Once a turn succeeds the outage is over, and the next blip, hours later, must
 // start again from the base delay rather than wherever the last outage left the schedule.
 func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
-	var (
-		mu       sync.Mutex
-		requests int
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		requests++
-		request := requests
-		mu.Unlock()
-
-		switch request {
-		case 1, 2:
-			// a two-deep outage. Retries wait base, then 2x base
-			w.WriteHeader(http.StatusInternalServerError)
-
-		case 3:
-			// a successful tool round - the outage is over
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", tool("c1", litEcho, `{}`))
-			fmt.Fprint(w, "data: [DONE]\n\n")
-
-		case 4:
-			// a fresh, unrelated blip. It must wait base again, not 4x base
-			w.WriteHeader(http.StatusInternalServerError)
-
-		default:
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", tool("c2", loop.SuccessTool, `{"summary":"done"}`))
-			fmt.Fprint(w, "data: [DONE]\n\n")
-		}
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	// a two-deep outage waits base, then 2x base. A successful tool round ends it, and a fresh, unrelated
+	// blip must then wait base again, not 4x base
+	client := testutils.Script(t,
+		testutils.Reject(http.StatusInternalServerError, ""), testutils.Reject(http.StatusInternalServerError, ""),
+		testutils.Frames(testutils.Tool("c1", litEcho, `{}`)),
+		testutils.Reject(http.StatusInternalServerError, ""),
+		testutils.Frames(testutils.Tool("c2", loop.SuccessTool, `{"summary":"done"}`)),
+	).Client(t)
 
 	calls := 0
 
@@ -756,45 +656,15 @@ func TestBackoffRestartsAfterASuccessfulTurn(t *testing.T) {
 // The consecutive-failure counter is the backoff's own, not the continuation budget, which truncation recoveries and
 // context-limit retries also spend. Keying the backoff off it started an unrelated first blip at 8x base.
 func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
-	var (
-		mu       sync.Mutex
-		requests int
-	)
+	// three truncated answers each spend a continuation and none is a failure. The run's first retriable
+	// failure must then wait base, not 8x base
+	truncatedTurn := testutils.Frames(testutils.Text("more to say"), testutils.Truncated())
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		requests++
-		request := requests
-		mu.Unlock()
-
-		switch request {
-		case 1, 2, 3:
-			// truncated answers. Each spends a continuation, none is a failure
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", text("more to say"))
-			fmt.Fprintf(w, "data: %s\n\n", truncated())
-			fmt.Fprint(w, "data: [DONE]\n\n")
-
-		case 4:
-			// the run's first retriable failure. It must wait base, not 8x base
-			w.WriteHeader(http.StatusInternalServerError)
-
-		default:
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprintf(w, "data: %s\n\n", settle("done"))
-			fmt.Fprint(w, "data: [DONE]\n\n")
-		}
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t,
+		truncatedTurn, truncatedTurn, truncatedTurn,
+		testutils.Reject(http.StatusInternalServerError, ""),
+		testutils.Frames(testutils.Settle("done")),
+	).Client(t)
 
 	base := 300 * time.Millisecond
 
@@ -829,9 +699,9 @@ func TestOtherContinuationsDoNotEscalateTheBackoff(t *testing.T) {
 func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{stop()},
-			[]string{settle("recovered")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.Stop()},
+			[]string{testutils.Settle("recovered")},
 		),
 		MaxIterations: 5,
 		MaxEmpties:    3,
@@ -863,45 +733,18 @@ func TestAnEmptyTurnEmitsAVisibleNotice(t *testing.T) {
 // The continuation bound asks whether this run can get going again, not how much has gone wrong since it started. Blips that
 // were each recovered from prove nothing, and a run working for hours must not be ended by its twenty-first.
 func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
-	var (
-		mu       sync.Mutex
-		requests int
-	)
-
 	// alternating. Blip, good turn, blip, good turn... six blips in all, well
 	// past a continuation budget of two, none of them consecutive
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		requests++
-		request := requests
-		mu.Unlock()
-
-		if request%2 == 1 && request <= 11 {
-			w.WriteHeader(http.StatusInternalServerError)
-
-			return
+	client := testutils.NewServer(t, func(request int, _ string) testutils.Turn {
+		switch {
+		case request%2 == 1 && request <= 11:
+			return testutils.Reject(http.StatusInternalServerError, "")
+		case request <= 11:
+			return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
+		default:
+			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
 		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		if request <= 11 {
-			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
-		} else {
-			fmt.Fprintf(w, "data: %s\n\n", tool("done", loop.SuccessTool, `{"summary":"done"}`))
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	}).Client(t)
 
 	calls := 0
 
@@ -929,19 +772,7 @@ func TestRecoveredBlipsDoNotAddUp(t *testing.T) {
 // The other side of the reset. Consecutive failures still end the run, and at
 // the bound rather than somewhere past it.
 func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, "")).Client(t)
 
 	result := run(t, &loop.Options{
 		ContextWindow:    testWindow,
@@ -961,39 +792,15 @@ func TestConsecutiveFailuresStillEndTheRun(t *testing.T) {
 // while the run spends its life retrying, so the tally has to end it. Iterations are set far above the recovery bound to
 // make it unambiguous which one fired.
 func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
-	var (
-		mu       sync.Mutex
-		requests int
-	)
-
 	// every odd request fails. Every even one is an empty-ish tool round that
 	// resets the consecutive count. This never settles on its own.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		requests++
-		request := requests
-		mu.Unlock()
-
+	client := testutils.NewServer(t, func(request int, _ string) testutils.Turn {
 		if request%2 == 1 {
-			w.WriteHeader(http.StatusInternalServerError)
-
-			return
+			return testutils.Reject(http.StatusInternalServerError, "")
 		}
 
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+		return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
+	}).Client(t)
 
 	calls := 0
 
@@ -1026,44 +833,17 @@ func TestAChronicallyFailingProviderIsCalledBroken(t *testing.T) {
 // The recovery bound is absolute rather than a multiple of MaxContinuations. Tying them would let a caller who lowers the
 // consecutive bound to fail fast silently lower the total too, and a long healthy run would die of scattered recovered blips.
 func TestALowConsecutiveBoundDoesNotShrinkTheRecoveryBound(t *testing.T) {
-	var (
-		mu       sync.Mutex
-		requests int
-	)
-
 	// blip, good turn, blip, good turn ... twenty blips, none consecutive
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		requests++
-		request := requests
-		mu.Unlock()
-
-		if request%2 == 1 && request <= 39 {
-			w.WriteHeader(http.StatusInternalServerError)
-
-			return
+	client := testutils.NewServer(t, func(request int, _ string) testutils.Turn {
+		switch {
+		case request%2 == 1 && request <= 39:
+			return testutils.Reject(http.StatusInternalServerError, "")
+		case request <= 39:
+			return testutils.Frames(testutils.Tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
+		default:
+			return testutils.Frames(testutils.Tool("done", loop.SuccessTool, `{"summary":"done"}`))
 		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		if request <= 39 {
-			fmt.Fprintf(w, "data: %s\n\n", tool(fmt.Sprintf("c%d", request), litEcho, `{}`))
-		} else {
-			fmt.Fprintf(w, "data: %s\n\n", tool("done", loop.SuccessTool, `{"summary":"done"}`))
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	}).Client(t)
 
 	calls := 0
 

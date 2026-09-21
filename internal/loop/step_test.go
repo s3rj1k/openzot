@@ -3,9 +3,6 @@ package loop_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -16,22 +13,8 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 )
-
-// toolCalls is one model turn asking for several tools at once, finishing with
-// the given reason.
-func toolCalls(finish string, calls ...[3]string) string {
-	parts := make([]string, len(calls))
-
-	for i, call := range calls {
-		parts[i] = fmt.Sprintf(
-			`{"index":%d,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}`,
-			i, call[0], call[1], call[2])
-	}
-
-	return `{"choices":[{"delta":{"tool_calls":[` + strings.Join(parts, ",") +
-		`]},"finish_reason":` + fmt.Sprintf("%q", finish) + `}]}`
-}
 
 func countTool(calls *int) fantasy.AgentTool {
 	return namedTool(litEcho, func(context.Context) (any, error) {
@@ -49,7 +32,7 @@ func TestATerminalCallEndsTheRunBeforeItsSiblingsRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t, []string{toolCalls("tool_calls",
+		Client: testutils.ScriptedClient(t, []string{testutils.ToolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
 			[3]string{"c2", loop.SuccessTool, `{"summary":"all done"}`},
 		)}),
@@ -75,7 +58,7 @@ func TestTheCallBudgetStopsBeforeTheCallThatOverrunsIt(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t, []string{toolCalls("tool_calls",
+		Client: testutils.ScriptedClient(t, []string{testutils.ToolCalls("tool_calls",
 			[3]string{"c1", litEcho, `{}`},
 			[3]string{"c2", litEcho, `{}`},
 		)}),
@@ -101,9 +84,9 @@ func TestToolCallsAreRunWhateverTheProviderCalledTheEnding(t *testing.T) {
 
 		result := run(t, &loop.Options{
 			ContextWindow: testWindow,
-			Client: stub(t,
-				[]string{toolCalls(finish, [3]string{"c1", litEcho, `{}`})},
-				[]string{settle("done")},
+			Client: testutils.ScriptedClient(t,
+				[]string{testutils.ToolCalls(finish, [3]string{"c1", litEcho, `{}`})},
+				[]string{testutils.Settle("done")},
 			),
 			Tools:         []fantasy.AgentTool{countTool(&ran)},
 			Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -123,9 +106,9 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{toolCalls("length", [3]string{"c1", litEcho, `{}`})},
-			[]string{settle("done")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.ToolCalls("length", [3]string{"c1", litEcho, `{}`})},
+			[]string{testutils.Settle("done")},
 		),
 		Tools:         []fantasy.AgentTool{countTool(&ran)},
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
@@ -143,7 +126,7 @@ func TestACallFromATruncatedTurnIsNeverRun(t *testing.T) {
 func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{settle("carrying on")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("carrying on")}),
 		Messages: []conversation.Message{
 			{Type: conversation.TypeUser, Text: "go"},
 			{Type: conversation.TypeBot, Text: "I began"},
@@ -159,9 +142,9 @@ func TestAConversationEndingOnTheModelsWordsStillRuns(t *testing.T) {
 func TestACallThatNeverReachedATool(t *testing.T) {
 	result := run(t, &loop.Options{
 		ContextWindow: testWindow,
-		Client: stub(t,
-			[]string{toolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
-			[]string{settle("noted")},
+		Client: testutils.ScriptedClient(t,
+			[]string{testutils.ToolCalls("tool_calls", [3]string{"c1", "missing", `{}`})},
+			[]string{testutils.Settle("noted")},
 		),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		MaxIterations: 5,
@@ -195,9 +178,9 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 
 			result := run(t, &loop.Options{
 				ContextWindow: testWindow,
-				Client: stub(t,
-					[]string{toolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
-					[]string{settle("done")},
+				Client: testutils.ScriptedClient(t,
+					[]string{testutils.ToolCalls("tool_calls", [3]string{"c1", litEcho, unfinished})},
+					[]string{testutils.Settle("done")},
 				),
 				Tools:         []fantasy.AgentTool{countTool(&ran)},
 				Unrepaired:    test.unrepaired,
@@ -217,29 +200,16 @@ func TestAToolThatIsNeverRepairedRefusesAnUnfinishedCall(t *testing.T) {
 func bodyOfTheFirstRequest(t *testing.T, tweak func(*provider.ClientConfig)) map[string]any {
 	t.Helper()
 
+	server := testutils.Script(t, testutils.Frames(testutils.Text("hi"), testutils.Stop()))
+
+	run(t, &loop.Options{ContextWindow: testWindow, Client: server.Client(t, tweak), Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
+
+	bodies := server.Bodies()
+	require.NotEmpty(t, bodies, "the server saw no request")
+
 	var body map[string]any
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if body == nil {
-			_ = json.NewDecoder(r.Body).Decode(&body)
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprint(w, "data: "+text("hi")+"\n\ndata: "+stop()+"\n\ndata: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	config := provider.ClientConfig{Provider: litCustom, Model: litTestModel, APIKey: "k", BaseURL: server.URL}
-	tweak(&config)
-
-	client, err := provider.NewClient(t.Context(), config)
-	require.NoError(t, err)
-
-	run(t, &loop.Options{ContextWindow: testWindow, Client: client, Messages: []conversation.Message{{Type: conversation.TypeUser, Text: "go"}}})
-
-	require.NotNil(t, body, "the server saw no request")
+	require.NoError(t, json.Unmarshal([]byte(bodies[0]), &body))
 
 	return body
 }
@@ -283,7 +253,7 @@ func TestOnEventSeesTheWholeRunAlongsideTheWatcher(t *testing.T) {
 
 	engine, err := loop.New(&loop.Options{
 		ContextWindow: testWindow,
-		Client:        stub(t, []string{settle("hi")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Settle("hi")}),
 		Messages:      []conversation.Message{{Type: conversation.TypeUser, Text: "go"}},
 		OnEvent:       func(event loop.Event) { sunk = append(sunk, event.Kind) },
 	})

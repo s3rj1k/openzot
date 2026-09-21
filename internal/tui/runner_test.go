@@ -2,10 +2,8 @@ package tui_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +16,7 @@ import (
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
 	"github.com/openzot/openzot/internal/provider"
+	"github.com/openzot/openzot/internal/testutils"
 	"github.com/openzot/openzot/internal/tui"
 )
 
@@ -28,42 +27,6 @@ const testWindow = 1_000_000
 // The RunAgent function is the seam between the engine and the screen, a pure pump, so what is worth proving is that nothing goes
 // missing. Every event and any error reaches the program, and the stream always ends with a done message so the viewer
 // never hangs on a spinner nobody will stop.
-
-// scriptedClient answers with the given SSE frame sets, one per turn.
-func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
-	t.Helper()
-
-	turn := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		index := turn
-		if index >= len(turns) {
-			index = len(turns) - 1
-		}
-
-		turn++
-
-		for _, frame := range turns[index] {
-			fmt.Fprintf(w, "data: %s\n\n", frame)
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
-
-	return client
-}
 
 // headless starts a Bubble Tea program with no terminal attached, collecting
 // every message it receives.
@@ -165,7 +128,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 }
 
 func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
-	client := scriptedClient(t,
+	client := testutils.ScriptedClient(t,
 		[]string{
 			`{"choices":[{"delta":{"content":"working on it"}}]}`,
 			`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
@@ -205,21 +168,7 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 // A run that cannot reach its provider must surface the failure rather than
 // leaving a spinner turning forever.
 func TestRunAgentRelaysAFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-
-		fmt.Fprint(w, `{"error":{"message":"upstream is down"}}`)
-	}))
-
-	defer server.Close()
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	client := testutils.Script(t, testutils.Reject(http.StatusInternalServerError, `{"error":{"message":"upstream is down"}}`)).Client(t)
 
 	program, seen, stop := headless(t)
 
@@ -237,7 +186,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 // A canceled run still has to end cleanly. The pump drains and the done
 // message arrives, or the viewer never comes back.
 func TestRunAgentEndsOnCancellation(t *testing.T) {
-	client := scriptedClient(t, []string{
+	client := testutils.ScriptedClient(t, []string{
 		`{"choices":[{"delta":{"content":"thinking"}}]}`,
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
 	})
@@ -264,7 +213,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 
 	markStreaming := sync.OnceFunc(func() { close(streaming) })
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Raw(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		flusher, _ := w.(http.Flusher)
@@ -282,17 +231,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 			close(canceled)
 		case <-time.After(20 * time.Second):
 		}
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	})).Client(t)
 
 	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 
@@ -308,7 +247,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		return p.Run()
 	}
 
-	_, err = tui.RunViewer(t.Context(), m, engineFor(t, client), start,
+	_, err := tui.RunViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 	require.Error(t, err, "quitting mid-run should report that the run did not finish")
 
@@ -326,7 +265,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 
 	markStreaming := sync.OnceFunc(func() { close(streaming) })
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := testutils.Raw(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		if flusher, ok := w.(http.Flusher); ok {
@@ -339,17 +278,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		case <-r.Context().Done():
 		case <-time.After(20 * time.Second):
 		}
-	}))
-
-	t.Cleanup(server.Close)
-
-	client, err := provider.NewClient(t.Context(), provider.ClientConfig{
-		Provider: litCustom,
-		Model:    litTestModel,
-		APIKey:   "k",
-		BaseURL:  server.URL,
-	})
-	require.NoError(t, err)
+	})).Client(t)
 
 	m := tui.NewModel("do the thing", litTestModel, litCustom, t.TempDir())
 

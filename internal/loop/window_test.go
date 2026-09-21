@@ -10,6 +10,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // requestFor is what the engine would send for a conversation it has not seen
@@ -58,7 +59,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 func TestARequestNeverReachesTheHardMark(t *testing.T) {
 	const window = 20_000
 
-	engine, err := loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: window})
+	engine, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: window})
 	require.NoError(t, err)
 
 	var (
@@ -114,7 +115,7 @@ func TestALongRunKeepsEveryMessageAndSaysSo(t *testing.T) {
 	)
 
 	engine, err := loop.New(&loop.Options{
-		Client:        stub(t, []string{tool("c", litEcho, "{}")}),
+		Client:        testutils.ScriptedClient(t, []string{testutils.Tool("c", litEcho, "{}")}),
 		Tools:         echoTool(new(int)),
 		ContextWindow: 3_000,
 		MaxIterations: 60,

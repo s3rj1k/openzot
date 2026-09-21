@@ -11,6 +11,7 @@ import (
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 const planArgs = `{"tasks":[{"title":"read the code","status":"done"},{"title":"fix it","status":"in_progress"}]}`
@@ -26,7 +27,7 @@ func planCall(id, args, answer string) []conversation.Message {
 func planEngine(t *testing.T, options *loop.Options) *loop.Engine {
 	t.Helper()
 
-	options.Client = stub(t, []string{stop()})
+	options.Client = testutils.ScriptedClient(t, []string{testutils.Stop()})
 
 	if options.ContextWindow == 0 {
 		options.ContextWindow = testWindow
@@ -105,7 +106,7 @@ func TestRepostedPlan(t *testing.T) {
 	})
 
 	t.Run("without a plan tool there is no plan", func(t *testing.T) {
-		bare, err := loop.New(&loop.Options{Client: stub(t, []string{stop()}), ContextWindow: testWindow})
+		bare, err := loop.New(&loop.Options{Client: testutils.ScriptedClient(t, []string{testutils.Stop()}), ContextWindow: testWindow})
 		require.NoError(t, err)
 
 		_, ok := bare.RepostedPlan(messages, 5)
@@ -251,9 +252,9 @@ func TestThePlanIsNotPostedTwice(t *testing.T) {
 func planRun(t *testing.T, options *loop.Options, iterations int) *loop.Result {
 	t.Helper()
 
-	options.Client = stub(t,
-		[]string{tool("p", litTasks, planArgs)},
-		[]string{tool("c", litEcho, "{}")},
+	options.Client = testutils.ScriptedClient(t,
+		[]string{testutils.Tool("p", litTasks, planArgs)},
+		[]string{testutils.Tool("c", litEcho, "{}")},
 	)
 
 	options.Tools = append(echoTool(new(int)), namedTool(litTasks, func(context.Context) (any, error) { return "tasks: 0/2 done", nil }))

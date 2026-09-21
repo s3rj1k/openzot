@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -117,13 +114,7 @@ func TestRunNeedsATerminal(t *testing.T) {
 
 	t.Cleanup(func() { isTerminal = original })
 
-	var requests atomic.Int32
-
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		requests.Add(1)
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t, testutils.Frames())
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
@@ -145,7 +136,7 @@ provider:
 	require.Error(t, err, "want it to say agent needs a terminal")
 	require.Contains(t, err.Error(), "terminal", "want it to say agent needs a terminal")
 
-	assert.EqualValues(t, 0, requests.Load(), "a run with no terminal must not reach the provider")
+	assert.Equal(t, 0, server.Requests(), "a run with no terminal must not reach the provider")
 }
 
 func TestLoadOrderLoadsTheFile(t *testing.T) {
@@ -317,34 +308,10 @@ func TestRunEndToEnd(t *testing.T) {
 	// source tree
 	t.Chdir(t.TempDir())
 
-	turn := 0
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		frames := [][]string{
-			{
-				`{"choices":[{"delta":{"content":"on it"}}]}`,
-				`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
-			},
-			{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`},
-		}
-
-		index := turn
-		if index >= len(frames) {
-			index = len(frames) - 1
-		}
-
-		turn++
-
-		for _, frame := range frames[index] {
-			fmt.Fprintf(w, "data: %s\n\n", frame)
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t,
+		testutils.Frames(testutils.Text("on it"), testutils.Stop()),
+		testutils.Frames(testutils.Settle("complete")),
+	)
 
 	workdir := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
@@ -397,29 +364,7 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, written, 1)
 
-	var system string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Messages []struct {
-				Role    string `json:"role"`
-				Content any    `json:"content"`
-			} `json:"messages"`
-		}
-
-		_ = json.NewDecoder(r.Body).Decode(&body)
-
-		if system == "" && len(body.Messages) > 0 && body.Messages[0].Role == "system" {
-			system, _ = body.Messages[0].Content.(string)
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"ok\"}"}}]},"finish_reason":"tool_calls"}]}`)
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t, testutils.Frames(testutils.Settle("ok")))
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
@@ -433,6 +378,22 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 
 	_, err = testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
+
+	bodies := server.Bodies()
+	require.NotEmpty(t, bodies, "the provider was never called")
+
+	var body struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(bodies[0]), &body))
+	require.NotEmpty(t, body.Messages)
+	require.Equal(t, "system", body.Messages[0].Role)
+
+	system, _ := body.Messages[0].Content.(string)
 
 	for _, want := range []string{
 		"## Your task\n\nbuild the parser",
@@ -472,35 +433,10 @@ func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	// none of them exist inside --dir, so they must resolve before the chdir
 	require.NoError(t, os.WriteFile("order.md", []byte(orderText("do the thing")), 0o644))
 
-	var (
-		requests             atomic.Int32
-		sawContext, sawSkill atomic.Bool
+	server := testutils.Script(t,
+		testutils.Frames(testutils.Text("on it"), testutils.Stop()),
+		testutils.Frames(testutils.Settle("complete")),
 	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		body, _ := io.ReadAll(r.Body)
-
-		if strings.Contains(string(body), "PINECONE") {
-			sawContext.Store(true)
-		}
-
-		if strings.Contains(string(body), `"name":"skills"`) {
-			sawSkill.Store(true)
-		}
-
-		if requests.Add(1) == 1 {
-			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"on it\"}}]}\n\n")
-			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
-		} else {
-			fmt.Fprintf(w, "data: %s\n\n", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
-		}
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
 
 	require.NoError(t, os.WriteFile("config.yaml", []byte(fmt.Sprintf(`
 prompt: '{{ .Objective }} {{ .Project }}'
@@ -524,8 +460,10 @@ provider:
 		assert.Contains(t, output, want)
 	}
 
-	assert.True(t, sawContext.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
-	assert.True(t, sawSkill.Load(), "project context did not come from --dir (AGENTS.md seen: %v, skills tool seen: %v)", sawContext.Load(), sawSkill.Load())
+	sent := strings.Join(server.Bodies(), "\n")
+
+	assert.Contains(t, sent, "PINECONE", "the project context did not come from --dir")
+	assert.Contains(t, sent, `"name":"skills"`, "the skills folder did not come from --dir")
 
 	// the log lands in the project being worked on, named after the order
 	records := testutils.ReadLog(t, filepath.Join(target, ".agent", "orders", "order.jsonl"))
@@ -537,16 +475,8 @@ provider:
 // A run gets its own log, named after its order, with its own recorded outcome.
 // An order that does not end in success fails the run.
 func TestRunAnOrder(t *testing.T) {
-	settle := func(name, args string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-
-			fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(
-				`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}]}`,
-				name, args))
-
-			fmt.Fprint(w, "data: [DONE]\n\n")
-		}))
+	settle := func(name, args string) *testutils.Server {
+		return testutils.Script(t, testutils.Frames(testutils.Tool("d", name, args)))
 	}
 
 	configFor := func(t *testing.T, url string) string {
@@ -573,7 +503,6 @@ provider:
 		project := t.TempDir()
 
 		server := settle("success", `{"summary":"complete"}`)
-		defer server.Close()
 
 		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "first.md", "the first order"))
@@ -591,7 +520,6 @@ provider:
 		project := t.TempDir()
 
 		server := settle("failure", `{"reason":"cannot"}`)
-		defer server.Close()
 
 		withArgs(t, "--config", configFor(t, server.URL), litDir, project,
 			orderFileIn(t, t.TempDir(), "doomed.md", "the doomed order"))
@@ -667,16 +595,7 @@ func TestRunRejectsAMissingConfigFile(t *testing.T) {
 // with the task and the outcome. Running the order again appends a new run to
 // the same log rather than starting another file.
 func TestRunRecordsASession(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":{"name":"success","arguments":"{\"summary\":\"complete\"}"}}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t, testutils.Frames(testutils.Settle("complete")))
 
 	workdir := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
@@ -747,27 +666,13 @@ provider:
 func TestARunsTaskListDoesNotEndTheRun(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	var requests atomic.Int32
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-
-		call := `{"name":"success","arguments":"{\"summary\":\"complete\"}"}`
-
-		if requests.Add(1) == 1 {
-			call = `{"name":"tasks","arguments":"{\"tasks\":[` +
-				`{\"title\":\"read the parser\",\"status\":\"done\"},` +
-				`{\"title\":\"fix the lexer\",\"status\":\"in_progress\",\"note\":\"off by one\"},` +
-				`{\"title\":\"add a test\",\"status\":\"pending\"}]}"}`
-		}
-
-		fmt.Fprintf(w, "data: %s\n\n",
-			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"d","type":"function","function":`+call+`}]},"finish_reason":"tool_calls"}]}`)
-
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-
-	defer server.Close()
+	server := testutils.Script(t,
+		testutils.Frames(testutils.Tool("d", "tasks", `{"tasks":[`+
+			`{"title":"read the parser","status":"done"},`+
+			`{"title":"fix the lexer","status":"in_progress","note":"off by one"},`+
+			`{"title":"add a test","status":"pending"}]}`)),
+		testutils.Frames(testutils.Settle("complete")),
+	)
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
@@ -788,7 +693,7 @@ provider:
 	_, err := testutils.CaptureStdout(t, command)
 	require.NoError(t, err)
 
-	assert.EqualValues(t, 2, requests.Load(), "want the tasks turn and the settling turn")
+	assert.Equal(t, 2, server.Requests(), "want the tasks turn and the settling turn")
 }
 
 func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
