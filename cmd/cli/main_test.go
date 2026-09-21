@@ -323,6 +323,8 @@ func TestAScaffoldedOrderRunsWithTheSeededConfigsPrompt(t *testing.T) {
 
 	var out strings.Builder
 
+	testutils.SeedConfig(t)
+
 	require.NoError(t, newOrder([]string{litDir, project}, &out))
 
 	written, err := filepath.Glob(filepath.Join(project, order.BookDir, "orders", "*.md"))

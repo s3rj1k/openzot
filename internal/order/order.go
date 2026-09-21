@@ -196,10 +196,10 @@ func (o Order) DisplayTitle() string {
 	return titleFromFilename(o.Path)
 }
 
-// Create writes a blank order into dir, creating the directory if needed, and returns its path. The file is named for the
-// moment it was made, in unix seconds, so orders sort as written. A taken name moves on to the next second rather than
+// Create writes a new order into dir, creating the directory if needed, and returns its path. The file holds blank, the
+// config's order template, and is named for the moment it was made, in unix seconds, so orders sort as written. A taken name moves on to the next second rather than
 // overwriting, since two orders in a second is routine.
-func Create(dir string, now time.Time) (string, error) {
+func Create(dir string, now time.Time, blank string) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create order directory: %w", err)
 	}
@@ -216,7 +216,7 @@ func Create(dir string, now time.Time) (string, error) {
 			return "", fmt.Errorf("create order: %w", err)
 		}
 
-		_, err = file.WriteString(Blank())
+		_, err = file.WriteString(blank)
 
 		if closeErr := file.Close(); err == nil {
 			err = closeErr

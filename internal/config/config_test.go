@@ -601,6 +601,16 @@ func TestThePromptIsRequiredAndReadAsWritten(t *testing.T) {
 	assert.Equal(t, "Hello {{ .Objective }}.\n\nBye.\n", cfg.Prompt)
 }
 
+// The blank order is the config's too, read as written. It is not part of a run, so a config without one still validates.
+func TestTheOrderIsReadAsWrittenAndNotRequiredToRun(t *testing.T) {
+	cfg, err := config.Load(testutils.WriteConfig(t, "order: |\n  ---\n  objective:\n  ---\n"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "---\nobjective:\n---\n", cfg.Order)
+	assert.Empty(t, config.Defaults().Order)
+	require.NoError(t, validConfig(func(c *config.Config) { c.Order = "" }).Validate())
+}
+
 func TestSkillsDirIsRead(t *testing.T) {
 	cfg, err := config.Load(testutils.WriteConfig(t, "skills_dir: ~/skills\n"))
 	require.NoError(t, err)

@@ -78,3 +78,20 @@ func StarterPrompt(t *testing.T) string {
 
 	return cfg.Prompt
 }
+
+// StarterOrder is the blank order of the starter config `agent config` seeds, which is the one agent ships.
+func StarterOrder(t *testing.T) string {
+	t.Helper()
+
+	cfg, err := config.Load(WriteConfig(t, string(configs.ExampleConfigYAML)))
+	require.NoError(t, err)
+
+	return cfg.Order
+}
+
+// SeedConfig points AGENT_CONFIG at the starter config, so a command that reads the default config finds it.
+func SeedConfig(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("AGENT_CONFIG", WriteConfig(t, string(configs.ExampleConfigYAML)))
+}

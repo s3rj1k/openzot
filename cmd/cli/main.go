@@ -55,7 +55,7 @@ run.
 
 Usage:
   agent [flags] <order.md>
-  agent new [--dir <dir>]
+  agent new [--dir <dir>] [--config <file>]
   agent config
 
 Examples:
@@ -80,8 +80,8 @@ it is a record for you, with cat and jq.
 Commands:
   new        create a work order under ./.agent/orders - under <dir>/.agent/orders
              with --dir - and open it in $EDITOR, the way agent config does. The file holds
-             a blank objective: write it, with the acceptance criteria and constraints.
-             It takes no prose
+             the config's order: template: write the objective, with the acceptance
+             criteria and constraints. It takes no prose
   config     edit the config file in $EDITOR (creates it on first run)
 
 Flags:`)

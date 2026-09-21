@@ -13,12 +13,14 @@ import (
 
 	"github.com/openzot/openzot/internal/config"
 	"github.com/openzot/openzot/internal/order"
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // `agent new` opens a blank order in the editor, named for the moment it was
 // made. What the operator writes there is the order.
 func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 	t.Chdir(t.TempDir())
+	testutils.SeedConfig(t)
 
 	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\n' > "$1"`)
 
@@ -48,6 +50,7 @@ func TestNewOrderOpensABlankOrderInTheEditor(t *testing.T) {
 // where it goes, and nothing is created.
 func TestNewOrderTakesNoProse(t *testing.T) {
 	t.Chdir(t.TempDir())
+	testutils.SeedConfig(t)
 
 	withEditor(t, `printf -- '---\nobjective: never\n---\nbody\n' > "$1"`)
 
@@ -67,6 +70,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 	target := t.TempDir()
 
 	t.Chdir(invocation)
+	testutils.SeedConfig(t)
 
 	withEditor(t, `printf -- '---\nobjective: fix the typo\n---\nbody\n' > "$1"`)
 
@@ -84,6 +88,7 @@ func TestNewOrderWithDirCreatesItInThatDirectory(t *testing.T) {
 // nothing is kept.
 func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 	t.Chdir(t.TempDir())
+	testutils.SeedConfig(t)
 
 	withEditor(t, `true`)
 
@@ -101,6 +106,7 @@ func TestNewOrderLeftUnchangedIsNotKept(t *testing.T) {
 // written the order before it went wrong.
 func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 	t.Chdir(t.TempDir())
+	testutils.SeedConfig(t)
 
 	withEditor(t, `printf -- '---\nobjective: half written\n---\nbody\n' > "$1"; exit 3`)
 
@@ -114,6 +120,7 @@ func TestNewOrderKeepsTheFileWhenTheEditorFails(t *testing.T) {
 // told where it is, the way `agent config` does.
 func TestNewOrderWithoutAnEditorSaysWhereTheFileIs(t *testing.T) {
 	t.Chdir(t.TempDir())
+	testutils.SeedConfig(t)
 
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")
@@ -167,4 +174,52 @@ func TestEditConfigOpensTheConfiguredEditor(t *testing.T) {
 	require.NoError(t, err, "read seeded config")
 
 	assert.NotEmpty(t, content, "the seeded config is empty")
+}
+
+// The blank order is the config's, written as is: nothing of it is built into the binary.
+func TestNewOrderStartsFromTheConfigsOrder(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	configPath := testutils.WriteConfig(t, "order: |\n  ---\n  objective:\n  # mine\n  ---\n")
+
+	withEditor(t, `cp "$1" "$1.seen"`)
+
+	require.NoError(t, newOrder([]string{"--config", configPath}, io.Discard))
+
+	seen, err := filepath.Glob(filepath.Join(order.BookDir, "orders", "*.seen"))
+	require.NoError(t, err)
+	require.Len(t, seen, 1)
+
+	got, err := os.ReadFile(seen[0])
+	require.NoError(t, err)
+
+	assert.Equal(t, "---\nobjective:\n# mine\n---\n", string(got))
+}
+
+// An order left as the config's template made it is not an order, whatever the template says.
+func TestNewOrderLeftAsTheConfigsOrderIsNotKept(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	configPath := testutils.WriteConfig(t, "order: |\n  ---\n  objective:\n  ---\n")
+
+	withEditor(t, `true`)
+
+	require.NoError(t, newOrder([]string{"--config", configPath}, io.Discard))
+
+	matches, _ := filepath.Glob(filepath.Join(order.BookDir, "orders", "*"))
+	assert.Empty(t, matches)
+}
+
+// Agent has no order of its own, so a config without one cannot make one, and nothing is created.
+func TestNewOrderNeedsAnOrderInTheConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	configPath := testutils.WriteConfig(t, "agent:\n  max_iterations: 10\n")
+
+	withEditor(t, `true`)
+
+	require.ErrorIs(t, newOrder([]string{"--config", configPath}, io.Discard), config.ErrNoOrder)
+
+	_, err := os.Stat(order.BookDir)
+	assert.True(t, os.IsNotExist(err), "a refused invocation must create nothing")
 }

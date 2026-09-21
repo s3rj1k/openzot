@@ -768,7 +768,7 @@ func promptOf(t *testing.T, text string, o order.Order) string {
 func newOrderNamed(t *testing.T, objective string) order.Order {
 	t.Helper()
 
-	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: "+objective+"\n", 1)))
+	o, err := order.Parse([]byte(strings.Replace(testutils.StarterOrder(t), "objective:\n", "objective: "+objective+"\n", 1)))
 	require.NoError(t, err)
 
 	return o
@@ -784,7 +784,7 @@ func defaultPrompt(t *testing.T) string {
 // The task is the durable goal, so it must land in the system prompt, which trimming never drops and always orders first,
 // not in a user message that a long run can trim away.
 func TestTheObjectiveGoesIntoTheSystemPrompt(t *testing.T) {
-	o, err := order.Parse([]byte(strings.Replace(order.Blank(), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
+	o, err := order.Parse([]byte(strings.Replace(testutils.StarterOrder(t), "objective:\n", "objective: \"  build a parser  \"\n", 1)))
 	require.NoError(t, err)
 
 	got := promptOf(t, testutils.StarterPrompt(t), o)

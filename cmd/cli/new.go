@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -51,6 +52,7 @@ func newOrder(args []string, out io.Writer) error {
 	set := pflag.NewFlagSet("new", pflag.ContinueOnError)
 
 	dir := set.String("dir", ".", "project the order is for: it is created under <dir>/"+order.BookDir+"/orders")
+	configPath := set.String("config", "", "path to agent config, whose order: is the blank order (default: "+config.DefaultConfigPath()+")")
 
 	if err := set.Parse(args); err != nil {
 		return err
@@ -60,7 +62,16 @@ func newOrder(args []string, out io.Writer) error {
 		return errors.New("agent new takes no arguments: it opens a blank order in your editor - write the objective there")
 	}
 
-	path, err := order.Create(order.OrdersDir(*dir), time.Now())
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(cfg.Order) == "" {
+		return config.ErrNoOrder
+	}
+
+	path, err := order.Create(order.OrdersDir(*dir), time.Now(), cfg.Order)
 	if err != nil {
 		return err
 	}
@@ -73,7 +84,7 @@ func newOrder(args []string, out io.Writer) error {
 
 	// An order left exactly as made is not an order, and a blank one in .agent/orders would only fail
 	// when someone ran it. Nothing was written, so nothing is kept.
-	if written, err := os.ReadFile(path); err == nil && string(written) == order.Blank() { //nolint:gosec // G304: the order path is the one the operator named
+	if written, err := os.ReadFile(path); err == nil && string(written) == cfg.Order { //nolint:gosec // G304: the order path is the one the operator named
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("remove the unedited order: %w", err)
 		}

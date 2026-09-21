@@ -207,10 +207,12 @@ func TestFileExpandsTheHomeDirectory(t *testing.T) {
 
 // The scaffold is a blank form. It must be written before it can run.
 func TestBlankIsNotRunnableUntilTheObjectiveIsWritten(t *testing.T) {
-	_, err := order.Parse([]byte(order.Blank()))
+	blank := testutils.StarterOrder(t)
+
+	_, err := order.Parse([]byte(blank))
 	require.Error(t, err, "the blank form parsed as an order with an objective")
 
-	filled := strings.Replace(order.Blank(), "objective:\n", "objective: fix the typo\n", 1)
+	filled := strings.Replace(blank, "objective:\n", "objective: fix the typo\n", 1)
 
 	loaded, err := order.Parse([]byte(filled))
 	require.NoError(t, err)
@@ -278,7 +280,7 @@ func TestCreateNamesTheFileForTheMoment(t *testing.T) {
 
 	now := time.Unix(1758300000, 0)
 
-	path, err := order.Create(dir, now)
+	path, err := order.Create(dir, now, litBlank)
 	require.NoError(t, err)
 
 	assert.Equal(t, "1758300000.md", filepath.Base(path), "want the unix timestamp")
@@ -286,7 +288,7 @@ func TestCreateNamesTheFileForTheMoment(t *testing.T) {
 	written, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	assert.Equal(t, order.Blank(), string(written))
+	assert.Equal(t, litBlank, string(written))
 }
 
 // Two orders in the same second are routine. The second must not overwrite the
@@ -296,12 +298,12 @@ func TestCreateNeverOverwritesAndKeepsTheOrder(t *testing.T) {
 
 	now := time.Unix(1758300000, 0)
 
-	first, err := order.Create(dir, now)
+	first, err := order.Create(dir, now, litBlank)
 	require.NoError(t, err)
 
 	testutils.Write(t, first, "keep me")
 
-	second, err := order.Create(dir, now)
+	second, err := order.Create(dir, now, litBlank)
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first, second)
@@ -323,6 +325,6 @@ func TestCreateReportsAnUnwritableDirectory(t *testing.T) {
 
 	testutils.Write(t, blocker, "x")
 
-	_, err := order.Create(filepath.Join(blocker, "orders"), time.Now())
+	_, err := order.Create(filepath.Join(blocker, "orders"), time.Now(), litBlank)
 	require.Error(t, err, "creating under a file must fail")
 }

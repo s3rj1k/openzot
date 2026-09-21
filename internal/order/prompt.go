@@ -11,33 +11,6 @@ import (
 // The prompt a run starts from is the config's, a Go text/template. What it can read is documented in the starter config
 // and defined by Env and data.
 
-// frontMatterBlank is the data block a new order starts from. The goal is
-// left empty, so the order will not run until it is written.
-const frontMatterBlank = `---
-# agent work order. This block says what to do and what "done" means. The system
-# prompt that turns it into a run is the config's, under prompt:.
-
-# An optional short label for this order, shown in the viewer. Without
-# one the file name is used.
-# title:
-
-# The durable goal of the run. The order will not run until this is filled in.
-objective:
-
-# The objective is not met until every one of these holds.
-# acceptance:
-#   - the new behavior is covered by a test that fails without the change
-#   - the full test suite passes
-
-# Rules that hold for the whole run.
-# constraints:
-#   - do not change public API signatures
----
-`
-
-// Blank returns the form a new order starts from, an empty front matter.
-func Blank() string { return frontMatterBlank }
-
 // Tool is one tool the run offers, as the prompt sees it.
 type Tool struct {
 	Name        string

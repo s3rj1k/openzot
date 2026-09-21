@@ -21,6 +21,9 @@ type Config struct {
 	// The system prompt every run starts from, a Go text/template that reads the order and the run. Required,
 	// since agent carries no prompt of its own. The starter config holds the default.
 	Prompt string `yaml:"prompt"`
+	// The blank order `agent new` starts from, written as is. Required by `agent new` only, since agent
+	// carries no order of its own. The starter config holds the default.
+	Order string `yaml:"order"`
 	// The folder of skills - subdirectories each holding a SKILL.md - loaded at startup and offered
 	// through the skills tool. "~/" is home, a relative path is taken against --dir, empty means none.
 	SkillsDir string `yaml:"skills_dir"`
@@ -78,6 +81,9 @@ func Load(path string) (Config, error) {
 
 	return cfg, nil
 }
+
+// ErrNoOrder is what `agent new` reports when the config has no order template.
+var ErrNoOrder = errors.New("order must be set in the config: agent has no built-in order template (`agent config` seeds one)")
 
 // Validate checks the fully-merged configuration.
 func (c *Config) Validate() error {

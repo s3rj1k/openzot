@@ -135,6 +135,17 @@ prompt: |
   {{- end }}
   {{- end }}
 
+# The blank order `agent new` opens in your editor, written as is. The order
+# will not run until objective is filled in. An order is front matter only.
+order: |
+  ---
+  objective:
+  # acceptance:
+  #   - the full test suite passes
+  # constraints:
+  #   - do not change public API signatures
+  ---
+
 # Presentation.
 ui:
   # How many log lines the viewer keeps on screen. Default 5000. The session log
