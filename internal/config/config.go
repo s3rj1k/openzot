@@ -1,9 +1,6 @@
-// Package config loads zot's configuration, layering built-in defaults, an
-// YAML file (defaults < file).
-//
-// Zot ships no provider. The one connection every run uses is declared under
-// `provider:` in the config, with its endpoint, its credential and the models it
-// serves. Agent.model picks which of them runs.
+// Package config loads zot's configuration, layering built-in defaults under a YAML file. Zot ships no provider.
+// The one connection every run uses is declared under `provider:` with its endpoint, credential and models, and
+// agent.model picks which of them runs.
 package config
 
 import (
@@ -162,21 +159,15 @@ func (a *Agent) MaxDuration() (time.Duration, error) {
 	return d, nil
 }
 
-// The defaults of the two context thresholds are stated here because the rule
-// between them is the config's. Forgetting starts before it is forced. The
-// engine has its own fallbacks for a caller that builds its options by hand,
-// and a test holds the two to the same numbers.
+// The defaults of the two context thresholds live here because the rule between them is the config's. The
+// engine has its own fallbacks for callers building options by hand, and a test holds the two to the same numbers.
 const (
 	defaultContextSoft = 50
 	defaultContextHard = 90
 )
 
-// Defaults returns the built-in configuration used when nothing else is set.
-//
-// There is by design no default provider or model. Both name something the
-// operator runs against, and a pair that cannot actually talk to each other
-// fails as a provider error rather than a configuration one, which is much
-// harder to read. Validate says what is missing instead.
+// Defaults returns the built-in configuration used when nothing else is set. There is no default provider or
+// model, since a pair that cannot talk to each other fails as a hard-to-read provider error. Validate says what is missing.
 func Defaults() Config {
 	return Config{
 		Agent: Agent{
@@ -212,12 +203,8 @@ func (a *Agent) validateContext() error {
 	return nil
 }
 
-// resolveSecret expands a "$ENV_VAR" / "${ENV_VAR}" reference. A literal value
-// is returned unchanged.
-//
-// An unset variable resolves to empty rather than to its own name, so a missing
-// credential is reported as a missing credential instead of being sent to the
-// provider as the literal text "$MY_KEY".
+// resolveSecret expands a "$ENV_VAR" or "${ENV_VAR}" reference and returns a literal unchanged. An unset variable
+// resolves to empty, so a missing credential is reported as missing rather than sent as the text "$MY_KEY".
 func resolveSecret(v string) string {
 	v = strings.TrimSpace(v)
 
@@ -233,15 +220,9 @@ func resolveSecret(v string) string {
 	return v
 }
 
-// resolveProvider resolves the credential from its "$ENV" reference, when it is
-// one.
-//
-// The credential is only ever what the config says. There is no fallback to a
-// conventional environment variable. A key is scoped to the host it was issued
-// for, and guessing which one belongs to a URL somebody typed is how a
-// credential ends up in someone else's logs. Every spelling is resolved. A
-// `$VAR` reference left unexpanded would send the literal string "$MY_KEY" to the
-// provider and come back as a 401 that reads like a bad key.
+// resolveProvider resolves the credential from its "$ENV" reference, when it is one. The credential is only what the
+// config says, with no conventional-variable fallback, since a key is scoped to its host. An unexpanded reference
+// would send the literal "$MY_KEY" and come back as a 401 that reads like a bad key.
 func resolveProvider(cfg *Config) {
 	cfg.Provider.APIKey = resolveSecret(cfg.Provider.APIKey)
 }

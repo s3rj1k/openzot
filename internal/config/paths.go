@@ -24,12 +24,8 @@ func xdgConfigHome() string {
 	return filepath.Join(homeDir(), ".config")
 }
 
-// DefaultConfigPath returns the resolved config file path using a fallback
-// chain.
-//
-//  1. $ZOT_CONFIG environment variable (if set and non-empty)
-//  2. $XDG_CONFIG_HOME/zot/config.yaml (if XDG_CONFIG_HOME is set)
-//  3. ~/.config/zot/config.yaml
+// DefaultConfigPath returns the config file path. That is $ZOT_CONFIG when set and non-empty, else
+// $XDG_CONFIG_HOME/zot/config.yaml when XDG_CONFIG_HOME is set, else ~/.config/zot/config.yaml.
 func DefaultConfigPath() string {
 	if envPath := strings.TrimSpace(os.Getenv("ZOT_CONFIG")); envPath != "" {
 		return envPath

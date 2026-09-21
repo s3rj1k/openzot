@@ -50,13 +50,9 @@ func stringField(fields map[string]any, key string) string {
 	return value
 }
 
-// ParseTasks reads the task list out of a call to the tasks tool.
-//
-// It is the one place the schema is read. The handler, the viewer and the
-// viewer's task count all come through it, so what counts as a valid list cannot
-// drift between what the model is told and what the operator is shown. A task
-// with no status is pending. Anything else that is not a status is an error the
-// model can act on.
+// ParseTasks reads the task list out of a call to the tasks tool. It is the one place the schema is read, so what
+// counts as a valid list cannot drift between what the model is told and what the operator is shown. A task with no
+// status is pending, and any other unknown status is an error the model can act on.
 func ParseTasks(args map[string]any) ([]Task, error) {
 	raw, _ := args["tasks"].([]any)
 
@@ -126,11 +122,8 @@ func TaskMarker(status TaskStatus) string {
 	}
 }
 
-// FormatTasks renders the list as a checklist, headed by how much of it is done.
-//
-// This is what the tool answers with, so the model reads its own state back on
-// every call. On a long run the older messages have been trimmed away, and the
-// latest result is the one place the whole list is always in view.
+// FormatTasks renders the list as a checklist headed by how much is done. It is what the tool answers with, so the
+// model reads its own state back each call, the one place the whole list stays in view once older messages are trimmed.
 func FormatTasks(tasks []Task) string {
 	var b strings.Builder
 

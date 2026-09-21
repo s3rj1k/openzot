@@ -486,10 +486,8 @@ func TestValidateRejectsAnUnreachableProvider(t *testing.T) {
 	}
 }
 
-// A `$VAR` reference is the documented way to keep a key out of the config
-// file. It silently did not expand, which sent the literal text "$MY_KEY" to
-// the provider and came back as a 401 that reads like a bad key rather than a
-// config that never resolved.
+// A `$VAR` reference is the documented way to keep a key out of the config file. It once did not expand, sending
+// the literal text "$MY_KEY" to the provider and a 401 that reads like a bad key rather than a config that never resolved.
 func TestAnEnvReferenceIsExpanded(t *testing.T) {
 	t.Setenv("ZOT_TEST_PROVIDER_KEY", "sk-resolved")
 

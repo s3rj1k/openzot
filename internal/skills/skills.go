@@ -33,10 +33,8 @@ type Skill struct {
 // frontMatterFence opens and closes the front matter of a SKILL.md.
 const frontMatterFence = "---"
 
-// parseSkill reads the name and description out of a SKILL.md.
-//
-// Front matter is preferred. The first heading-free line is the fallback so a
-// skill written without front matter still works.
+// parseSkill reads the name and description out of a SKILL.md. Front matter is preferred, and the first heading-free
+// line is the fallback so a skill without front matter still works.
 func parseSkill(directoryName, dir, content string) Skill {
 	skill := Skill{Name: directoryName, Dir: dir, Content: content}
 
@@ -86,13 +84,8 @@ func parseSkill(directoryName, dir, content string) Skill {
 	return skill
 }
 
-// Load reads every skill under dir into memory, sorted by name.
-//
-// A skill is a subdirectory containing a SKILL.md whose front matter supplies
-// the name and description. A subdirectory without one is skipped rather than
-// treated as an error - a skills folder routinely contains other things. Dir
-// itself must exist. It was named in the config, so a typo should stop the run
-// at startup rather than leave the model without its skills.
+// Load reads every skill under dir into memory, sorted by name. A skill is a subdirectory with a SKILL.md, and one
+// without it is skipped, since skills folders hold other things. Dir itself must exist, so a typo stops the run at startup.
 func Load(dir string) ([]Skill, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
