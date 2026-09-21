@@ -1,6 +1,5 @@
-// Package repeat detects a model that has stopped making progress. The cycle heuristics judge a whole conversation, and
-// the runaway guard judges a single stream of text while it is still being generated.
-package repeat
+// Package cycle decides whether a conversation has stopped making progress, by four heuristics that overlap on purpose.
+package cycle
 
 import (
 	"encoding/json"
@@ -8,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/runaway"
 )
 
 // The cycle heuristics decide whether a conversation has stopped making progress. They overlap by design, each covering
@@ -263,7 +263,7 @@ func hasRepeatedMessageTextRun(messages []conversation.Message) bool {
 			continue
 		}
 
-		if HasRepeatedTextRun(message.Text, TextRunOptions{}) {
+		if runaway.HasRepeatedTextRun(message.Text, runaway.TextRunOptions{}) {
 			return true
 		}
 	}
@@ -282,9 +282,9 @@ var cycleHeuristics = []struct {
 	{"repeated_message_text_run", hasRepeatedMessageTextRun},
 }
 
-// DescribeCycle names the first heuristic to fire, or returns the empty string
+// Describe names the first heuristic to fire, or returns the empty string
 // when the conversation is progressing.
-func DescribeCycle(messages []conversation.Message) string {
+func Describe(messages []conversation.Message) string {
 	for _, heuristic := range cycleHeuristics {
 		if heuristic.detect(messages) {
 			return heuristic.name

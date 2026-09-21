@@ -14,8 +14,8 @@ import (
 	"charm.land/fantasy/schema"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/failure"
-	"github.com/openzot/openzot/internal/repeat"
 )
 
 // Options configures a run.
@@ -323,7 +323,7 @@ func finish(messages []conversation.Message, budget Budget, reason StopReason, d
 // CheckCycle looks for repetition and nudges the model, or stops the run once
 // nudging has failed enough times.
 func (e *Engine) CheckCycle(messages []conversation.Message, budget *Budget) ([]conversation.Message, *Result) {
-	detected := repeat.DescribeCycle(messages)
+	detected := cycle.Describe(messages)
 
 	if detected == "" {
 		// A round that is not cyclic breaks the run of repetitions. The budget counts consecutive cycles, so

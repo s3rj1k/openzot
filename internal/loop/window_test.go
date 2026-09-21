@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
+	"github.com/openzot/openzot/internal/cycle"
 	"github.com/openzot/openzot/internal/loop"
-	"github.com/openzot/openzot/internal/repeat"
 	"github.com/openzot/openzot/internal/testutils"
 )
 
@@ -37,7 +37,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	assert.NotEmpty(t, repeat.DescribeCycle(messages), "four identical call/result pairs must read as a cycle")
+	assert.NotEmpty(t, cycle.Describe(messages), "four identical call/result pairs must read as a cycle")
 
 	// a different answer each time is progress
 	polling := make([]conversation.Message, 0, 8)
@@ -49,7 +49,7 @@ func TestTheEnginesOwnActivitiesTriggerCycleDetection(t *testing.T) {
 		)
 	}
 
-	got := repeat.DescribeCycle(polling)
+	got := cycle.Describe(polling)
 	assert.NotEqual(t, "repeated_result_run", got, "polling an endpoint until it changes is not a loop, got %q", got)
 	assert.NotEqual(t, "repeated_activity_tail", got, "polling an endpoint until it changes is not a loop, got %q", got)
 }

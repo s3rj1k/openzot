@@ -1,4 +1,4 @@
-package repeat_test
+package cycle_test
 
 import (
 	"os"
@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openzot/openzot/internal/testutils"
 )
 
 // Cases the corpus could not carry, and what replaced them. Anything the capture left out is a hole in the guarantee that
@@ -88,11 +90,11 @@ func TestEveryNotPortableCaseHasItsReplacement(t *testing.T) {
 // either the export changed or the case was portable after all - and the
 // hand-written stand-in is now a second, divergent copy of it.
 func TestNotPortableCasesAreAbsentFromTheCorpus(t *testing.T) {
-	corpus := loadCorpus(t)
+	records := testutils.LoadCorpus(t, "testdata/corpus.json")
 
 	present := map[string]bool{}
 
-	for _, record := range corpus.Records {
+	for _, record := range records {
 		present[record.ID] = true
 	}
 

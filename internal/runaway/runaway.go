@@ -1,4 +1,6 @@
-package repeat
+// Package runaway detects a model stuck cycling the same words inside a single block of text, while the turn is still
+// being generated and afterwards in a committed message.
+package runaway
 
 import (
 	"strings"
@@ -197,10 +199,10 @@ type GuardReason struct {
 	HapaxRatio  float64 `json:"hapaxRatio"`
 }
 
-// RunawayGuard is an incremental runaway-repetition detector. It keeps a rolling window of normalized words and a count of
+// Guard is an incremental runaway-repetition detector. It keeps a rolling window of normalized words and a count of
 // every phrase, so each pushed chunk costs O(1) amortized and it can run on every streamed token, latching within a few
 // repeats, long before the heavier fallback would react.
-type RunawayGuard struct {
+type Guard struct {
 	ngram          int
 	window         int
 	maxRepeats     int
@@ -223,8 +225,8 @@ type RunawayGuard struct {
 	reason  GuardReason
 }
 
-// NewRunawayGuard creates a repetition guard.
-func NewRunawayGuard(options GuardOptions) *RunawayGuard {
+// NewGuard creates a repetition guard.
+func NewGuard(options GuardOptions) *Guard {
 	ngram := clamp(options.Ngram, 2, 4)
 
 	windowFallback := max(ngram, 48)
@@ -249,7 +251,7 @@ func NewRunawayGuard(options GuardOptions) *RunawayGuard {
 
 	minChars := clamp(options.MinChars, 0, 0)
 
-	return &RunawayGuard{
+	return &Guard{
 		ngram:          ngram,
 		window:         window,
 		maxRepeats:     maxRepeats,
@@ -263,7 +265,7 @@ func NewRunawayGuard(options GuardOptions) *RunawayGuard {
 // hapaxRatio is the fraction of the window seen exactly once - the novelty
 // signal separating a progressing list (many distinct keys) from a stuck loop
 // (the same few words). Only ever called at a candidate trip.
-func (g *RunawayGuard) hapaxRatio() float64 {
+func (g *Guard) hapaxRatio() float64 {
 	hapax := 0
 
 	for _, count := range g.wordCount {
@@ -277,7 +279,7 @@ func (g *RunawayGuard) hapaxRatio() float64 {
 
 // distinctLineLeads counts distinct line-leading tokens. A stuck loop repeats one line and has one or two, while a progressing
 // enumeration keeps starting lines with new keys, which rescues lists whose long shared suffix sinks the hapax ratio.
-func (g *RunawayGuard) distinctLineLeads() int {
+func (g *Guard) distinctLineLeads() int {
 	leads := map[string]struct{}{}
 
 	for index, word := range g.words {
@@ -289,7 +291,7 @@ func (g *RunawayGuard) distinctLineLeads() int {
 	return len(leads)
 }
 
-func (g *RunawayGuard) addWord(word, original string, newlines int) {
+func (g *Guard) addWord(word, original string, newlines int) {
 	g.words = append(g.words, word)
 	g.originals = append(g.originals, original)
 	g.newlinesBefore = append(g.newlinesBefore, newlines)
@@ -409,7 +411,7 @@ func splitKeepingSeparators(text string) []string {
 
 // Push feeds streamed text into the guard and reports whether a runaway has been
 // detected. Once tripped it stays tripped.
-func (g *RunawayGuard) Push(text string) bool {
+func (g *Guard) Push(text string) bool {
 	if g.tripped {
 		return true
 	}
@@ -458,7 +460,7 @@ func (g *RunawayGuard) Push(text string) bool {
 }
 
 // Reason returns why the guard tripped, or nil while it has not.
-func (g *RunawayGuard) Reason() *GuardReason {
+func (g *Guard) Reason() *GuardReason {
 	if !g.tripped {
 		return nil
 	}
