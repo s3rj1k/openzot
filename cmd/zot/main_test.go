@@ -88,10 +88,8 @@ func orderFile(t *testing.T, objective string) string {
 	return orderFileIn(t, t.TempDir(), "order.md", objective)
 }
 
-// withArgs runs a function with a fresh flag set and the given argv, so command()
-// can be exercised the way the shell invokes it. It chdirs into --dir, so the
-// working directory is put back afterwards. A later test must not inherit a
-// temp directory that is already gone.
+// withArgs runs a function with a fresh flag set and the given argv, so command() can be exercised the way the shell invokes it.
+// It chdirs into --dir, so the working directory is put back afterwards for the next test.
 func withArgs(t *testing.T, args ...string) {
 	t.Helper()
 
@@ -355,11 +353,8 @@ func TestUsageDescribesTheRealCommands(t *testing.T) {
 	}
 }
 
-// The CLI uses pflag (GNU-style), so a flag may appear AFTER the positional
-// order paths. `zot orders/a.md --dir proj` parses --dir as a flag and keeps
-// the paths intact. The stdlib flag package stopped at the first non-flag,
-// folding the flag into the positionals - this locks the behavior that
-// motivated the switch.
+// The CLI uses pflag, so a flag may come after the positional order paths, as in `zot orders/a.md --dir proj`. The stdlib flag
+// package stopped at the first non-flag and folded the flag into the positionals, which motivated the switch.
 func TestFlagsAfterThePositionalOrdersAreParsed(t *testing.T) {
 	set := pflag.NewFlagSet("zot", pflag.ContinueOnError)
 	dir := set.String("dir", ".", "")
@@ -553,10 +548,8 @@ provider:
 // contractHeading is how the contract is spotted in an assembled prompt.
 const contractHeading = "## Non-interactive contract"
 
-// The whole loop of the new order. Zot new scaffolds the file with the full
-// prompt in it, the operator writes the goal, and what the model is sent is
-// that prompt rendered - the goal, the tools the run really has, where it is
-// working, and the project's AGENTS.md, with the contract once.
+// The whole loop of the new order. Zot new scaffolds the file with the full prompt, the operator writes the goal, and what the
+// model is sent is that prompt rendered, with the goal, the real tools, the working directory, AGENTS.md and the contract once.
 func TestAScaffoldedOrderRunsWithItsFullPrompt(t *testing.T) {
 	project := t.TempDir()
 
@@ -637,10 +630,8 @@ provider:
 	}
 }
 
-// A run pointed at another directory works end to end. Every relative path on
-// the command line - --config, the order itself - resolves from
-// the invoking directory before zot chdirs into --dir, the session records the
-// real working directory, and project context comes from --dir.
+// A run pointed at another directory works end to end. Relative paths on the command line resolve from the invoking directory
+// before zot chdirs into --dir, the session records the real working directory, and project context comes from --dir.
 func TestRunFromADifferentDirectoryEndToEnd(t *testing.T) {
 	invocation := t.TempDir()
 
@@ -1050,12 +1041,8 @@ func TestAnOrdersTitleReachesTheViewer(t *testing.T) {
 	}
 }
 
-// The example config is what `zot config` writes on first run, so it is the
-// first thing most people ever edit. Its knobs drifting from the code's own
-// defaults is not cosmetic. Someone copies it, changes nothing, and gets
-// different behavior from someone who has no config file at all. The provider
-// and model are the exception - there are no defaults for those, and the
-// example shows the shape of declaring them.
+// The example config is what `zot config` writes on first run, so its knobs drifting from the code's defaults would give a copier
+// different behavior from someone with no config file. The provider and model are the exception, since there are no defaults for them.
 func TestTheExampleConfigMatchesTheDefaults(t *testing.T) {
 	var example config.Config
 

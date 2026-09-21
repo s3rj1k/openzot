@@ -1,25 +1,6 @@
-// Command zot is an automated software factory you watch, not drive.
-//
-// Zot takes work orders, not prompts. A work order is one file. A front matter
-// block with the durable goal, the acceptance criteria that define "done"
-// and the constraints the work must hold to, then the system prompt itself, a
-// Go template that reads that block. Each order becomes one autonomous run. The
-// agent reads files, edits them, and runs shell commands on its own while the
-// terminal streams a live, read-only view of everything it does.
-//
-// Usage.
-//
-//	# declare the provider (base_url, api_key, models) and pick agent.model
-//	zot config
-//
-//	# write an order in your editor, then run it
-//	zot new
-//
-//	# run the order you wrote
-//	zot .zot/orders/1758300000.md
-//
-//	# every run is logged, appended to .zot/orders/1758300000.jsonl
-//	jq . .zot/orders/1758300000.jsonl
+// Command zot is an automated software factory you watch, not drive. It takes work orders, not prompts. An order is one file,
+// a front matter block (goal, acceptance criteria, constraints) then the system prompt as a Go template, run as one autonomous
+// run while the terminal streams a read-only view. The commands are `zot config`, `zot new` and `zot <order.md>`.
 package main
 
 import (

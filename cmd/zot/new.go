@@ -18,10 +18,8 @@ import (
 	"github.com/openzot/openzot/internal/order"
 )
 
-// openInEditor opens a file in the user's editor and waits for it to close.
-// $VISUAL, then $EDITOR, then the first of nano, vi and vim that is installed.
-// With none of them it prints the path and says so, since the file itself is
-// already in place.
+// openInEditor opens a file in the user's editor and waits for it to close, trying $VISUAL, then $EDITOR, then the first of
+// nano, vi and vim that is installed. With none it prints the path and says so, since the file is already in place.
 func openInEditor(path string) error {
 	editor := cmp.Or(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
 	if editor == "" {
@@ -46,17 +44,9 @@ func openInEditor(path string) error {
 	return cmd.Run()
 }
 
-// newOrder creates a blank work order under ./.zot/orders - or under
-// <dir>/.zot/orders when --dir names another working directory - and opens it
-// in the editor, the way `zot config` opens the config.
-//
-// It takes no prose. The goal, the acceptance criteria and the constraints
-// are written where they can be reviewed, in the file, not squeezed onto a
-// command line. The file is named for the moment it was made, so there is
-// nothing to invent and the orders sort in the order they were written.
-//
-// --dir exists because the order is written for a project the invoker may not
-// be standing in.
+// newOrder creates a blank work order under ./.zot/orders (or <dir>/.zot/orders with --dir) and opens it in the editor, the way
+// `zot config` opens the config. It takes no prose, so the goal, criteria and constraints are written in the file where they can be
+// reviewed. The file is named for its creation moment, so orders sort as written. --dir is for a project elsewhere.
 func newOrder(args []string, out io.Writer) error {
 	set := pflag.NewFlagSet("new", pflag.ContinueOnError)
 
