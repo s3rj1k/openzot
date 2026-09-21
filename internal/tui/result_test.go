@@ -2,8 +2,10 @@ package tui
 
 import (
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/loop"
 )
@@ -13,18 +15,13 @@ func TestModelRunErrorReportsFailedAgentExit(t *testing.T) {
 	m.finish(&loop.Result{Reason: loop.StopFailed, Message: "verification failed"})
 
 	err := m.runError()
-	if err == nil {
-		t.Fatal("runError() = nil, want a failed agent exit")
-	}
+	require.Error(t, err, "want a failed agent exit")
 
 	exitErr, ok := errors.AsType[*AgentExitError](err)
-	if !ok {
-		t.Fatalf("runError() = %T, want *AgentExitError", err)
-	}
+	require.True(t, ok, "runError() = %T, want *AgentExitError", err)
 
-	if exitErr.Code != 1 || !strings.Contains(exitErr.Error(), "verification failed") {
-		t.Errorf("exit error = %+v, want code 1 and the agent message", exitErr)
-	}
+	assert.Equal(t, 1, exitErr.Code, "want code 1 and the agent message")
+	assert.Contains(t, exitErr.Error(), "verification failed", "want code 1 and the agent message")
 }
 
 func TestModelRunErrorReportsStreamError(t *testing.T) {
@@ -32,17 +29,13 @@ func TestModelRunErrorReportsStreamError(t *testing.T) {
 	m := newModel("task", "model", "openai", "/tmp")
 	m.err = want
 
-	if got := m.runError(); !errors.Is(got, want) {
-		t.Errorf("runError() = %v, want %v", got, want)
-	}
+	require.ErrorIs(t, m.runError(), want)
 }
 
 func TestModelRunErrorRejectsEarlyViewerExit(t *testing.T) {
 	m := newModel("task", "model", "openai", "/tmp")
 
-	if err := m.runError(); err == nil {
-		t.Fatal("runError() = nil while the agent is still running")
-	}
+	require.Error(t, m.runError(), "runError() = nil while the agent is still running")
 }
 
 // The exit error is what the CLI prints and what the process status is derived
@@ -67,9 +60,7 @@ func TestAgentExitErrorMessage(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.err.Error(); got != test.want {
-				t.Errorf("Error() = %q, want %q", got, test.want)
-			}
+			assert.Equal(t, test.want, test.err.Error())
 		})
 	}
 }

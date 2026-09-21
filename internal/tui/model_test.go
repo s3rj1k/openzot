@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
 )
 
 // The startup line shows before the first frame. Once sized the title badge
@@ -12,14 +12,12 @@ import (
 func TestStartupLineThenTitleBadge(t *testing.T) {
 	m := newModel("hunt bugs", "model", "openai", "/tmp")
 
-	if got := m.View(); !strings.Contains(got, "starting zot…") {
-		t.Errorf("startup line must name zot, got %q", got)
-	}
+	got := m.View()
+	assert.Contains(t, got, "starting zot…", "startup line must name zot, got %q", got)
 
 	sized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = asModel(t, sized)
 
-	if title := m.titleBar(); !strings.Contains(title, "zot") {
-		t.Errorf("title badge must name zot, got %q", title)
-	}
+	title := m.titleBar()
+	assert.Contains(t, title, "zot", "title badge must name zot, got %q", title)
 }

@@ -2,7 +2,6 @@ package session
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +9,8 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
@@ -22,9 +23,7 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	require.NoError(t, err)
 
 	recorder := NewRecorder(writer, nil)
 
@@ -48,18 +47,14 @@ func TestTheModelsReasoningIsRecordedInOrder(t *testing.T) {
 		"bot: on it",
 	}
 
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Errorf("messages = %q, want %q", got, want)
-	}
+	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
 }
 
 func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	require.NoError(t, err)
 
 	recorder := NewRecorder(writer, nil)
 
@@ -94,31 +89,33 @@ func TestARunIsRecordedFromItsFirstMessageToItsOutcome(t *testing.T) {
 	got := kinds(records)
 	want := []Kind{KindMeta, KindMessage, KindEvent, KindMessage, KindResult}
 
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("records = %v, want %v", got, want)
-	}
+	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
 
 	// the type has to survive as the string the engine's own type names
-	if records[1].Message.Type != conversation.TypeUser || records[3].Message.Type != conversation.TypeActivity {
-		t.Errorf("message types = %q, %q", records[1].Message.Type, records[3].Message.Type)
-	}
+	assert.Equal(t, conversation.TypeUser, records[1].Message.Type)
+	assert.Equal(t, conversation.TypeActivity, records[3].Message.Type)
 
 	activity := records[3].Message.Activity
 
-	if activity == nil || activity.Kind != conversation.ActivityResponse || activity.ID != litCall1 ||
-		activity.Name != litShell || activity.Arguments != litCommandGoTest || activity.Result != "ok" {
-		t.Errorf("the call was not recorded whole: %+v", activity)
-	}
+	assert.NotNil(t, activity, "the call was not recorded whole")
+	assert.Equal(t, conversation.ActivityResponse, activity.Kind, "the call was not recorded whole")
+	assert.Equal(t, litCall1, activity.ID, "the call was not recorded whole")
+	assert.Equal(t, litShell, activity.Name, "the call was not recorded whole")
+	assert.JSONEq(t, litCommandGoTest, activity.Arguments, "the call was not recorded whole")
+	assert.Equal(t, "ok", activity.Result, "the call was not recorded whole")
 
-	if event := records[2].Event; event.Kind != string(loop.EventToolCallStart) || event.Tool != litShell || event.Iteration != 1 {
-		t.Errorf("event = %+v", event)
-	}
+	event := records[2].Event
+	assert.Equal(t, string(loop.EventToolCallStart), event.Kind)
+	assert.Equal(t, litShell, event.Tool)
+	assert.Equal(t, 1, event.Iteration)
 
 	result := records[4].Result
 
-	if result.Reason != litSettled || result.Iterations != 3 || result.Settles != 1 || result.InputTokens != 1200 || result.OutputTokens != 340 {
-		t.Errorf("result = %+v", result)
-	}
+	assert.Equal(t, litSettled, result.Reason)
+	assert.Equal(t, 3, result.Iterations)
+	assert.Equal(t, 1, result.Settles)
+	assert.Equal(t, 1200, result.InputTokens)
+	assert.Equal(t, 340, result.OutputTokens)
 }
 
 // Token events are the same text the finished message already carries. Keeping
@@ -140,22 +137,16 @@ func TestTokenNarrationIsNotRecorded(t *testing.T) {
 
 	records := readLog(t, path)
 
-	if got := kinds(records); fmt.Sprint(got) != fmt.Sprint([]Kind{KindMeta, KindEvent}) {
-		t.Fatalf("records = %v, want the meta and the one real event", got)
-	}
+	require.Equal(t, fmt.Sprint([]Kind{KindMeta, KindEvent}), fmt.Sprint(kinds(records)), "want the meta and the one real event")
 
-	if records[1].Event.Kind != "iteration" {
-		t.Errorf("event = %+v", records[1].Event)
-	}
+	assert.Equal(t, "iteration", records[1].Event.Kind)
 }
 
 // A log that stops taking lines is a run that has stopped being recorded, and the
 // caller is told at once - once, however many lines follow - so it can end the run.
 func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var told []error
 
@@ -163,9 +154,8 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
-	if recorder.Err() != nil || len(told) != 0 {
-		t.Fatalf("a write that went through was reported: %v %v", recorder.Err(), told)
-	}
+	require.NoError(t, recorder.Err(), "a write that went through was reported")
+	require.Empty(t, told, "a write that went through was reported")
 
 	writer.Close()
 
@@ -173,39 +163,30 @@ func TestARecorderReportsTheFirstFailedWrite(t *testing.T) {
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 	recorder.Result(&loop.Result{})
 
-	if recorder.Err() == nil {
-		t.Fatal("writes to a closed log were not reported")
-	}
+	require.Error(t, recorder.Err(), "writes to a closed log were not reported")
 
-	if len(told) != 1 || !errors.Is(told[0], recorder.Err()) {
-		t.Errorf("the caller was told %d times (%v), want once, with the first failure", len(told), told)
-	}
+	assert.Len(t, told, 1, "want once, with the first failure")
+	require.ErrorIs(t, told[0], recorder.Err(), "want once, with the first failure")
 }
 
 // Without anyone to tell, the failure is still kept.
 func TestARecorderKeepsAFailureNobodyAskedAbout(t *testing.T) {
 	writer, err := Open(filepath.Join(t.TempDir(), "task.jsonl"), Meta{Task: "x"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	writer.Close()
 
 	recorder := NewRecorder(writer, nil)
 	recorder.Event(loop.Event{Kind: loop.EventIteration})
 
-	if recorder.Err() == nil {
-		t.Error("the failure was lost")
-	}
+	require.Error(t, recorder.Err())
 }
 
 func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "x"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	recorder := NewRecorder(writer, nil)
 
@@ -223,14 +204,13 @@ func TestRecordResultKeepsTheUnderlyingError(t *testing.T) {
 
 	result := records[len(records)-1].Result
 
-	if !strings.HasPrefix(result.Error, "provider: Model 'stealth/ox-alpha' not found (404)") {
-		t.Errorf("Error = %q, want the provider's own words", result.Error)
-	}
+	assert.True(t, strings.HasPrefix(result.Error, "provider: Model 'stealth/ox-alpha' not found (404)"), "want the provider's own words")
 
 	failure := result.Failure
-	if failure == nil || failure.Status != 404 || failure.RequestBytes != 118234 || !strings.Contains(failure.ResponseBody, "not found") {
-		t.Errorf("Failure = %+v, want the wire evidence kept verbatim", failure)
-	}
+	assert.NotNil(t, failure, "want the wire evidence kept verbatim")
+	assert.Equal(t, 404, failure.Status, "want the wire evidence kept verbatim")
+	assert.Equal(t, 118234, failure.RequestBytes, "want the wire evidence kept verbatim")
+	assert.Contains(t, failure.ResponseBody, "not found", "want the wire evidence kept verbatim")
 }
 
 // The conversation only grows, and the recorder writes the tail it has not seen.
@@ -240,9 +220,7 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "x"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	recorder := NewRecorder(writer, nil)
 
@@ -269,9 +247,8 @@ func TestTheConversationIsRecordedOnceWhateverHowOftenItIsHandedOver(t *testing.
 		}
 	}
 
-	if want := "the original task,carry on,ok"; strings.Join(got, ",") != want {
-		t.Errorf("recorded %v, want each message once, in order: %s", got, want)
-	}
+	want := "the original task,carry on,ok"
+	assert.Equal(t, want, strings.Join(got, ","), "recorded %v, want each message once, in order", got)
 }
 
 // Usage numbers have dedicated fields the log has no column for. They are
@@ -290,9 +267,9 @@ func TestAUsageEventIsRecordedWithItsNumbers(t *testing.T) {
 
 	events := readLog(t, path)
 
-	if event := events[len(events)-1].Event; event == nil || event.Text != "input 567000 output 1200" {
-		t.Errorf("event = %+v, want the token counts in its text", event)
-	}
+	event := events[len(events)-1].Event
+	assert.NotNil(t, event, "want the token counts in its text")
+	assert.Equal(t, "input 567000 output 1200", event.Text, "want the token counts in its text")
 }
 
 // The result carries the process exit code the ending maps onto, so a script
@@ -307,9 +284,7 @@ func TestTheResultCarriesTheExitCode(t *testing.T) {
 
 		records := readLog(t, path)
 
-		if got := records[len(records)-1].Result.Code; got != want {
-			t.Errorf("%s: code = %d, want %d", reason, got, want)
-		}
+		assert.Equal(t, want, records[len(records)-1].Result.Code, "%s: code", reason)
 	}
 }
 
@@ -331,9 +306,7 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 	_ = writer.Close()
 
 	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 
@@ -341,15 +314,17 @@ func TestAMessageRecordKeepsItsShapeOnDisk(t *testing.T) {
 		Message map[string]any `json:"message"`
 	}
 
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &record); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &record))
 
 	activity, _ := record.Message[litActivity].(map[string]any)
 
-	if record.Message["type"] != litActivity || record.Message["text"] != "ok" ||
-		activity["kind"] != "response" || activity["id"] != "c1" || activity["name"] != litShell ||
-		activity["arguments"] != litCommandLs || activity["result"] != "out" {
-		t.Errorf("message record = %v, want type/text/activity{kind,id,name,arguments,result}", record.Message)
-	}
+	assert.Equal(t, litActivity, record.Message["type"], "want type/text/activity{kind,id,name,arguments,result}")
+	assert.Equal(t, "ok", record.Message["text"], "want type/text/activity{kind,id,name,arguments,result}")
+	assert.Equal(t, "response", activity["kind"], "want type/text/activity{kind,id,name,arguments,result}")
+	assert.Equal(t, "c1", activity["id"], "want type/text/activity{kind,id,name,arguments,result}")
+	assert.Equal(t, litShell, activity["name"], "want type/text/activity{kind,id,name,arguments,result}")
+	arguments, _ := activity["arguments"].(string)
+
+	assert.JSONEq(t, litCommandLs, arguments, "want type/text/activity{kind,id,name,arguments,result}")
+	assert.Equal(t, "out", activity["result"], "want type/text/activity{kind,id,name,arguments,result}")
 }

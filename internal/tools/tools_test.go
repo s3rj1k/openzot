@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // findTool picks a tool out of a set by name.
@@ -31,9 +33,7 @@ func asString(t *testing.T, answer any) string {
 	t.Helper()
 
 	text, ok := answer.(string)
-	if !ok {
-		t.Fatalf("the tool answered %T, want a string", answer)
-	}
+	require.True(t, ok, "the tool answered %T, want a string", answer)
 
 	return text
 }
@@ -42,14 +42,10 @@ func call(t *testing.T, tools []fantasy.AgentTool, name string, args map[string]
 	t.Helper()
 
 	tool, ok := findTool(tools, name)
-	if !ok {
-		t.Fatalf("no tool named %q", name)
-	}
+	require.True(t, ok, "no tool named %q", name)
 
 	input, err := json.Marshal(args)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	response, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "c", Name: name, Input: string(input)})
 	if err != nil {
@@ -86,35 +82,23 @@ func TestDefaultToolsAreWellFormed(t *testing.T) {
 	for _, name := range []string{"shell", litTasks} {
 		tool, ok := findTool(tools, name)
 
-		if !ok {
-			t.Fatalf("tool %q is missing", name)
-		}
+		require.True(t, ok, "tool %q is missing", name)
 
 		info := tool.Info()
 
-		if info.Description == "" {
-			t.Errorf("%s has no description", name)
-		}
+		assert.NotEmpty(t, info.Description, "%s has no description", name)
 
-		if len(info.Parameters) == 0 {
-			t.Errorf("%s has no parameter schema", name)
-		}
+		assert.NotEmpty(t, info.Parameters, "%s has no parameter schema", name)
 
-		if len(info.Required) == 0 {
-			t.Errorf("%s requires nothing; the schema should name what a call needs", name)
-		}
+		assert.NotEmpty(t, info.Required, "%s requires nothing; the schema should name what a call needs", name)
 	}
 }
 
 func TestShellReturnsOutput(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: "echo hello"})
-	if err != nil {
-		t.Fatalf("shell: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(asString(t, got), "hello") {
-		t.Errorf("shell output = %q", got)
-	}
+	assert.Contains(t, asString(t, got), "hello")
 }
 
 // A failing command is information the model can act on - a compiler error, a
@@ -122,32 +106,23 @@ func TestShellReturnsOutput(t *testing.T) {
 // end the run.
 func TestShellFailureIsOutputNotAnError(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: "exit 3"})
-	if err != nil {
-		t.Fatalf("a non-zero exit must not surface as an error: %v", err)
-	}
+	require.NoError(t, err, "a non-zero exit must not surface as an error")
 
-	if !strings.Contains(asString(t, got), "exit") {
-		t.Errorf("the exit status must be visible to the model: %q", got)
-	}
+	assert.Contains(t, asString(t, got), "exit", "the exit status must be visible to the model")
 }
 
 func TestShellTimeoutIsReported(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
 		litCommand: "sleep 5", "timeout": float64(1),
 	})
-	if err != nil {
-		t.Fatalf("a timeout must not surface as an error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(asString(t, got), "timed out") {
-		t.Errorf("a timeout must be visible to the model: %q", got)
-	}
+	assert.Contains(t, asString(t, got), "timed out", "a timeout must be visible to the model")
 }
 
 func TestShellRequiresACommand(t *testing.T) {
-	if _, err := shellHandler(t.Context(), map[string]any{}); err == nil {
-		t.Error("running without a command must be reported")
-	}
+	_, err := shellHandler(t.Context(), map[string]any{})
+	require.Error(t, err, "running without a command must be reported")
 }
 
 // A canceled context stops a command rather than waiting out its timeout.
@@ -176,11 +151,11 @@ func TestShellDoesNotWedgeOnADaemonisedChild(t *testing.T) {
 
 	select {
 	case out := <-done:
-		if text, ok := out.(string); ok && !strings.Contains(text, "started") {
-			t.Errorf("output = %q, want the command's own output kept", text)
+		if text, ok := out.(string); ok {
+			assert.Contains(t, text, "started", "want the command's own output kept")
 		}
 	case <-time.After(20 * time.Second):
-		t.Fatal("the tool call never returned: a backgrounded child holding the output pipe wedges the run for good")
+		require.FailNow(t, "the tool call never returned: a backgrounded child holding the output pipe wedges the run for good")
 	}
 }
 
@@ -198,9 +173,7 @@ func TestTheToolboxIsShellAndTasks(t *testing.T) {
 
 	slices.Sort(names)
 
-	if got := strings.Join(names, ","); got != "shell,tasks" {
-		t.Errorf("tools = %s, want shell and tasks", got)
-	}
+	assert.Equal(t, "shell,tasks", strings.Join(names, ","), "want shell and tasks")
 }
 
 // With no file tools, shell has to be enough. Create a file, read a range of it
@@ -212,21 +185,16 @@ func TestShellIsEnoughToWriteReadAndListFiles(t *testing.T) {
 		"sed -n '2,3p' notes.txt && ls"
 
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{litCommand: command})
-	if err != nil {
-		t.Fatalf("shell: %v", err)
-	}
+	require.NoError(t, err)
 
 	text := asString(t, got)
 
 	for _, want := range []string{"two\nthree", "notes.txt"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("output is missing %q:\n%s", want, text)
-		}
+		assert.Contains(t, text, want)
 	}
 
-	if strings.Contains(text, "one\n") || strings.Contains(text, "four") {
-		t.Errorf("sed leaked lines outside 2-3:\n%s", text)
-	}
+	assert.NotContains(t, text, "one\n", "sed leaked lines outside 2-3")
+	assert.NotContains(t, text, "four", "sed leaked lines outside 2-3")
 }
 
 // Reading a file with cat is how the model reads now, so the output ceiling
@@ -236,19 +204,13 @@ func TestShellOutputIsTruncatedVisibly(t *testing.T) {
 	got, err := call(t, New(maxToolOutput, nil), "shell", map[string]any{
 		litCommand: "head -c " + strconv.Itoa(maxToolOutput+5_000) + " /dev/zero | tr '\\0' x",
 	})
-	if err != nil {
-		t.Fatalf("shell: %v", err)
-	}
+	require.NoError(t, err)
 
 	text := asString(t, got)
 
-	if len(text) > maxToolOutput+200 {
-		t.Errorf("output length %d exceeds the cap", len(text))
-	}
+	assert.LessOrEqual(t, len(text), maxToolOutput+200, "output length %d exceeds the cap", len(text))
 
-	if !strings.Contains(text, "truncated") {
-		t.Error("truncation must be visible so the model knows it saw a fragment")
-	}
+	assert.Contains(t, text, "truncated", "truncation must be visible so the model knows it saw a fragment")
 }
 
 // The ceiling is the caller's, so a model on a small-window endpoint can be given
@@ -257,19 +219,13 @@ func TestShellHonoursAConfiguredOutputCeiling(t *testing.T) {
 	got, err := call(t, New(4_000, nil), "shell", map[string]any{
 		litCommand: "head -c 40000 /dev/zero | tr '\\0' x",
 	})
-	if err != nil {
-		t.Fatalf("shell: %v", err)
-	}
+	require.NoError(t, err)
 
 	text := asString(t, got)
 
-	if len(text) > 4_500 {
-		t.Errorf("a 4000-byte ceiling returned %d bytes", len(text))
-	}
+	assert.LessOrEqual(t, len(text), 4_500, "a 4000-byte ceiling returned %d bytes", len(text))
 
-	if !strings.Contains(text, "truncated") {
-		t.Error("the tighter ceiling must still mark its truncation")
-	}
+	assert.Contains(t, text, "truncated", "the tighter ceiling must still mark its truncation")
 }
 
 // No ceiling means what it says. A caller that does not want one gets the whole
@@ -278,11 +234,9 @@ func TestNoCeilingReturnsEverything(t *testing.T) {
 	got, err := call(t, New(0, nil), "shell", map[string]any{
 		litCommand: "head -c 30000 /dev/zero | tr '\\0' x",
 	})
-	if err != nil {
-		t.Fatalf("shell: %v", err)
-	}
+	require.NoError(t, err)
 
-	if text := asString(t, got); len(text) != 30_000 || strings.Contains(text, "truncated") {
-		t.Errorf("got %d bytes with truncation %v, want all 30000 untouched", len(text), strings.Contains(text, "truncated"))
-	}
+	text := asString(t, got)
+	assert.Len(t, text, 30_000, "want all 30000 untouched")
+	assert.NotContains(t, text, "truncated", "want all 30000 untouched")
 }

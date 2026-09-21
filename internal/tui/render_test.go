@@ -1,9 +1,10 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // A path is read from its end. The last segment names the project, the first
@@ -58,14 +59,11 @@ func TestShortPathKeepsTheInformativeEnd(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got := shortPath(test.path, test.max)
 
-			if got != test.want {
-				t.Errorf("shortPath(%q, %d) = %q, want %q", test.path, test.max, got, test.want)
-			}
+			assert.Equal(t, test.want, got)
 
 			// whatever it returns must actually fit the budget it was given
-			if n := utf8.RuneCountInString(got); n > test.max {
-				t.Errorf("shortPath(%q, %d) is %d columns wide: %q", test.path, test.max, n, got)
-			}
+			n := utf8.RuneCountInString(got)
+			assert.LessOrEqual(t, n, test.max, "shortPath(%q, %d) is %d columns wide: %q", test.path, test.max, n, got)
 		})
 	}
 }
@@ -77,11 +75,7 @@ func TestTheDirStatShowsTheProjectEnd(t *testing.T) {
 
 	bar := stripANSI(m.metaBar())
 
-	if !strings.Contains(bar, "tool") {
-		t.Errorf("the dir stat must keep the directory you are actually in: %q", bar)
-	}
+	assert.Contains(t, bar, "tool", "the dir stat must keep the directory you are actually in")
 
-	if strings.Contains(bar, "/workspaces/monorepo") {
-		t.Errorf("the shared leading path is what should be dropped: %q", bar)
-	}
+	assert.NotContains(t, bar, "/workspaces/monorepo", "the shared leading path is what should be dropped")
 }

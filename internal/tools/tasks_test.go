@@ -1,8 +1,10 @@
 package tools
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/plan"
 )
@@ -32,9 +34,7 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 		task("add a test", "pending"),
 		map[string]any{litTitle: litDeploy, litStatus: "blocked", "note": "needs credentials"},
 	))
-	if err != nil {
-		t.Fatalf("tasks: %v", err)
-	}
+	require.NoError(t, err)
 
 	want := "tasks: 1/4 done\n" +
 		"[x] read the parser\n" +
@@ -42,9 +42,7 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 		"[ ] add a test\n" +
 		"[!] deploy - needs credentials"
 
-	if got != want {
-		t.Errorf("tasks answered:\n%s\nwant:\n%s", got, want)
-	}
+	assert.Equal(t, want, got)
 }
 
 // Every call carries the whole list and replaces the last. There is no state in
@@ -53,34 +51,27 @@ func TestTheTasksToolAnswersWithTheChecklist(t *testing.T) {
 func TestTasksReplaceRatherThanMerge(t *testing.T) {
 	tools := New(maxToolOutput, nil)
 
-	if _, err := call(t, tools, litTasks, taskCall(task("first", "pending"), task("second", "pending"))); err != nil {
-		t.Fatalf("first call: %v", err)
-	}
+	_, err := call(t, tools, litTasks, taskCall(task("first", "pending"), task("second", "pending")))
+	require.NoError(t, err)
 
 	got, err := call(t, tools, litTasks, taskCall(task("third", "in_progress")))
-	if err != nil {
-		t.Fatalf("second call: %v", err)
-	}
+	require.NoError(t, err)
 
 	text := asString(t, got)
 
-	if !strings.Contains(text, "0/1 done") || !strings.Contains(text, "third") {
-		t.Errorf("the second list should stand alone:\n%s", text)
-	}
+	assert.Contains(t, text, "0/1 done", "the second list should stand alone")
+	assert.Contains(t, text, "third", "the second list should stand alone")
 
-	if strings.Contains(text, "first") || strings.Contains(text, "second") {
-		t.Errorf("the second call kept tasks from the first:\n%s", text)
-	}
+	assert.NotContains(t, text, "first", "the second call kept tasks from the first")
+	assert.NotContains(t, text, "second", "the second call kept tasks from the first")
 }
 
 func TestTheTasksToolRefusesAMalformedList(t *testing.T) {
-	if _, err := call(t, New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}}); err == nil {
-		t.Error("an empty list must be refused")
-	}
+	_, err := call(t, New(maxToolOutput, nil), litTasks, map[string]any{litTasks: []any{}})
+	require.Error(t, err, "an empty list must be refused")
 
-	if _, err := call(t, New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished"))); err == nil {
-		t.Error("an unknown status must be refused")
-	}
+	_, err = call(t, New(maxToolOutput, nil), litTasks, taskCall(task("a", "finished")))
+	require.Error(t, err, "an unknown status must be refused")
 }
 
 // schemaAt follows a path through a tool's parameter schema.
@@ -91,9 +82,7 @@ func schemaAt(t *testing.T, schema map[string]any, path ...string) any {
 
 	for _, key := range path {
 		fields, ok := node.(map[string]any)
-		if !ok {
-			t.Fatalf("the schema has no object at %q on the way to %v", key, path)
-		}
+		require.True(t, ok, "the schema has no object at %q on the way to %v", key, path)
 
 		node = fields[key]
 	}
@@ -108,19 +97,14 @@ func TestTheSchemaOffersOnlyStatusesTheParserAccepts(t *testing.T) {
 	tasks, _ := findTool(New(maxToolOutput, nil), litTasks)
 
 	statuses, ok := schemaAt(t, tasks.Info().Parameters, litTasks, "items", "properties", litStatus, "enum").([]any)
-	if !ok {
-		t.Fatal("the schema offers no list of statuses")
-	}
+	require.True(t, ok, "the schema offers no list of statuses")
 
-	if len(statuses) != 4 {
-		t.Fatalf("schema offers %v, want the four statuses", statuses)
-	}
+	require.Len(t, statuses, 4, "want the four statuses")
 
 	for _, offered := range statuses {
 		status := asString(t, offered)
 
-		if _, err := plan.ParseTasks(taskCall(task("a task", status))); err != nil {
-			t.Errorf("the schema offers %q but the parser refuses it: %v", status, err)
-		}
+		_, err := plan.ParseTasks(taskCall(task("a task", status)))
+		require.NoError(t, err, "the schema offers %q but the parser refuses it", status)
 	}
 }

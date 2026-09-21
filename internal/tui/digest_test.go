@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/loop"
 )
 
@@ -24,9 +27,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 
 	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, value, found := strings.Cut(strings.TrimRight(line, " "), " ")
-		if !found {
-			t.Fatalf("line %q is not a key/value pair", line)
-		}
+		require.True(t, found, "line %q is not a key/value pair", line)
 
 		got[key] = strings.TrimSpace(value)
 	}
@@ -42,9 +43,7 @@ func TestRenderDigestIsColumnarAndParsable(t *testing.T) {
 	}
 
 	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("%s = %q, want %q", k, got[k], v)
-		}
+		assert.Equal(t, v, got[k])
 	}
 }
 
@@ -52,9 +51,7 @@ func TestRenderDigestOmitsEmptyFields(t *testing.T) {
 	out := RenderDigest(Digest{Status: litDone, Iterations: 1, Calls: 1})
 
 	for _, absent := range []string{"session", "message"} {
-		if strings.Contains(out, absent) {
-			t.Errorf("a run with no %s must not render that row:\n%s", absent, out)
-		}
+		assert.NotContains(t, out, absent, "a run with no %s must not render that row", absent)
 	}
 }
 
@@ -62,13 +59,9 @@ func TestRenderDigestFlattensMultilineMessage(t *testing.T) {
 	out := RenderDigest(Digest{Status: litDone, Message: "line one\nline two"})
 
 	// The one-row-per-line contract must hold even for a multi-line message.
-	if strings.Contains(out, "line one\nline two") {
-		t.Error("a multi-line message must be flattened to one line")
-	}
+	assert.NotContains(t, out, "line one\nline two", "a multi-line message must be flattened to one line")
 
-	if !strings.Contains(out, "line one line two") {
-		t.Errorf("the message must survive flattening:\n%s", out)
-	}
+	assert.Contains(t, out, "line one line two", "the message must survive flattening")
 }
 
 func TestDigestStatus(t *testing.T) {
@@ -84,8 +77,6 @@ func TestDigestStatus(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if got := DigestStatus(c.reason, c.code); got != c.want {
-			t.Errorf("DigestStatus(%q, %d) = %q, want %q", c.reason, c.code, got, c.want)
-		}
+		assert.Equal(t, c.want, DigestStatus(c.reason, c.code))
 	}
 }

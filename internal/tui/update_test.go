@@ -9,6 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
@@ -19,9 +21,7 @@ func asModel(t *testing.T, updated tea.Model) *model {
 	t.Helper()
 
 	typed, ok := updated.(*model)
-	if !ok {
-		t.Fatalf("Update returned %T, want *model", updated)
-	}
+	require.True(t, ok, "Update returned %T, want *model", updated)
 
 	return typed
 }
@@ -46,34 +46,25 @@ func TestInitStartsTheSpinnerAndClock(t *testing.T) {
 
 	cmd := m.Init()
 
-	if cmd == nil {
-		t.Fatal("Init must return a command; without it nothing ever redraws")
-	}
+	require.NotNil(t, cmd, "Init must return a command; without it nothing ever redraws")
 
 	// a batch fans out into the individual commands, which is how both the
 	// spinner tick and the clock tick get started
 	msg := cmd()
 
 	batch, ok := msg.(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("Init produced %T, want a batch starting both tickers", msg)
-	}
+	require.True(t, ok, "want a batch starting both tickers")
 
-	if len(batch) < 2 {
-		t.Fatalf("Init started %d commands, want the spinner and the clock", len(batch))
-	}
+	require.GreaterOrEqual(t, len(batch), 2, "want the spinner and the clock")
 }
 
 func TestWindowSizeMakesTheViewportReady(t *testing.T) {
 	m := sized(t, 100, 40)
 
-	if !m.ready {
-		t.Error("the model should be ready after a size message")
-	}
+	assert.True(t, m.ready, "the model should be ready after a size message")
 
-	if m.width != 100 || m.height != 40 {
-		t.Errorf("size = %dx%d, want 100x40", m.width, m.height)
-	}
+	assert.Equal(t, 100, m.width)
+	assert.Equal(t, 40, m.height)
 }
 
 // A terminal too short for the chrome must still leave a usable viewport rather
@@ -81,9 +72,7 @@ func TestWindowSizeMakesTheViewportReady(t *testing.T) {
 func TestTinyTerminalDoesNotProduceANegativeViewport(t *testing.T) {
 	m := sized(t, 20, 1)
 
-	if m.vp.Height < 1 {
-		t.Errorf("viewport height = %d, want at least 1", m.vp.Height)
-	}
+	assert.GreaterOrEqual(t, m.vp.Height, 1)
 }
 
 // A quit has to actually be a quit. Asserting only that some command came back
@@ -97,13 +86,10 @@ func TestQuitKeys(t *testing.T) {
 
 		_, cmd := m.Update(key)
 
-		if cmd == nil {
-			t.Fatalf("key %v returned no command", key)
-		}
+		require.NotNil(t, cmd, "key %v returned no command", key)
 
-		if _, quit := cmd().(tea.QuitMsg); !quit {
-			t.Errorf("key %v produced %T, want a quit", key, cmd())
-		}
+		_, quit := cmd().(tea.QuitMsg)
+		assert.True(t, quit, "key %v produced %T, want a quit", key, cmd())
 	}
 }
 
@@ -119,15 +105,11 @@ func TestJumpKeys(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 
-	if updated.(*model).follow {
-		t.Error("jumping to the top must stop following")
-	}
+	assert.False(t, updated.(*model).follow, "jumping to the top must stop following")
 
 	updated, _ = updated.(*model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 
-	if !updated.(*model).follow {
-		t.Error("jumping to the bottom must resume following")
-	}
+	assert.True(t, updated.(*model).follow, "jumping to the bottom must resume following")
 }
 
 // The log is read-only, so scrolling is the only interaction - and following the
@@ -141,15 +123,11 @@ func TestScrollingStopsFollowing(t *testing.T) {
 
 	m.render()
 
-	if !m.follow {
-		t.Fatal("a fresh model should follow the tail")
-	}
+	require.True(t, m.follow, "a fresh model should follow the tail")
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 
-	if updated.(*model).follow {
-		t.Error("scrolling up must stop the log from jumping back to the bottom")
-	}
+	assert.False(t, updated.(*model).follow, "scrolling up must stop the log from jumping back to the bottom")
 }
 
 func TestTickAdvancesTheElapsedClock(t *testing.T) {
@@ -157,13 +135,9 @@ func TestTickAdvancesTheElapsedClock(t *testing.T) {
 
 	updated, cmd := m.Update(tickMsg{})
 
-	if cmd == nil {
-		t.Error("a tick must schedule the next one, or the clock stops")
-	}
+	assert.NotNil(t, cmd, "a tick must schedule the next one, or the clock stops")
 
-	if updated.(*model).elapsed < 0 {
-		t.Error("elapsed time must not be negative")
-	}
+	assert.GreaterOrEqual(t, updated.(*model).elapsed, time.Duration(0))
 }
 
 func TestHandleEventBuildsTheLog(t *testing.T) {
@@ -180,16 +154,12 @@ func TestHandleEventBuildsTheLog(t *testing.T) {
 
 	m.flushPending()
 
-	if m.iteration != 1 {
-		t.Errorf("iteration = %d, want 1", m.iteration)
-	}
+	assert.Equal(t, 1, m.iteration)
 
 	log := strings.Join(m.entries, "\n")
 
 	for _, want := range []string{litShell, "here is the answer"} {
-		if !strings.Contains(log, want) {
-			t.Errorf("log is missing %q:\n%s", want, log)
-		}
+		assert.Contains(t, log, want)
 	}
 }
 
@@ -200,9 +170,7 @@ func TestToolErrorsAreShown(t *testing.T) {
 
 	log := strings.Join(m.entries, "\n")
 
-	if !strings.Contains(log, "command not found") {
-		t.Errorf("a tool failure must be visible:\n%s", log)
-	}
+	assert.Contains(t, log, "command not found", "a tool failure must be visible")
 }
 
 func TestTheEndingSetsTheStatus(t *testing.T) {
@@ -222,13 +190,9 @@ func TestTheEndingSetsTheStatus(t *testing.T) {
 
 			m.finish(&test.exit)
 
-			if m.status != test.want {
-				t.Errorf("status = %v, want %v", m.status, test.want)
-			}
+			assert.Equal(t, test.want, m.status)
 
-			if m.exitMsg == "" {
-				t.Error("the exit message should be retained for the footer")
-			}
+			assert.NotEmpty(t, m.exitMsg, "the exit message should be retained for the footer")
 		})
 	}
 }
@@ -263,13 +227,9 @@ func TestDeclaredFailureRendersAsAnOutcomeNotACrash(t *testing.T) {
 
 	log := stripANSI(strings.Join(m.entries, "\n"))
 
-	if !strings.Contains(log, "cannot reach the host") {
-		t.Errorf("log %q should carry the model's stated reason", log)
-	}
+	assert.Contains(t, log, "cannot reach the host", "log %q should carry the model's stated reason", log)
 
-	if strings.Contains(log, "code 1") {
-		t.Errorf("log %q reports a declared failure as a process exit code", log)
-	}
+	assert.NotContains(t, log, "code 1", "log %q reports a declared failure as a process exit code", log)
 }
 
 func TestViewRendersWithoutPanicking(t *testing.T) {
@@ -281,14 +241,10 @@ func TestViewRendersWithoutPanicking(t *testing.T) {
 
 	view := m.View()
 
-	if view == "" {
-		t.Fatal("View produced nothing")
-	}
+	require.NotEmpty(t, view)
 
 	for _, want := range []string{"do the thing", "gpt-5.4-mini", "openai"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("view is missing %q", want)
-		}
+		assert.Contains(t, view, want)
 	}
 }
 
@@ -297,8 +253,8 @@ func TestViewRendersWithoutPanicking(t *testing.T) {
 func TestViewBeforeReady(t *testing.T) {
 	m := newModel("task", "m", "b", "/w")
 
-	if view := m.View(); strings.Contains(view, "\x1b[") && m.ready {
-		t.Error("an unready model should not draw a full frame")
+	if view := m.View(); strings.Contains(view, "\x1b[") {
+		assert.True(t, m.ready, "an unready model should not draw a full frame")
 	}
 }
 
@@ -311,14 +267,11 @@ func TestIterationRuleIsFixedShort(t *testing.T) {
 
 	entry := m.entries[len(m.entries)-1]
 
-	if got := strings.Count(entry, "─"); got != 6 {
-		t.Errorf("iteration divider has %d ─ glyphs, want exactly 6: %q", got, entry)
-	}
+	got := strings.Count(entry, "─")
+	assert.Equal(t, 6, got, "iteration divider has %d ─ glyphs, want exactly 6: %q", got, entry)
 
 	const want = "─── iteration 7 ───"
-	if !strings.Contains(entry, want) {
-		t.Errorf("divider must be three dashes on each side of the label: %q", entry)
-	}
+	assert.Contains(t, entry, want, "divider must be three dashes on each side of the label")
 }
 
 // A width-filling rule wraps at a narrow terminal and smears the divider over
@@ -341,14 +294,10 @@ func TestIterationRuleStaysOneRowAtNarrowWidth(t *testing.T) {
 
 				dividers++
 
-				if !strings.Contains(row, "─── iteration 4 ───") {
-					t.Errorf("divider broke across rows at width %d: %q", width, row)
-				}
+				assert.Contains(t, row, "─── iteration 4 ───", "divider broke across rows at width %d", width)
 			}
 
-			if dividers != 1 {
-				t.Errorf("width %d rendered %d iteration rows, want 1: %q", width, dividers, m.committedWrapped)
-			}
+			assert.Equal(t, 1, dividers, "want one iteration row at width %d", width)
 		})
 	}
 }
@@ -366,9 +315,7 @@ func TestRewrapOnResize(t *testing.T) {
 
 	narrow := updated.(*model).committedWrapped
 
-	if wide == narrow {
-		t.Error("resizing should re-wrap the committed log")
-	}
+	assert.NotEqual(t, narrow, wide, "resizing should re-wrap the committed log")
 }
 
 // The badge is how an operator tells at a glance whether the run is still going
@@ -384,14 +331,10 @@ func TestBadgeReflectsStatus(t *testing.T) {
 
 		badge := m.badge()
 
-		if badge == "" {
-			t.Errorf("status %v produced no badge", st)
-		}
+		assert.NotEmpty(t, badge, "status %v produced no badge", st)
 
 		for other, seen := range badges {
-			if seen == badge {
-				t.Errorf("statuses %v and %v render the same badge %q", other, st, badge)
-			}
+			assert.NotEqual(t, badge, seen, "statuses %v and %v render the same badge %q", other, st, badge)
 		}
 
 		badges[st] = badge
@@ -403,9 +346,7 @@ func TestBadgeReflectsStatus(t *testing.T) {
 		statusDone:    litDone,
 		statusFailed:  litFailed,
 	} {
-		if !strings.Contains(badges[st], want) {
-			t.Errorf("the %v badge %q does not say %q", st, badges[st], want)
-		}
+		assert.Contains(t, badges[st], want, "the %v badge %q does not say %q", st, badges[st], want)
 	}
 }
 
@@ -416,15 +357,11 @@ func TestFooterShowsTheKeyHints(t *testing.T) {
 
 	footer := m.footer()
 
-	if footer == "" {
-		t.Fatal("the footer must render while running")
-	}
+	require.NotEmpty(t, footer, "the footer must render while running")
 
 	// the log is read-only, so the only affordances are scrolling and quitting
 	for _, want := range []string{"scroll", "quit"} {
-		if !strings.Contains(footer, want) {
-			t.Errorf("the footer should mention %q: %q", want, footer)
-		}
+		assert.Contains(t, footer, want)
 	}
 }
 
@@ -436,21 +373,15 @@ func TestExitBecomesAnError(t *testing.T) {
 	m.finish(&loop.Result{Reason: loop.StopCycle, Message: "kept repeating"})
 
 	err := m.runError()
-	if err == nil {
-		t.Fatal("a failed run must surface as an error")
-	}
+	require.Error(t, err, "a failed run must surface as an error")
 
-	if !strings.Contains(err.Error(), "kept repeating") {
-		t.Errorf("the error must carry the outcome: %v", err)
-	}
+	assert.Contains(t, err.Error(), "kept repeating")
 
 	clean := sized(t, 100, 30)
 
 	clean.finish(&loop.Result{Reason: loop.StopSettled, Message: litDone})
 
-	if err := clean.runError(); err != nil {
-		t.Errorf("a settled run must not error: %v", err)
-	}
+	require.NoError(t, clean.runError())
 }
 
 // A spinner tick is ignored once the run has ended, or the finished screen keeps
@@ -462,9 +393,7 @@ func TestSpinnerStopsWhenTheRunEnds(t *testing.T) {
 
 	_, cmd := m.Update(tickMsg{})
 
-	if cmd != nil {
-		t.Error("the clock must stop once the run has ended")
-	}
+	assert.Nil(t, cmd, "the clock must stop once the run has ended")
 }
 
 // The renderers have to know the real tool names. A mismatch is not a compile
@@ -485,9 +414,7 @@ func TestRenderToolStartCoversTheBuiltInTools(t *testing.T) {
 	for _, test := range tests {
 		got := stripANSI(renderToolStart(test.tool, test.args))
 
-		if !strings.Contains(got, test.want) {
-			t.Errorf("renderToolStart(%q) = %q, want it to contain %q", test.tool, got, test.want)
-		}
+		assert.Contains(t, got, test.want)
 	}
 }
 
@@ -513,16 +440,12 @@ func TestRenderToolEndHandlesStringResults(t *testing.T) {
 			got := stripANSI(renderToolEnd(test.tool, test.result))
 
 			if !test.wantAny {
-				if got != "" {
-					t.Errorf("expected nothing, got %q", got)
-				}
+				assert.Empty(t, got)
 
 				return
 			}
 
-			if !strings.Contains(got, test.want) {
-				t.Errorf("renderToolEnd = %q, want it to contain %q", got, test.want)
-			}
+			assert.Contains(t, got, test.want)
 		})
 	}
 }
@@ -542,17 +465,12 @@ func TestARecordIsClippedToAThirdOfTheTerminalHeight(t *testing.T) {
 
 	rows := strings.Split(stripANSI(m.committedWrapped), "\n")
 
-	if len(rows) != 10 {
-		t.Fatalf("the record took %d rows on a 30-row terminal, want 10:\n%s", len(rows), strings.Join(rows, "\n"))
-	}
+	require.Len(t, rows, 10, "the record took %d rows on a 30-row terminal, want 10", len(rows))
 
-	if !strings.Contains(rows[len(rows)-1], "…") {
-		t.Errorf("the cut must end on an ellipsis, got %q", rows[len(rows)-1])
-	}
+	assert.Contains(t, rows[len(rows)-1], "…", "the cut must end on an ellipsis, got %q", rows[len(rows)-1])
 
-	if !strings.Contains(rows[0], litDone) || !strings.Contains(rows[1], "line 0") {
-		t.Errorf("the head of the record must survive:\n%s", strings.Join(rows, "\n"))
-	}
+	assert.Contains(t, rows[0], litDone, "the head of the record must survive")
+	assert.Contains(t, rows[1], "line 0", "the head of the record must survive")
 }
 
 // Rows are what count, not source lines. A few long lines wrap into many rows.
@@ -563,9 +481,7 @@ func TestAWrappedRecordIsClippedByRows(t *testing.T) {
 
 	m.handleEvent(&loop.Event{Kind: loop.EventToolCallEnd, Tool: litShell, Result: long + "\n" + long + "\n" + long})
 
-	if got := len(strings.Split(m.committedWrapped, "\n")); got != 10 {
-		t.Errorf("a wrapped record took %d rows, want the 10 a third of 30 allows", got)
-	}
+	assert.Len(t, strings.Split(m.committedWrapped, "\n"), 10, "want the 10 a third of 30 allows")
 }
 
 // A record that fits is left exactly as it is, with no ellipsis.
@@ -576,9 +492,8 @@ func TestARecordThatFitsIsNotClipped(t *testing.T) {
 
 	got := stripANSI(m.committedWrapped)
 
-	if strings.Contains(got, "…") || !strings.Contains(got, "three") {
-		t.Errorf("a short record must be shown whole:\n%s", got)
-	}
+	assert.NotContains(t, got, "…", "a short record must be shown whole")
+	assert.Contains(t, got, "three", "a short record must be shown whole")
 }
 
 // The limit follows the terminal. Growing the window shows more of a record that
@@ -599,9 +514,9 @@ func TestResizingChangesHowMuchOfARecordShows(t *testing.T) {
 	resized, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 60})
 	m = asModel(t, resized)
 
-	if after := len(strings.Split(m.committedWrapped, "\n")); after != 20 || after <= before {
-		t.Errorf("rows after growing the window = %d (was %d), want 20", after, before)
-	}
+	after := len(strings.Split(m.committedWrapped, "\n"))
+	assert.Equal(t, 20, after, "rows after growing the window = %d (was %d), want 20", after, before)
+	assert.Greater(t, after, before, "rows after growing the window = %d (was %d), want 20", after, before)
 }
 
 func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
@@ -611,15 +526,11 @@ func TestRenderToolEndHandlesStructuredResults(t *testing.T) {
 		"stderr":  "compile failed",
 	}))
 
-	if !strings.Contains(failure, "exit status 1") {
-		t.Errorf("a structured failure must surface: %q", failure)
-	}
+	assert.Contains(t, failure, "exit status 1")
 
 	success := stripANSI(renderToolEnd(litShell, map[string]any{litStdout: "all good"}))
 
-	if !strings.Contains(success, "all good") {
-		t.Errorf("structured output must surface: %q", success)
-	}
+	assert.Contains(t, success, "all good", "structured output must surface")
 }
 
 // A key nobody bound must reach the viewport rather than being swallowed, and
@@ -637,9 +548,7 @@ func TestUnboundKeysAreNotQuitKeys(t *testing.T) {
 
 		// A quit would leave the model unchanged and end the program. Without running the program, what can be
 		// checked is that the viewer is still there and still running.
-		if updated.(*model).status != statusRunning {
-			t.Errorf("key %v ended the run", key)
-		}
+		assert.Equal(t, statusRunning, updated.(*model).status, "key %v ended the run", key)
 	}
 }
 
@@ -654,13 +563,9 @@ func TestTheClockStopsWhenTheRunEnds(t *testing.T) {
 
 	next, cmd := m.Update(tickMsg{})
 
-	if cmd != nil {
-		t.Error("a finished run must not schedule another tick")
-	}
+	assert.Nil(t, cmd, "a finished run must not schedule another tick")
 
-	if next.(*model).elapsed != before {
-		t.Error("the clock kept running after the run ended")
-	}
+	assert.Equal(t, before, next.(*model).elapsed, "the clock kept running after the run ended")
 }
 
 // The footer tells the operator how to leave. While a run is going it shows the
@@ -677,13 +582,9 @@ func TestFooterAddsAnExitHintWhenTheRunIsOver(t *testing.T) {
 
 	finished := m.footer()
 
-	if len(finished) <= len(running) {
-		t.Errorf("a finished footer must say more than a running one:\n%q\n%q", finished, running)
-	}
+	assert.Greater(t, len(finished), len(running), "a finished footer must say more than a running one")
 
-	if !strings.Contains(finished, "exit") {
-		t.Errorf("the finished footer must say how to leave: %q", finished)
-	}
+	assert.Contains(t, finished, "exit", "the finished footer must say how to leave")
 }
 
 func TestFormattedDuration(t *testing.T) {
@@ -698,9 +599,7 @@ func TestFormattedDuration(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if got := fmtDuration(test.duration); got != test.want {
-			t.Errorf("fmtDuration(%s) = %q, want %q", test.duration, got, test.want)
-		}
+		assert.Equal(t, test.want, fmtDuration(test.duration))
 	}
 }
 
@@ -712,13 +611,9 @@ func TestTitleBarSurvivesANarrowTerminal(t *testing.T) {
 
 		title := m.titleBar()
 
-		if title == "" {
-			t.Errorf("width %d produced no title bar", width)
-		}
+		assert.NotEmpty(t, title, "width %d produced no title bar", width)
 
-		if strings.Contains(title, "\n") {
-			t.Errorf("width %d wrapped the title bar: %q", width, title)
-		}
+		assert.NotContains(t, title, "\n", "width %d wrapped the title bar", width)
 	}
 }
 
@@ -742,28 +637,21 @@ func TestTruncateAddsAnEllipsisAndFlattensNewlines(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if got := truncate(test.in, test.max); got != test.want {
-			t.Errorf("truncate(%q, %d) = %q, want %q", test.in, test.max, got, test.want)
-		}
+		assert.Equal(t, test.want, truncate(test.in, test.max))
 	}
 }
 
 // A shell tool reports failure on stderr, and that is exactly the output an
 // operator reading a failed run needs to see.
 func TestCommandOutputPrefersStdoutButFallsBackToStderr(t *testing.T) {
-	if got := commandOutput(map[string]any{litStdout: "all good\n"}); !strings.Contains(got, "all good") {
-		t.Errorf("stdout was not rendered: %q", got)
-	}
+	assert.Contains(t, commandOutput(map[string]any{litStdout: "all good\n"}), "all good")
 
 	got := commandOutput(map[string]any{litStdout: "", "stderr": "permission denied\n"})
 
-	if !strings.Contains(got, "permission denied") {
-		t.Errorf("stderr was not rendered when stdout was empty: %q", got)
-	}
+	assert.Contains(t, got, "permission denied", "stderr was not rendered when stdout was empty")
 
-	if got := commandOutput(map[string]any{}); got != "" {
-		t.Errorf("a silent command rendered %q, want nothing", got)
-	}
+	got = commandOutput(map[string]any{})
+	assert.Empty(t, got, "a silent command rendered %q, want nothing", got)
 }
 
 func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
@@ -779,24 +667,18 @@ func TestActivityLogIsBoundedForLongRuns(t *testing.T) {
 	}
 
 	// bounded. Never more than the cap plus the trim slack, whatever the run length
-	if len(m.entries) > limit+limit/4 {
-		t.Fatalf("scrollback must stay bounded, got %d entries", len(m.entries))
-	}
+	require.LessOrEqual(t, len(m.entries), limit+limit/4, "scrollback must stay bounded, got %d entries", len(m.entries))
 
-	if !m.truncated {
-		t.Error("truncation must be flagged once the cap is exceeded")
-	}
+	assert.True(t, m.truncated, "truncation must be flagged once the cap is exceeded")
 
 	// the newest line always survives
-	if got := m.entries[len(m.entries)-1]; got != fmt.Sprintf("line %d", total-1) {
-		t.Errorf("the most recent line must be kept, got %q", got)
-	}
+	got := m.entries[len(m.entries)-1]
+	assert.Equal(t, fmt.Sprintf("line %d", total-1), got, "the most recent line must be kept, got %q", got)
 
 	// the oldest kept line is exactly total - len(entries), and older ones are gone
 	oldest := total - len(m.entries)
-	if got := m.entries[0]; got != fmt.Sprintf("line %d", oldest) {
-		t.Errorf("the oldest kept line should be line %d, got %q", oldest, got)
-	}
+	got = m.entries[0]
+	assert.Equal(t, fmt.Sprintf("line %d", oldest), got, "the oldest kept line should be line %d, got %q", oldest, got)
 }
 
 // When the log has been trimmed, the viewer must say so and point at the session
@@ -806,9 +688,7 @@ func TestTrimmedLogShowsAMarker(t *testing.T) {
 	m.truncated = true
 	m.appendEntry("a recent line") // triggers a render
 
-	if !strings.Contains(m.vp.View(), "trimmed") {
-		t.Errorf("a trimmed log must show a marker, got:\n%s", m.vp.View())
-	}
+	assert.Contains(t, m.vp.View(), "trimmed", "a trimmed log must show a marker, got")
 }
 
 // The scrollback cap is configurable (Meta.MaxScrollback / ui.scrollback). A
@@ -821,13 +701,9 @@ func TestScrollbackCapIsConfigurable(t *testing.T) {
 		m.appendEntry(fmt.Sprintf("line %d", i))
 	}
 
-	if len(m.entries) > m.maxEntries+m.maxEntries/4 {
-		t.Errorf("a custom cap of %d must be honored, kept %d", m.maxEntries, len(m.entries))
-	}
+	assert.LessOrEqual(t, len(m.entries), m.maxEntries+m.maxEntries/4, "a custom cap of %d must be honored, kept %d", m.maxEntries, len(m.entries))
 
-	if len(m.entries) < m.maxEntries {
-		t.Errorf("should keep about the cap %d, kept only %d", m.maxEntries, len(m.entries))
-	}
+	assert.GreaterOrEqual(t, len(m.entries), m.maxEntries, "should keep about the cap %d, kept only %d", m.maxEntries, len(m.entries))
 }
 
 // headerSegments is how many segments the header has when everything fits.
@@ -845,9 +721,8 @@ func TestMetaBarOrder(t *testing.T) {
 
 	for _, label := range []string{"provider", "model", "iter", litElapsed, "tokens", "dir"} {
 		at := strings.Index(bar, label)
-		if at < 0 || at < last {
-			t.Fatalf("%q is missing or out of order in %q", label, bar)
-		}
+		require.GreaterOrEqual(t, at, 0, "%q is missing or out of order in %q", label, bar)
+		require.GreaterOrEqual(t, at, last, "%q is missing or out of order in %q", label, bar)
 
 		last = at
 	}
@@ -872,9 +747,7 @@ func metaSegments(bar string) []string {
 func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
 	reference := metaSegments(sized(t, 400, 30).metaBar())
 
-	if len(reference) != headerSegments {
-		t.Fatalf("a wide terminal must show every header segment: %q", reference)
-	}
+	require.Len(t, reference, headerSegments, "a wide terminal must show every header segment")
 
 	for _, width := range []int{12, 20, 33, 47, 68, 95, 140} {
 		m := sized(t, width, 30)
@@ -882,9 +755,8 @@ func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
 		bar := m.metaBar()
 
 		// nothing may spill past the terminal edge
-		if got := lipgloss.Width(bar); got > width {
-			t.Errorf("at width %d the bar is %d columns wide: %q", width, got, bar)
-		}
+		got := lipgloss.Width(bar)
+		assert.LessOrEqual(t, got, width, "at width %d the bar is %d columns wide: %q", width, got, bar)
 
 		shown := metaSegments(bar)
 
@@ -892,22 +764,17 @@ func TestMetaBarDropsSegmentsThatDoNotFitWhole(t *testing.T) {
 		// one - this is the half-visible bug, stated directly
 		for i, segment := range shown {
 			if i >= len(reference) {
-				t.Errorf("at width %d the bar grew segments it should not have: %q", width, shown)
+				assert.Failf(t, "unexpected", "at width %d the bar grew segments it should not have: %q", width, shown)
 
 				break
 			}
 
-			if segment != reference[i] {
-				t.Errorf("at width %d segment %d is %q, want the whole %q",
-					width, i, segment, reference[i])
-			}
+			assert.Equal(t, reference[i], segment, "at width %d segment", width)
 		}
 
 		// and what is shown is a prefix of the configured order, so segments
 		// appear and disappear predictably as the terminal is resized
-		if len(shown) > len(reference) {
-			t.Errorf("at width %d the bar shows %d segments, more than exist", width, len(shown))
-		}
+		assert.LessOrEqual(t, len(shown), len(reference), "at width %d the bar shows %d segments, more than exist", width, len(shown))
 	}
 }
 
@@ -920,16 +787,12 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 	for width := 8; width <= 400; width += 4 {
 		shown := len(metaSegments(sized(t, width, 30).metaBar()))
 
-		if shown < previous {
-			t.Fatalf("widening to %d columns dropped a segment (%d, was %d)", width, shown, previous)
-		}
+		require.GreaterOrEqual(t, shown, previous, "widening to %d columns dropped a segment (%d, was %d)", width, shown, previous)
 
 		previous = shown
 	}
 
-	if previous != headerSegments {
-		t.Errorf("the widest terminal shows %d segments, want all %d", previous, headerSegments)
-	}
+	assert.Equal(t, headerSegments, previous, "the widest terminal shows %d segments, want all %d", previous, headerSegments)
 }
 
 // A terminal too narrow for even the first segment shows an empty bar rather
@@ -937,9 +800,7 @@ func TestMetaBarGrowsMonotonicallyWithWidth(t *testing.T) {
 func TestMetaBarIsEmptyWhenNothingFits(t *testing.T) {
 	m := sized(t, 3, 30)
 
-	if bar := m.metaBar(); strings.TrimSpace(stripANSI(bar)) != "" {
-		t.Errorf("nothing fits at 3 columns, so nothing should be drawn: %q", bar)
-	}
+	assert.Empty(t, strings.TrimSpace(stripANSI(m.metaBar())), "nothing fits at 3 columns, so nothing should be drawn")
 }
 
 // The header shows the provider-reported token usage, and progress against any
@@ -954,17 +815,12 @@ func TestMetaBarShowsTokensAndLimits(t *testing.T) {
 
 	bar := m.metaBar()
 
-	if !strings.Contains(bar, "5/1000") {
-		t.Errorf("iter must show progress against its limit: %q", bar)
-	}
+	assert.Contains(t, bar, "5/1000", "iter must show progress against its limit")
 
-	if !strings.Contains(bar, "/30:00") {
-		t.Errorf("elapsed must show the time limit: %q", bar)
-	}
+	assert.Contains(t, bar, "/30:00", "elapsed must show the time limit")
 
-	if !strings.Contains(bar, "32.0k") || !strings.Contains(bar, "13.0k") {
-		t.Errorf("tokens must show provider usage compactly: %q", bar)
-	}
+	assert.Contains(t, bar, "32.0k", "tokens must show provider usage compactly")
+	assert.Contains(t, bar, "13.0k", "tokens must show provider usage compactly")
 }
 
 // A usage update from the run sets the counts the meta bar reads.
@@ -973,9 +829,8 @@ func TestHandleEventRecordsUsage(t *testing.T) {
 
 	m.handleEvent(&loop.Event{Kind: loop.EventUsage, InputTokens: 1234, OutputTokens: 567})
 
-	if m.inputTokens != 1234 || m.outputTokens != 567 {
-		t.Errorf("usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
-	}
+	assert.Equal(t, 1234, m.inputTokens, "usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
+	assert.Equal(t, 567, m.outputTokens, "usage not recorded: in=%d out=%d", m.inputTokens, m.outputTokens)
 }
 
 func TestFmtTokens(t *testing.T) {
@@ -988,9 +843,7 @@ func TestFmtTokens(t *testing.T) {
 		{45200, "45.2k"},
 		{1_200_000, "1.2M"},
 	} {
-		if got := fmtTokens(tc.n); got != tc.want {
-			t.Errorf("fmtTokens(%d) = %q, want %q", tc.n, got, tc.want)
-		}
+		assert.Equal(t, tc.want, fmtTokens(tc.n))
 	}
 }
 
@@ -1006,14 +859,12 @@ func TestTheErrorBehindAFailedRunIsKeptAndShown(t *testing.T) {
 	}})
 	m = asModel(t, next)
 
-	if err := m.runError(); err == nil || !strings.Contains(err.Error(), "not found (404)") {
-		t.Errorf("runError() = %v, want the provider's own words", err)
-	}
+	err := m.runError()
+	require.Error(t, err, "want the provider's own words")
+	assert.Contains(t, err.Error(), "not found (404)", "want the provider's own words")
 
 	joined := strings.Join(m.entries, "\n")
-	if !strings.Contains(joined, "not found (404)") {
-		t.Errorf("the log should show the underlying error:\n%s", joined)
-	}
+	assert.Contains(t, joined, "not found (404)", "the log should show the underlying error")
 }
 
 // A retry spends a continuation and then waits out a backoff. Without a
@@ -1025,9 +876,8 @@ func TestRetryEventIsRendered(t *testing.T) {
 	m.handleEvent(&loop.Event{Kind: loop.EventRetry, Text: "provider: Provider returned error: ERROR (upstream: Stealth) (400)"})
 
 	joined := strings.Join(m.entries, "\n")
-	if !strings.Contains(joined, "retrying") || !strings.Contains(joined, "Stealth") {
-		t.Errorf("the retry should be visible with its cause:\n%s", joined)
-	}
+	assert.Contains(t, joined, "retrying", "the retry should be visible with its cause")
+	assert.Contains(t, joined, "Stealth", "the retry should be visible with its cause")
 }
 
 // The header shows the order's title when it has one. The task is the whole order rendered for the model, so a one-line
@@ -1041,21 +891,15 @@ func TestTitleBarPrefersTheTitleOverTheTask(t *testing.T) {
 
 	bar := stripANSI(withTitle.titleBar())
 
-	if !strings.Contains(bar, "Rate limiting") {
-		t.Errorf("the title bar should show the title: %q", bar)
-	}
+	assert.Contains(t, bar, "Rate limiting", "the title bar should show the title")
 
-	if strings.Contains(bar, "add rate limiting to the api") {
-		t.Errorf("the task text should give way to the title: %q", bar)
-	}
+	assert.NotContains(t, bar, "add rate limiting to the api", "the task text should give way to the title")
 
 	// without a title there is still something to show
 	untitled := sized(t, 120, 30)
 	untitled.task = task
 
-	if bar := stripANSI(untitled.titleBar()); !strings.Contains(bar, "add rate limiting") {
-		t.Errorf("an untitled run must fall back to the task: %q", bar)
-	}
+	assert.Contains(t, stripANSI(untitled.titleBar()), "add rate limiting", "an untitled run must fall back to the task")
 }
 
 // A live value growing a digit (nine iterations becoming ten, 999 tokens becoming 1.0k) must not shove later segments
@@ -1099,9 +943,8 @@ func TestMetaBarDoesNotShiftAsValuesChange(t *testing.T) {
 
 			test.after(m)
 
-			if now := strings.Index(stripANSI(m.metaBar()), test.next); now != was {
-				t.Errorf("the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.metaBar()))
-			}
+			now := strings.Index(stripANSI(m.metaBar()), test.next)
+			assert.Equal(t, was, now, "the change moved %q from column %d to %d:\n%q", test.next, was, now, stripANSI(m.metaBar()))
 		})
 	}
 }
@@ -1138,9 +981,7 @@ func TestRenderTasksShowsTheChecklist(t *testing.T) {
 		"✓ read the handler", "▶ add validation", "· write a test", "✗ deploy",
 		"the error path is missing", "needs credentials",
 	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("rendered tasks missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want, "rendered tasks missing %q", want)
 	}
 }
 
@@ -1156,12 +997,8 @@ func TestRenderTasksIsRobust(t *testing.T) {
 	} {
 		out := stripANSI(renderToolStart(litTasks, args))
 
-		if !strings.Contains(out, litTasks) {
-			t.Errorf("%s: should still render a header: %q", name, out)
-		}
+		assert.Contains(t, out, litTasks, "%s: should still render a header", name)
 
-		if strings.Contains(out, litDone) {
-			t.Errorf("%s: a refused list must not report progress: %q", name, out)
-		}
+		assert.NotContains(t, out, litDone, "%s: a refused list must not report progress", name)
 	}
 }

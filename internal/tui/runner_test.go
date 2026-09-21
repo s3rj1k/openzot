@@ -12,6 +12,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openzot/openzot/internal/conversation"
 	"github.com/openzot/openzot/internal/loop"
@@ -57,9 +59,7 @@ func scriptedClient(t *testing.T, turns ...[]string) *provider.Client {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
@@ -82,9 +82,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
 
 	go func() {
 		final, err := program.Run()
-		if err != nil {
-			t.Errorf("program.Run: %v", err)
-		}
+		assert.NoError(t, err)
 
 		finished <- final
 	}()
@@ -101,7 +99,7 @@ func headless(t *testing.T) (*tea.Program, *collector, func() *model) {
 			return &model{}
 
 		case <-time.After(5 * time.Second):
-			t.Fatal("the program did not stop")
+			require.FailNow(t, "the program did not stop")
 
 			return &model{}
 		}
@@ -160,9 +158,7 @@ func engineFor(t *testing.T, client *provider.Client, tweak ...func(*loop.Option
 	}
 
 	engine, err := loop.New(&options)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	require.NoError(t, err)
 
 	return engine
 }
@@ -185,13 +181,9 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 
 	final := stop()
 
-	if len(seen.results) != 1 {
-		t.Fatalf("the done message arrived %d times, want exactly one", len(seen.results))
-	}
+	require.Len(t, seen.results, 1, "want exactly one")
 
-	if len(seen.events) == 0 {
-		t.Fatal("no events reached the program")
-	}
+	require.NotEmpty(t, seen.events)
 
 	var tokens strings.Builder
 
@@ -201,17 +193,12 @@ func TestRunAgentRelaysEveryEventAndThenDone(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(tokens.String(), "working on it") {
-		t.Errorf("the streamed answer did not reach the screen: %q", tokens.String())
-	}
+	assert.Contains(t, tokens.String(), "working on it", "the streamed answer did not reach the screen")
 
-	if seen.results[0].Reason != loop.StopSettled || seen.results[0].Message != "all done" {
-		t.Errorf("the ending = %+v, want settled with the summary: it is what stops the spinner", seen.results[0])
-	}
+	assert.Equal(t, loop.StopSettled, seen.results[0].Reason, "want settled with the summary: it is what stops the spinner")
+	assert.Equal(t, "all done", seen.results[0].Message, "want settled with the summary: it is what stops the spinner")
 
-	if final.status == statusRunning {
-		t.Error("the viewer should not still be showing a running run")
-	}
+	assert.NotEqual(t, statusRunning, final.status, "the viewer should not still be showing a running run")
 }
 
 // A run that cannot reach its provider must surface the failure rather than
@@ -231,9 +218,7 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+	require.NoError(t, err)
 
 	program, seen, stop := headless(t)
 
@@ -241,17 +226,11 @@ func TestRunAgentRelaysAFailure(t *testing.T) {
 
 	final := stop()
 
-	if len(seen.results) != 1 {
-		t.Fatalf("the done message arrived %d times, want exactly one", len(seen.results))
-	}
+	require.Len(t, seen.results, 1, "want exactly one")
 
-	if seen.results[0].Err == nil {
-		t.Fatal("the provider failure never reached the screen")
-	}
+	require.Error(t, seen.results[0].Err, "the provider failure never reached the screen")
 
-	if final.runError() == nil {
-		t.Error("a failed run must be reportable to the caller")
-	}
+	require.Error(t, final.runError(), "a failed run must be reportable to the caller")
 }
 
 // A canceled run still has to end cleanly. The pump drains and the done
@@ -272,9 +251,7 @@ func TestRunAgentEndsOnCancellation(t *testing.T) {
 
 	stop()
 
-	if len(seen.results) != 1 {
-		t.Errorf("the done message arrived %d times, want exactly one", len(seen.results))
-	}
+	assert.Len(t, seen.results, 1, "want exactly one")
 }
 
 // Quitting the viewer must stop the agent, not only the watching. The agent holds shell and file-write access, so a run
@@ -314,9 +291,7 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+	require.NoError(t, err)
 
 	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
@@ -332,15 +307,14 @@ func TestQuittingTheViewerStopsTheAgent(t *testing.T) {
 		return p.Run()
 	}
 
-	if _, err := runViewer(t.Context(), m, engineFor(t, client), start,
-		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler()); err == nil {
-		t.Error("quitting mid-run should report that the run did not finish")
-	}
+	_, err = runViewer(t.Context(), m, engineFor(t, client), start,
+		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+	require.Error(t, err, "quitting mid-run should report that the run did not finish")
 
 	select {
 	case <-canceled:
 	case <-time.After(15 * time.Second):
-		t.Fatal("the agent was still running after the viewer quit")
+		require.FailNow(t, "the agent was still running after the viewer quit")
 	}
 }
 
@@ -374,9 +348,7 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 		APIKey:   "k",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
+	require.NoError(t, err)
 
 	m := newModel("do the thing", litTestModel, litCustom, t.TempDir())
 
@@ -395,7 +367,5 @@ func TestQuittingTheViewerStillRecordsTheOutcome(t *testing.T) {
 	result, _ := runViewer(t.Context(), m, engineFor(t, client), start,
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
 
-	if result.Reason != loop.StopAborted {
-		t.Errorf("Reason = %q, want the abort handed back", result.Reason)
-	}
+	assert.Equal(t, loop.StopAborted, result.Reason, "want the abort handed back")
 }

@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/conversation"
 )
 
@@ -19,12 +22,10 @@ func readLog(t *testing.T, path string) []Record {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read log: %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(data) > 0 && data[len(data)-1] != '\n' {
-		t.Fatalf("log does not end on a line: %q", data[max(0, len(data)-40):])
+	if len(data) > 0 {
+		require.Equal(t, byte('\n'), data[len(data)-1], "log does not end on a line")
 	}
 
 	var records []Record
@@ -36,9 +37,8 @@ func readLog(t *testing.T, path string) []Record {
 
 		var record Record
 
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			t.Fatalf("line %d is not a JSON record: %v\n%s", i+1, err, line)
-		}
+		err := json.Unmarshal([]byte(line), &record)
+		require.NoError(t, err, "line %d is not a JSON record: %v\n%s", i+1, err, line)
 
 		records = append(records, record)
 	}
@@ -60,42 +60,33 @@ func TestOpenCreatesTheLogAndItsDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".zot", "orders", "1758300000.jsonl")
 
 	writer, err := Open(path, Meta{Task: litAddAHealthEndpoint, Model: "m", Provider: "p", Workdir: "/w"})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	require.NoError(t, err)
 
 	defer writer.Close()
 
-	if writer.Path() != path {
-		t.Errorf("Path = %q, want %q", writer.Path(), path)
-	}
+	assert.Equal(t, path, writer.Path())
 
 	records := readLog(t, path)
 
-	if len(records) != 1 || records[0].Kind != KindMeta || records[0].Meta == nil {
-		t.Fatalf("a new log should open with exactly its meta record: %+v", records)
-	}
+	require.Len(t, records, 1, "a new log should open with exactly its meta record")
+	require.Equal(t, KindMeta, records[0].Kind, "a new log should open with exactly its meta record")
+	require.NotNil(t, records[0].Meta, "a new log should open with exactly its meta record")
 
 	meta := records[0].Meta
 
-	if meta.Task != litAddAHealthEndpoint || meta.Model != "m" || meta.Provider != "p" || meta.Workdir != "/w" {
-		t.Errorf("meta = %+v", meta)
-	}
+	assert.Equal(t, litAddAHealthEndpoint, meta.Task)
+	assert.Equal(t, "m", meta.Model)
+	assert.Equal(t, "p", meta.Provider)
+	assert.Equal(t, "/w", meta.Workdir)
 
-	if records[0].At.IsZero() {
-		t.Error("every record is stamped with when it was written")
-	}
+	assert.False(t, records[0].At.IsZero(), "every record is stamped with when it was written")
 
 	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// transcripts of a run can hold anything the agent read, so the file is the
 	// operator's alone
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("log mode = %v, want 0600", info.Mode().Perm())
-	}
+	assert.EqualValues(t, 0o600, info.Mode().Perm())
 }
 
 // Every step of a run is one line. A log a person reads with cat and jq has to
@@ -104,9 +95,7 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	steps := []func() error{
 		func() error { return writer.Message(conversation.Message{Type: litUser, Text: "go"}) },
@@ -123,25 +112,20 @@ func TestEveryKindOfStepIsOneJSONLine(t *testing.T) {
 	}
 
 	for i, step := range steps {
-		if err := step(); err != nil {
-			t.Fatalf("step %d: %v", i+1, err)
-		}
+		require.NoError(t, step(), "step %d", i+1)
 	}
 
 	got := kinds(readLog(t, path))
 
 	want := []Kind{KindMeta, KindMessage, KindMessage, KindMessage, KindEvent, KindResult}
 
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Errorf("records = %v, want %v", got, want)
-	}
+	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got))
 
 	// a message with newlines in it is still one line. The newline is escaped
 	data, _ := os.ReadFile(path)
 
-	if lines := bytes.Count(data, []byte("\n")); lines != len(want) {
-		t.Errorf("the log has %d lines, want one per record (%d)", lines, len(want))
-	}
+	lines := bytes.Count(data, []byte("\n"))
+	assert.Equal(t, len(want), lines, "the log has %d lines, want one per record (%d)", lines, len(want))
 }
 
 // The log is append-only. Each record lands after everything already there, and
@@ -151,9 +135,7 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	previous, _ := os.ReadFile(path)
 
@@ -166,15 +148,12 @@ func TestNothingAlreadyWrittenIsEverChanged(t *testing.T) {
 			err = writer.Event(Event{Kind: "iteration", Iteration: i})
 		}
 
-		if err != nil {
-			t.Fatalf("record %d: %v", i, err)
-		}
+		require.NoError(t, err)
 
 		current, _ := os.ReadFile(path)
 
-		if !bytes.HasPrefix(current, previous) || len(current) <= len(previous) {
-			t.Fatalf("after record %d the log is not the previous log plus one more line", i)
-		}
+		require.True(t, bytes.HasPrefix(current, previous), "after record %d the log is not the previous log plus one more line", i)
+		require.Greater(t, len(current), len(previous), "after record %d the log is not the previous log plus one more line", i)
 
 		previous = current
 	}
@@ -186,24 +165,20 @@ func TestARecordIsOnDiskAsSoonAsItIsWritten(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	defer writer.Close()
 
-	if err := writer.Message(conversation.Message{Type: litReasoning, Text: "the model's own words"}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, writer.Message(conversation.Message{Type: litReasoning, Text: "the model's own words"}))
 
 	// read while the writer is still open, as a tail or a crash would
 	records := readLog(t, path)
 
 	last := records[len(records)-1]
 
-	if last.Kind != KindMessage || last.Message.Type != litReasoning || last.Message.Text != "the model's own words" {
-		t.Errorf("the last record on disk = %+v", last)
-	}
+	assert.Equal(t, KindMessage, last.Kind)
+	assert.EqualValues(t, litReasoning, last.Message.Type)
+	assert.Equal(t, "the model's own words", last.Message.Text)
 }
 
 // Running the task again appends to the same file. The earlier run is kept
@@ -213,9 +188,7 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	first, err := Open(path, Meta{Task: "the brief"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_ = first.Message(conversation.Message{Type: litUser, Text: "first run"})
 	_ = first.Result(Result{Reason: litSettled})
@@ -223,25 +196,19 @@ func TestARunAppendsToTheLogInsteadOfReplacingIt(t *testing.T) {
 	before, _ := os.ReadFile(path)
 
 	second, err := Open(path, Meta{Task: "the brief"})
-	if err != nil {
-		t.Fatalf("second Open: %v", err)
-	}
+	require.NoError(t, err)
 
 	_ = second.Message(conversation.Message{Type: litUser, Text: "second run"})
 	_ = second.Result(Result{Reason: "failed"})
 
 	after, _ := os.ReadFile(path)
 
-	if !bytes.HasPrefix(after, before) {
-		t.Fatal("the second run changed what the first run wrote")
-	}
+	require.True(t, bytes.HasPrefix(after, before), "the second run changed what the first run wrote")
 
 	got := kinds(readLog(t, path))
 	want := []Kind{KindMeta, KindMessage, KindResult, KindMeta, KindMessage, KindResult}
 
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Errorf("records = %v, want two runs one after the other: %v", got, want)
-	}
+	assert.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "records = %v, want two runs one after the other", got)
 }
 
 // A run killed mid-write leaves a torn last line. The next run must not glue its
@@ -251,29 +218,22 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	first, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_ = first.Message(conversation.Message{Type: litUser, Text: "before the kill"})
 	_ = first.Close()
 
 	// what a kill mid-write leaves. Half a record, no newline
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if _, err := file.WriteString(`{"kind":"message","at":"2026-09-19T10:00:00Z","message":{"type":"bo`); err != nil {
-		t.Fatal(err)
-	}
+	_, err = file.WriteString(`{"kind":"message","at":"2026-09-19T10:00:00Z","message":{"type":"bo`)
+	require.NoError(t, err)
 
 	_ = file.Close()
 
 	second, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatalf("Open over a torn line: %v", err)
-	}
+	require.NoError(t, err, "Open over a torn line")
 
 	_ = second.Result(Result{Reason: litSettled})
 
@@ -282,21 +242,17 @@ func TestATornFinalLineIsEndedBeforeTheNextRunStarts(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 
 	// the torn line is still there, on its own, and every line after it parses
-	if !strings.Contains(lines[2], `"type":"bo`) || strings.Contains(lines[2], `"kind":"meta"`) {
-		t.Fatalf("the torn line should stand alone: %q", lines[2])
-	}
+	require.Contains(t, lines[2], `"type":"bo`, "the torn line should stand alone")
+	require.NotContains(t, lines[2], `"kind":"meta"`, "the torn line should stand alone")
 
 	for i, line := range lines[3:] {
 		var record Record
 
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			t.Errorf("line %d after the torn one is not a record: %v: %s", i+4, err, line)
-		}
+		err := json.Unmarshal([]byte(line), &record)
+		require.NoError(t, err, "line %d after the torn one is not a record: %v: %s", i+4, err, line)
 	}
 
-	if !strings.Contains(lines[3], `"kind":"meta"`) {
-		t.Errorf("the new run should open on its own line with its meta: %q", lines[3])
-	}
+	assert.Contains(t, lines[3], `"kind":"meta"`, "the new run should open on its own line with its meta")
 }
 
 // A log that already ends on a line gets no extra blank line.
@@ -307,17 +263,13 @@ func TestACleanLogIsNotPaddedBeforeTheNextRun(t *testing.T) {
 	_ = first.Result(Result{Reason: litSettled})
 
 	second, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_ = second.Close()
 
 	data, _ := os.ReadFile(path)
 
-	if strings.Contains(string(data), "\n\n") {
-		t.Errorf("a blank line crept in between runs:\n%s", data)
-	}
+	assert.NotContains(t, string(data), "\n\n", "a blank line crept in between runs")
 }
 
 // The engine emits events from its own goroutine while the caller records
@@ -326,9 +278,7 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "task.jsonl")
 
 	writer, err := Open(path, Meta{Task: "t"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	const writers, each = 20, 25
 
@@ -339,9 +289,7 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 			for i := range each {
 				text := strings.Repeat(fmt.Sprintf("w%d-%d ", w, i), 40)
 
-				if err := writer.Message(conversation.Message{Type: "bot", Text: text}); err != nil {
-					t.Errorf("write: %v", err)
-				}
+				require.NoError(t, writer.Message(conversation.Message{Type: "bot", Text: text}))
 			}
 		})
 	}
@@ -350,9 +298,8 @@ func TestConcurrentWritesNeverInterleave(t *testing.T) {
 
 	_ = writer.Close()
 
-	if got := len(readLog(t, path)); got != 1+writers*each {
-		t.Errorf("the log has %d records, want the meta plus %d messages", got, writers*each)
-	}
+	got := len(readLog(t, path))
+	assert.Equal(t, 1+writers*each, got, "the log has %d records, want the meta plus %d messages", got, writers*each)
 }
 
 func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
@@ -360,38 +307,26 @@ func TestAResultClosesTheLogAndLaterWritesAreRefused(t *testing.T) {
 
 	writer, _ := Open(path, Meta{Task: "t"})
 
-	if err := writer.Result(Result{Reason: litSettled}); err != nil {
-		t.Fatalf("Result: %v", err)
-	}
+	require.NoError(t, writer.Result(Result{Reason: litSettled}))
 
-	if err := writer.Message(conversation.Message{Type: litUser, Text: "too late"}); err == nil {
-		t.Error("writing after the result must be an error, not a silent drop")
-	}
+	require.Error(t, writer.Message(conversation.Message{Type: litUser, Text: "too late"}), "writing after the result must be an error, not a silent drop")
 
-	if got := len(readLog(t, path)); got != 2 {
-		t.Errorf("the log has %d records, want just the meta and the result", got)
-	}
+	assert.Len(t, readLog(t, path), 2, "want just the meta and the result")
 
-	if err := writer.Close(); err != nil {
-		t.Errorf("Close after Result: %v", err)
-	}
+	require.NoError(t, writer.Close(), "Close after Result")
 }
 
 func TestOpenReportsAnUnusableLocation(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "a-file")
 
-	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
 
 	// a directory that cannot be made, and a path that is itself a directory
-	if _, err := Open(filepath.Join(blocker, "sub", "task.jsonl"), Meta{}); err == nil {
-		t.Error("a log under a file must not open")
-	}
+	_, err := Open(filepath.Join(blocker, "sub", "task.jsonl"), Meta{})
+	require.Error(t, err, "a log under a file must not open")
 
-	if _, err := Open(t.TempDir(), Meta{}); err == nil {
-		t.Error("a directory is not a log")
-	}
+	_, err = Open(t.TempDir(), Meta{})
+	require.Error(t, err)
 }
 
 // An activity round-trips through the log with its whole payload. The arguments
@@ -411,8 +346,9 @@ func TestAToolCallIsRecordedInFull(t *testing.T) {
 
 	activity := records[1].Message.Activity
 
-	if activity == nil || activity.ID != litCall1 || activity.Name != litShell ||
-		activity.Arguments != litCommandGoTest || activity.Result != "ok" {
-		t.Errorf("activity = %+v", activity)
-	}
+	assert.NotNil(t, activity)
+	assert.Equal(t, litCall1, activity.ID)
+	assert.Equal(t, litShell, activity.Name)
+	assert.JSONEq(t, litCommandGoTest, activity.Arguments)
+	assert.Equal(t, "ok", activity.Result)
 }

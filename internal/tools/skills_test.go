@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openzot/openzot/internal/skills"
 )
 
@@ -20,21 +23,15 @@ var testSkills = []skills.Skill{
 
 func TestSkillsToolListsNamesWithDescriptions(t *testing.T) {
 	out, err := skillsCall(t, testSkills, map[string]any{})
-	if err != nil {
-		t.Fatalf("skills: %v", err)
-	}
+	require.NoError(t, err)
 
 	listing := asString(t, out)
 
 	for _, want := range []string{"- deploy: Ship a service", "- review: Review a change"} {
-		if !strings.Contains(listing, want) {
-			t.Errorf("listing is missing %q:\n%s", want, listing)
-		}
+		assert.Contains(t, listing, want)
 	}
 
-	if strings.Contains(listing, "Run the pipeline") {
-		t.Errorf("the listing must not carry the instructions themselves:\n%s", listing)
-	}
+	assert.NotContains(t, listing, "Run the pipeline", "the listing must not carry the instructions themselves")
 }
 
 func TestSkillsToolShortensALongDescription(t *testing.T) {
@@ -44,42 +41,29 @@ func TestSkillsToolShortensALongDescription(t *testing.T) {
 
 	line := asString(t, out)
 
-	if strings.Count(line, "word") > maxListedDescription/5 || !strings.Contains(line, "…") {
-		t.Errorf("a long description must be cut with an ellipsis:\n%s", line)
-	}
+	assert.LessOrEqual(t, strings.Count(line, "word"), maxListedDescription/5, "a long description must be cut with an ellipsis")
+	assert.Contains(t, line, "…", "a long description must be cut with an ellipsis")
 }
 
 func TestSkillsToolReadsOneInFull(t *testing.T) {
 	out, err := skillsCall(t, testSkills, map[string]any{litName: litDeploy})
-	if err != nil {
-		t.Fatalf("skills: %v", err)
-	}
+	require.NoError(t, err)
 
 	got := asString(t, out)
 
-	if !strings.Contains(got, "Run the pipeline.") {
-		t.Errorf("the full instructions are missing:\n%s", got)
-	}
+	assert.Contains(t, got, "Run the pipeline.", "the full instructions are missing")
 
-	if !strings.Contains(got, "Skill directory: /skills/deploy") {
-		t.Errorf("the skill's directory is missing, so bundled files cannot be found:\n%s", got)
-	}
+	assert.Contains(t, got, "Skill directory: /skills/deploy", "the skill's directory is missing, so bundled files cannot be found")
 
-	if strings.Contains(got, "Review") {
-		t.Errorf("only the named skill may come back:\n%s", got)
-	}
+	assert.NotContains(t, got, "Review", "only the named skill may come back")
 }
 
 func TestSkillsToolNamesWhatExistsForAnUnknownSkill(t *testing.T) {
 	_, err := skillsCall(t, testSkills, map[string]any{litName: "nope"})
-	if err == nil {
-		t.Fatal("an unknown skill must be an error the model can act on")
-	}
+	require.Error(t, err, "an unknown skill must be an error the model can act on")
 
 	for _, want := range []string{`"nope"`, litDeploy, "review"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %s", err, want)
-		}
+		assert.Contains(t, err.Error(), want)
 	}
 }
 
@@ -87,23 +71,17 @@ func TestSkillsToolBoundsWhatItReturns(t *testing.T) {
 	big := []skills.Skill{{Name: "big", Content: strings.Repeat("x", 500)}}
 
 	out, err := call(t, New(100, big), "skills", map[string]any{litName: "big"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(asString(t, out), "[truncated:") {
-		t.Errorf("a skill larger than the tool ceiling must be visibly truncated: %q", out)
-	}
+	assert.Contains(t, asString(t, out), "[truncated:", "a skill larger than the tool ceiling must be visibly truncated")
 }
 
 // A run with no skills has no skills tool. Nothing to list is not worth a tool
 // in every request.
 func TestTheSkillsToolExistsOnlyWhenThereAreSkills(t *testing.T) {
-	if _, ok := findTool(New(maxToolOutput, nil), "skills"); ok {
-		t.Error("no skills tool without skills")
-	}
+	_, ok := findTool(New(maxToolOutput, nil), "skills")
+	assert.False(t, ok, "no skills tool without skills")
 
-	if _, ok := findTool(New(maxToolOutput, testSkills), "skills"); !ok {
-		t.Error("skills tool expected when skills are loaded")
-	}
+	_, ok = findTool(New(maxToolOutput, testSkills), "skills")
+	assert.True(t, ok, "skills tool expected when skills are loaded")
 }
