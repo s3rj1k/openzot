@@ -1,0 +1,68 @@
+version: '3'
+
+# go.mod pins the minimum patched toolchain. Some official Go and development
+# images export GOTOOLCHAIN=local, which turns a stale patch release into a hard
+# failure instead of letting Go fetch the required toolchain. Task lets the
+# environment win over its own env, so the commands set it themselves. A
+# command-line override (for example `task test TOOLCHAIN=local`) still wins.
+vars:
+  GO: 'env GOTOOLCHAIN={{default "auto" .TOOLCHAIN}} go'
+
+silent: true
+
+tasks:
+  default:
+    desc: List the tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build agent for Linux
+    cmds:
+      - echo "Building agent..."
+      - CGO_ENABLED=0 {{.GO}} build -trimpath -ldflags "-s -w" -o agent ./cmd/agent
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - '{{.GO}} test ./... -count=1'
+
+  race:
+    desc: Run the test suite under the race detector
+    cmds:
+      - '{{.GO}} test -race ./... -count=1'
+
+  cover:
+    desc: Report per-package test coverage
+    cmds:
+      - "{{.GO}} test -cover ./... -count=1 | grep coverage | sed 's|github.com/openzot/openzot||'"
+
+  # go fix carries the modernizers. A loop, a min/max or a helper that the
+  # standard library now spells is reported here rather than left to review.
+  vet:
+    desc: Run go vet, and refuse code go fix would modernize
+    cmds:
+      - '{{.GO}} vet ./...'
+      - |
+        out="$({{.GO}} fix -diff ./... 2>&1)"
+        if [ -n "$out" ]; then
+          echo "$out"
+          echo "go fix would change the tree, run 'go fix ./...'"
+          exit 1
+        fi
+
+  fmt:
+    desc: Format the tree
+    cmds:
+      - '{{.GO}} fmt ./...'
+
+  lint:
+    desc: Alias for vet
+    deps: [vet]
+    cmds:
+      - echo "lint ok"
+
+  clean:
+    desc: Remove built binaries
+    cmds:
+      - rm -f agent

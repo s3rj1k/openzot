@@ -8,10 +8,10 @@ own key.
 ## Build
 
 ```bash
-make build
+task build
 ```
 
-Needs Go 1.27 or newer and runs on Linux. `make` lists the other targets.
+Needs Go 1.27 or newer and [Task](https://taskfile.dev), and runs on Linux. `task` lists the other tasks.
 
 ## Use
 

@@ -20,14 +20,14 @@ worked around.
   external users to protect yet. When you rename or replace something, rename or
   replace it everywhere and delete the old thing. Say so in the commit (a `feat!:`
   title) rather than carrying it.
-- **Test everything you change.** `make test` must pass, and total coverage should
-  not fall below 90% (`make cover` reports it per package). Write tests that
+- **Test everything you change.** `task test` must pass, and total coverage should
+  not fall below 90% (`task cover` reports it per package). Write tests that
   assert _behaviour_, not constants; a test that restates a value it reads is
   worse than none. Tests live in the external `x_test` package and reach only
   what `x` exports. Export what a test needs instead of bridging it with an
   `export_test.go` or an alias. Only `cmd/agent` is tested in `package main`, since
   a `main` package cannot be imported.
-- **It vets clean, in modern Go.** `make vet` runs `go vet` and fails on anything
+- **It vets clean, in modern Go.** `task vet` runs `go vet` and fails on anything
   `go fix` would rewrite (the modernizers: `any`, `range n`, `min`/`max`, `slices`,
   `maps`, `cmp.Or`, ...). Write the current idiom rather than the old one; the
   Modern Go Guidelines skill lists what the target version has. Run
