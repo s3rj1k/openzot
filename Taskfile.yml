@@ -32,10 +32,17 @@ tasks:
     cmds:
       - '{{.GO}} test -race ./... -count=1'
 
+  # internal/testutils is test support with no tests of its own, so it is left
+  # out of both the per-package lines and the total.
   cover:
-    desc: Report per-package test coverage
+    desc: Report per-package test coverage and the total
     cmds:
-      - "{{.GO}} test -cover ./... -count=1 | grep coverage | sed 's|github.com/openzot/openzot||'"
+      - |
+        profile="$(mktemp)"
+        {{.GO}} test ./... -count=1 -coverprofile="$profile" | grep coverage | grep -v internal/testutils | sed 's|github.com/openzot/openzot||'
+        grep -v internal/testutils "$profile" > "$profile.kept"
+        echo "total: $({{.GO}} tool cover -func="$profile.kept" | tail -1 | awk '{print $NF}')"
+        rm -f "$profile" "$profile.kept"
 
   # go fix carries the modernizers. A loop, a min/max or a helper that the
   # standard library now spells is reported here rather than left to review.

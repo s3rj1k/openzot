@@ -21,7 +21,8 @@ worked around.
   replace it everywhere and delete the old thing. Say so in the commit (a `feat!:`
   title) rather than carrying it.
 - **Test everything you change.** `task test` must pass, and total coverage should
-  not fall below 90% (`task cover` reports it per package). Write tests that
+  not fall below 90% (`task cover` reports it per package and in total, leaving
+  out `internal/testutils`). Write tests that
   assert _behaviour_, not constants; a test that restates a value it reads is
   worse than none. Tests live in the external `x_test` package and reach only
   what `x` exports. Export what a test needs instead of bridging it with an
